@@ -16,6 +16,8 @@ export class MultiplayerClient {
   private roomCode: string | null = null;
   private role: MultiplayerRole | null = null;
   private mode: MultiplayerMode = 'coop';
+  private slot: number = 1;
+  private team: 'A' | 'B' | 'FFA' = 'FFA';
   private isConnecting: boolean = false;
   private shouldReconnect: boolean = true;
   private reconnectAttempts: number = 0;
@@ -63,10 +65,14 @@ export class MultiplayerClient {
               this.roomCode = data.code;
               this.role = 'host';
               this.mode = data.mode;
+              this.slot = data.slot || 1;
+              this.team = data.team || (data.mode === '2v2' ? 'A' : 'FFA');
             } else if (data.type === 'room_joined') {
               this.roomCode = data.code;
               this.role = 'guest';
               this.mode = data.mode;
+              this.slot = data.slot || 2;
+              this.team = data.team || 'FFA';
             }
 
             this.emit(data.type, data);
@@ -170,10 +176,11 @@ export class MultiplayerClient {
     });
   }
 
-  public sendInput(input: InputState) {
+  public sendInput(input: InputState, slot?: number) {
     this.send({
       type: 'player_input',
       input,
+      slot: slot ?? this.slot,
     });
   }
 
@@ -231,6 +238,14 @@ export class MultiplayerClient {
 
   public getMode(): MultiplayerMode {
     return this.mode;
+  }
+
+  public getSlot(): number {
+    return this.slot;
+  }
+
+  public getTeam(): 'A' | 'B' | 'FFA' {
+    return this.team;
   }
 
   public isConnected(): boolean {

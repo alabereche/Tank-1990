@@ -8,10 +8,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { multiplayerClient } from '../network/MultiplayerClient';
 import { soundManager } from '../engine/SoundManager';
-import { MultiplayerMode, MultiplayerRole } from '../types';
+import { MultiplayerMode, MultiplayerRole, MultiplayerPlayerInfo } from '../types';
 import {
   Users,
   Swords,
+  Shield,
+  Crown,
   Wifi,
   Copy,
   Check,
@@ -32,6 +34,8 @@ interface MultiplayerLobbyProps {
     mapSize: 'classic' | 'large' | 'giant';
     stage: number;
     customMapGrid?: number[][];
+    slot?: number;
+    team?: 'A' | 'B' | 'FFA';
   }) => void;
 }
 
@@ -46,6 +50,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
   const [roomCodeInput, setRoomCodeInput] = useState<string>('');
   const [createdRoomCode, setCreatedRoomCode] = useState<string | null>(null);
   const [peerJoined, setPeerJoined] = useState<boolean>(false);
+  const [connectedPlayers, setConnectedPlayers] = useState<MultiplayerPlayerInfo[]>([]);
   const [ping, setPing] = useState<number>(0);
   const [serverConnected, setServerConnected] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -81,19 +86,25 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
       soundManager.playPowerUpCollect();
       setCreatedRoomCode(data.code);
       setMode(data.mode);
+      if (data.players) setConnectedPlayers(data.players);
+      else setConnectedPlayers([{ slot: data.slot || 1, team: data.team || (data.mode === '2v2' ? 'A' : 'FFA'), role: 'host' }]);
       setErrorMessage(null);
     });
 
-    const unsubPlayerJoined = multiplayerClient.on('player_joined', () => {
+    const unsubPlayerJoined = multiplayerClient.on('player_joined', (data) => {
       soundManager.playPowerUpSpawn();
       setPeerJoined(true);
+      if (data.players) setConnectedPlayers(data.players);
     });
 
     const unsubRoomJoined = multiplayerClient.on('room_joined', (data) => {
       soundManager.playPowerUpCollect();
       setCreatedRoomCode(data.code);
-      setMode(data.mode);
+      if (data.mode) setMode(data.mode);
+      if (data.mapSize) setMapSize(data.mapSize);
+      if (data.stage) setStage(data.stage);
       setPeerJoined(true);
+      if (data.players) setConnectedPlayers(data.players);
       setErrorMessage(null);
     });
 
@@ -119,9 +130,20 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
             mode: data.mode || mode,
             mapSize: data.mapSize || mapSize,
             stage: data.stage || stage,
+            slot: multiplayerClient.getSlot(),
+            team: multiplayerClient.getTeam(),
+            customMapGrid: data.customMapGrid,
           });
         }
       }, 1000);
+    });
+
+    const unsubPlayerLeft = multiplayerClient.on('player_left', (data) => {
+      soundManager.playHitSteel();
+      if (data.players) {
+        setConnectedPlayers(data.players);
+        setPeerJoined(data.players.length > 1);
+      }
     });
 
     const unsubPeerDisconnected = multiplayerClient.on('peer_disconnected', () => {
@@ -141,6 +163,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
       unsubPlayerJoined();
       unsubRoomJoined();
       unsubCountdown();
+      unsubPlayerLeft();
       unsubPeerDisconnected();
       unsubError();
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
@@ -151,7 +174,8 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
     soundManager.unlockAudio();
     soundManager.playHitSteel();
     setErrorMessage(null);
-    multiplayerClient.createRoom(mode, mapSize, stage);
+    const finalMapSize = mode === 'ffa' && mapSize === 'classic' ? 'large' : mapSize;
+    multiplayerClient.createRoom(mode, finalMapSize, stage);
   };
 
   const handleJoinRoom = (e?: React.FormEvent) => {
@@ -347,6 +371,51 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                       Tank duel! P1 (Gold) vs P2 (Green) with 5 lives each!
                     </div>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundManager.playHitSteel();
+                      setMode('2v2');
+                    }}
+                    className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                      mode === '2v2'
+                        ? 'bg-blue-950/40 border-blue-500 text-blue-300'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <Shield className="w-4 h-4 text-blue-400" />
+                      <span>2V2 TEAMS</span>
+                    </div>
+                    <div className="text-[8px] text-zinc-400 leading-tight">
+                      Team A (P1/P3) vs Team B (P2/P4) with Friendly Fire Shield!
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundManager.playHitSteel();
+                      setMode('ffa');
+                      if (mapSize === 'classic') {
+                        setMapSize('large');
+                      }
+                    }}
+                    className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                      mode === 'ffa'
+                        ? 'bg-purple-950/40 border-purple-500 text-purple-300'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <Crown className="w-4 h-4 text-purple-400" />
+                      <span>8 FREE-FOR-ALL</span>
+                    </div>
+                    <div className="text-[8px] text-zinc-400 leading-tight">
+                      8 tanks battle in expanded arena with instant respawns!
+                    </div>
+                  </button>
                 </div>
               </div>
 
@@ -356,23 +425,34 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                   ARENA DIMENSIONS
                 </label>
                 <div className="grid grid-cols-3 gap-2">
-                  {(['classic', 'large', 'giant'] as const).map((sz) => (
-                    <button
-                      key={sz}
-                      type="button"
-                      onClick={() => {
-                        soundManager.playHitSteel();
-                        setMapSize(sz);
-                      }}
-                      className={`py-1.5 px-2 rounded border text-center uppercase text-[9px] transition-all ${
-                        mapSize === sz
-                          ? 'bg-amber-500/20 border-[#f8b800] text-[#f8b800] font-bold'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                      }`}
-                    >
-                      {sz === 'classic' ? '26x26 STD' : sz === 'large' ? '32x32 LRG' : '40x40 MAX'}
-                    </button>
-                  ))}
+                  {(['classic', 'large', 'giant'] as const).map((sz) => {
+                    const isClassicFfaDisabled = mode === 'ffa' && sz === 'classic';
+                    return (
+                      <button
+                        key={sz}
+                        type="button"
+                        disabled={isClassicFfaDisabled}
+                        onClick={() => {
+                          soundManager.playHitSteel();
+                          setMapSize(sz);
+                        }}
+                        className={`py-1.5 px-2 rounded border text-center uppercase text-[9px] transition-all ${
+                          isClassicFfaDisabled
+                            ? 'opacity-30 cursor-not-allowed bg-zinc-900 border-zinc-800 text-zinc-600'
+                            : mapSize === sz
+                            ? 'bg-amber-500/20 border-[#f8b800] text-[#f8b800] font-bold'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                        title={isClassicFfaDisabled ? '8-Player FFA requires Large or Giant arena' : undefined}
+                      >
+                        {sz === 'classic'
+                          ? (mode === 'ffa' ? '26x26 (LOCKED)' : '26x26 STD')
+                          : sz === 'large'
+                          ? '34x34 LRG'
+                          : '42x42 MAX'}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -480,59 +560,159 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
             </div>
           </div>
 
-          {/* Player Cards (P1 & P2) */}
-          <div className="grid grid-cols-2 gap-3 my-4">
-            {/* Player 1 Slot (Gold Tank) */}
-            <div className="bg-zinc-950 border-2 border-amber-500/60 p-3 rounded flex flex-col items-center text-center">
-              <div className="text-[8px] text-zinc-400 font-bold mb-1">PLAYER 1 (HOST)</div>
-              {/* Gold Tank Silhouette */}
-              <div className="w-7 h-7 my-1">
-                <svg viewBox="0 0 16 16" className="w-7 h-7 fill-[#f8b800]">
-                  <rect x="1" y="2" width="3" height="12" />
-                  <rect x="12" y="2" width="3" height="12" />
-                  <rect x="4" y="4" width="8" height="8" />
-                  <rect x="7" y="0" width="2" height="5" />
-                  <rect x="6" y="6" width="4" height="4" fill="#ffffff" />
-                </svg>
+          {/* Player Cards (Adaptive for 2P, 2v2 Teams, and 8 FFA) */}
+          {mode === '2v2' ? (
+            <div className="grid grid-cols-2 gap-3 my-4">
+              {/* Team A (Slots 1 & 3) */}
+              <div className="bg-blue-950/30 border-2 border-blue-500/60 p-2.5 rounded flex flex-col gap-2">
+                <div className="text-[9px] font-bold text-blue-300 flex items-center justify-between border-b border-blue-800/60 pb-1">
+                  <span>TEAM A (BLUE)</span>
+                  <span className="text-[8px] bg-blue-900/60 px-1.5 py-0.5 rounded text-blue-200">BASE DEFENSE</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[1, 3].map((slot) => {
+                    const isOccupied = connectedPlayers.some((p) => p.slot === slot) || (slot === 1 && multiplayerClient.getRole() === 'host') || (slot === multiplayerClient.getSlot());
+                    const color = slot === 1 ? '#f8b800' : '#00a8a8';
+                    const core = slot === 1 ? '#ffffff' : '#88f8f8';
+                    const label = slot === 1 ? 'P1 (GOLD)' : 'P3 (CYAN)';
+                    return (
+                      <div key={slot} className={`p-2 rounded flex flex-col items-center text-center border ${isOccupied ? 'bg-zinc-950 border-blue-400/60' : 'bg-zinc-950/40 border-zinc-800'}`}>
+                        <div className="w-5 h-5 my-1">
+                          <svg viewBox="0 0 16 16" className="w-5 h-5" style={{ fill: isOccupied ? color : '#444' }}>
+                            <rect x="1" y="2" width="3" height="12" />
+                            <rect x="12" y="2" width="3" height="12" />
+                            <rect x="4" y="4" width="8" height="8" />
+                            <rect x="7" y="0" width="2" height="5" />
+                            <rect x="6" y="6" width="4" height="4" fill={isOccupied ? core : '#222'} />
+                          </svg>
+                        </div>
+                        <div className="text-[8px] font-bold" style={{ color: isOccupied ? color : '#666' }}>{label}</div>
+                        <div className={`text-[7px] font-mono mt-0.5 ${isOccupied ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                          {isOccupied ? '[READY]' : '[OPEN]'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="text-[9px] text-[#f8b800] font-bold">GOLD TANK</div>
-              <div className="text-[8px] text-emerald-400 mt-1 font-mono">[READY]</div>
-            </div>
 
-            {/* Player 2 Slot (Green Tank) */}
-            <div
-              className={`p-3 rounded flex flex-col items-center text-center border-2 transition-all ${
-                peerJoined
-                  ? 'bg-zinc-950 border-emerald-500/60'
-                  : 'bg-zinc-950/60 border-zinc-800 animate-pulse'
-              }`}
-            >
-              <div className="text-[8px] text-zinc-400 font-bold mb-1">PLAYER 2 (GUEST)</div>
-              {/* Green Tank Silhouette */}
-              <div className="w-7 h-7 my-1">
-                <svg
-                  viewBox="0 0 16 16"
-                  className={`w-7 h-7 ${peerJoined ? 'fill-[#00a800]' : 'fill-zinc-700'}`}
-                >
-                  <rect x="1" y="2" width="3" height="12" />
-                  <rect x="12" y="2" width="3" height="12" />
-                  <rect x="4" y="4" width="8" height="8" />
-                  <rect x="7" y="0" width="2" height="5" />
-                  <rect x="6" y="6" width="4" height="4" fill={peerJoined ? '#78f878' : '#333'} />
-                </svg>
+              {/* Team B (Slots 2 & 4) */}
+              <div className="bg-red-950/30 border-2 border-red-500/60 p-2.5 rounded flex flex-col gap-2">
+                <div className="text-[9px] font-bold text-red-300 flex items-center justify-between border-b border-red-800/60 pb-1">
+                  <span>TEAM B (RED)</span>
+                  <span className="text-[8px] bg-red-900/60 px-1.5 py-0.5 rounded text-red-200">NORTH ATTACK</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[2, 4].map((slot) => {
+                    const isOccupied = connectedPlayers.some((p) => p.slot === slot) || (slot === multiplayerClient.getSlot());
+                    const color = slot === 2 ? '#00a800' : '#e40058';
+                    const core = slot === 2 ? '#78f878' : '#f87898';
+                    const label = slot === 2 ? 'P2 (GREEN)' : 'P4 (RED)';
+                    return (
+                      <div key={slot} className={`p-2 rounded flex flex-col items-center text-center border ${isOccupied ? 'bg-zinc-950 border-red-400/60' : 'bg-zinc-950/40 border-zinc-800'}`}>
+                        <div className="w-5 h-5 my-1">
+                          <svg viewBox="0 0 16 16" className="w-5 h-5" style={{ fill: isOccupied ? color : '#444' }}>
+                            <rect x="1" y="2" width="3" height="12" />
+                            <rect x="12" y="2" width="3" height="12" />
+                            <rect x="4" y="4" width="8" height="8" />
+                            <rect x="7" y="0" width="2" height="5" />
+                            <rect x="6" y="6" width="4" height="4" fill={isOccupied ? core : '#222'} />
+                          </svg>
+                        </div>
+                        <div className="text-[8px] font-bold" style={{ color: isOccupied ? color : '#666' }}>{label}</div>
+                        <div className={`text-[7px] font-mono mt-0.5 ${isOccupied ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                          {isOccupied ? '[READY]' : '[OPEN]'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className={`text-[9px] font-bold ${peerJoined ? 'text-[#00a800]' : 'text-zinc-500'}`}>
-                {peerJoined ? 'GREEN TANK' : 'WAITING FOR PEER...'}
+            </div>
+          ) : mode === 'ffa' ? (
+            <div className="grid grid-cols-4 gap-2 my-3">
+              {[
+                { slot: 1, name: 'P1 GOLD', fill: '#f8b800', core: '#fff' },
+                { slot: 2, name: 'P2 GRN', fill: '#00a800', core: '#78f878' },
+                { slot: 3, name: 'P3 CYAN', fill: '#00a8a8', core: '#88f8f8' },
+                { slot: 4, name: 'P4 RED', fill: '#e40058', core: '#f87898' },
+                { slot: 5, name: 'P5 VIO', fill: '#940088', core: '#f878f8' },
+                { slot: 6, name: 'P6 ORG', fill: '#f87800', core: '#fce4a0' },
+                { slot: 7, name: 'P7 SILV', fill: '#b8b8b8', core: '#fff' },
+                { slot: 8, name: 'P8 LIME', fill: '#78f800', core: '#c8ff78' },
+              ].map((p) => {
+                const isOccupied = connectedPlayers.some((cp) => cp.slot === p.slot) || (p.slot === 1 && multiplayerClient.getRole() === 'host') || (p.slot === multiplayerClient.getSlot());
+                return (
+                  <div key={p.slot} className={`p-1.5 rounded flex flex-col items-center text-center border ${isOccupied ? 'bg-zinc-950 border-amber-400/60' : 'bg-zinc-950/40 border-zinc-800'}`}>
+                    <div className="w-4 h-4 my-1">
+                      <svg viewBox="0 0 16 16" className="w-4 h-4" style={{ fill: isOccupied ? p.fill : '#444' }}>
+                        <rect x="1" y="2" width="3" height="12" />
+                        <rect x="12" y="2" width="3" height="12" />
+                        <rect x="4" y="4" width="8" height="8" />
+                        <rect x="7" y="0" width="2" height="5" />
+                        <rect x="6" y="6" width="4" height="4" fill={isOccupied ? p.core : '#222'} />
+                      </svg>
+                    </div>
+                    <div className="text-[7px] font-bold truncate w-full" style={{ color: isOccupied ? p.fill : '#666' }}>{p.name}</div>
+                    <div className={`text-[6px] font-mono mt-0.5 ${isOccupied ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                      {isOccupied ? 'READY' : 'OPEN'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 my-4">
+              {/* Player 1 Slot (Gold Tank) */}
+              <div className="bg-zinc-950 border-2 border-amber-500/60 p-3 rounded flex flex-col items-center text-center">
+                <div className="text-[8px] text-zinc-400 font-bold mb-1">PLAYER 1 (HOST)</div>
+                <div className="w-7 h-7 my-1">
+                  <svg viewBox="0 0 16 16" className="w-7 h-7 fill-[#f8b800]">
+                    <rect x="1" y="2" width="3" height="12" />
+                    <rect x="12" y="2" width="3" height="12" />
+                    <rect x="4" y="4" width="8" height="8" />
+                    <rect x="7" y="0" width="2" height="5" />
+                    <rect x="6" y="6" width="4" height="4" fill="#ffffff" />
+                  </svg>
+                </div>
+                <div className="text-[9px] text-[#f8b800] font-bold">GOLD TANK</div>
+                <div className="text-[8px] text-emerald-400 mt-1 font-mono">[READY]</div>
               </div>
+
+              {/* Player 2 Slot (Green Tank) */}
               <div
-                className={`text-[8px] mt-1 font-mono ${
-                  peerJoined ? 'text-emerald-400' : 'text-amber-500 animate-pulse'
+                className={`p-3 rounded flex flex-col items-center text-center border-2 transition-all ${
+                  peerJoined
+                    ? 'bg-zinc-950 border-emerald-500/60'
+                    : 'bg-zinc-950/60 border-zinc-800 animate-pulse'
                 }`}
               >
-                {peerJoined ? '[CONNECTED]' : 'SHARE CODE OR LINK'}
+                <div className="text-[8px] text-zinc-400 font-bold mb-1">PLAYER 2 (GUEST)</div>
+                <div className="w-7 h-7 my-1">
+                  <svg
+                    viewBox="0 0 16 16"
+                    className={`w-7 h-7 ${peerJoined ? 'fill-[#00a800]' : 'fill-zinc-700'}`}
+                  >
+                    <rect x="1" y="2" width="3" height="12" />
+                    <rect x="12" y="2" width="3" height="12" />
+                    <rect x="4" y="4" width="8" height="8" />
+                    <rect x="7" y="0" width="2" height="5" />
+                    <rect x="6" y="6" width="4" height="4" fill={peerJoined ? '#78f878' : '#333'} />
+                  </svg>
+                </div>
+                <div className={`text-[9px] font-bold ${peerJoined ? 'text-[#00a800]' : 'text-zinc-500'}`}>
+                  {peerJoined ? 'GREEN TANK' : 'WAITING FOR PEER...'}
+                </div>
+                <div
+                  className={`text-[8px] mt-1 font-mono ${
+                    peerJoined ? 'text-emerald-400' : 'text-amber-500 animate-pulse'
+                  }`}
+                >
+                  {peerJoined ? '[CONNECTED]' : 'SHARE CODE OR LINK'}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Mission Info Badge */}
           <div className="text-center text-[9px] text-zinc-400 mb-3">
@@ -550,16 +730,16 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
           {multiplayerClient.getRole() === 'host' ? (
             <button
               id="btn-host-start-battle"
-              disabled={!peerJoined}
+              disabled={!(connectedPlayers.length >= 2 || peerJoined)}
               onClick={handleStartGame}
               className={`w-full py-3 rounded text-xs font-bold tracking-widest uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
-                peerJoined
+                connectedPlayers.length >= 2 || peerJoined
                   ? 'bg-emerald-500 hover:bg-emerald-400 text-black cursor-pointer active:translate-y-px'
                   : 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
               }`}
             >
               <Play className="w-4 h-4 fill-current" />
-              <span>{peerJoined ? 'START MISSION' : 'WAITING FOR PLAYER 2...'}</span>
+              <span>{connectedPlayers.length >= 2 || peerJoined ? 'START MISSION' : 'WAITING FOR PLAYERS...'}</span>
             </button>
           ) : (
             <div className="w-full py-3 bg-zinc-900 border border-zinc-700 rounded text-center text-[10px] text-amber-400 font-bold animate-pulse">

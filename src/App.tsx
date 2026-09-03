@@ -32,6 +32,8 @@ export default function App() {
     mapSize: 'classic' | 'large' | 'giant';
     stage: number;
     customMapGrid?: number[][];
+    slot?: number;
+    team?: 'A' | 'B' | 'FFA';
   } | undefined>(undefined);
 
   const [highScore, setHighScore] = useState<number>(() => {
@@ -183,6 +185,8 @@ export default function App() {
     mapSize: 'classic' | 'large' | 'giant';
     stage: number;
     customMapGrid?: number[][];
+    slot?: number;
+    team?: 'A' | 'B' | 'FFA';
   }) => {
     soundManager.unlockAudio();
     setMultiplayerConfig(config);
@@ -200,8 +204,14 @@ export default function App() {
     setCurrentScreen(GameState.PLAYING);
   };
 
-  // Active map based on preset or custom
-  const currentActiveMap = customMap || getStageMapForPresetAndStage(currentStage, settings.mapSize);
+  // Active map based on preset or custom.
+  // Multiplayer rooms use the room's mapSize; 8-Player FFA strictly enforces large (34x34) or giant (42x42).
+  const effectiveMapSize = multiplayerConfig
+    ? (multiplayerConfig.mode === 'ffa'
+        ? (multiplayerConfig.mapSize === 'classic' ? 'large' : multiplayerConfig.mapSize)
+        : multiplayerConfig.mapSize)
+    : settings.mapSize;
+  const currentActiveMap = customMap || getStageMapForPresetAndStage(currentStage, effectiveMapSize, multiplayerConfig?.mode);
 
   return (
     <div

@@ -24,7 +24,7 @@ import {
   MultiplayerMode,
   MultiplayerRole,
 } from '../types';
-import { BLOCK_SIZE, cloneGrid } from './maps';
+import { BLOCK_SIZE, cloneGrid, getStageMapForPresetAndStage } from './maps';
 import { soundManager } from './SoundManager';
 import { SpriteRenderer } from './spriteRenderer';
 import { SnapshotBuffer, NetSnapshot } from '../network/interpolation';
@@ -32,11 +32,13 @@ import { createTickWorker } from './tickWorker';
 
 // 1v1 versus: first player to win this many rounds takes the match (CS-style)
 const VERSUS_ROUNDS_TO_WIN = 7;
+// FFA deathmatch: first player to reach this many kills takes the match
+const FFA_KILLS_TO_WIN = 30;
 
 interface SpawningTank {
   id: string;
   isPlayer: boolean;
-  playerIndex?: 1 | 2;
+  playerIndex?: number;
   type: EnemyType | 'PLAYER';
   x: number;
   y: number;
@@ -71,9 +73,23 @@ export class GameEngine {
   private shovelTimer: number = 0; // Frames remaining of steel base bunker
   private shovelBunkerTiles: { r: number; c: number; prevType: TileType }[] = [];
 
-  // Entities
-  private player: Tank | null = null;
-  public player2: Tank | null = null;
+  // Entities - General Map for all players (1..8)
+  public playerTanks: Map<number, Tank> = new Map();
+  public get player(): Tank | null {
+    return this.playerTanks.get(1) || null;
+  }
+  public set player(tank: Tank | null) {
+    if (tank) this.playerTanks.set(1, tank);
+    else this.playerTanks.delete(1);
+  }
+  public get player2(): Tank | null {
+    return this.playerTanks.get(2) || null;
+  }
+  public set player2(tank: Tank | null) {
+    if (tank) this.playerTanks.set(2, tank);
+    else this.playerTanks.delete(2);
+  }
+
   private enemies: Tank[] = [];
   private spawningTanks: SpawningTank[] = [];
   private bullets: Bullet[] = [];
@@ -84,16 +100,28 @@ export class GameEngine {
   // Multiplayer Engine State
   public multiMode: MultiplayerMode = 'single';
   public localRole: MultiplayerRole | 'local' = 'local';
-  private p2Input: InputState = {
-    up: false,
-    right: false,
-    down: false,
-    left: false,
-    fire: false,
-    pause: false,
-  };
+  public localPlayerSlot: number = 1;
+  public totalFfaPlayers: number = 8;
+  public total2v2Players: number = 4;
+  private playerSpawns: Map<number, Position> = new Map();
+  private playerInputs: Map<number, InputState> = new Map();
+  private prevPlayerFire: Map<number, boolean> = new Map();
+
+  private get p2Input(): InputState {
+    return this.playerInputs.get(2) || {
+      up: false,
+      right: false,
+      down: false,
+      left: false,
+      fire: false,
+      pause: false,
+    };
+  }
+  private set p2Input(val: InputState) {
+    this.playerInputs.set(2, val);
+  }
   private prevP2FireInput: boolean = false;
-  private tauntMessage: { text: string; sender: 'P1' | 'P2'; timer: number } | null = null;
+  private tauntMessage: { text: string; sender: 'P1' | 'P2' | string; timer: number } | null = null;
   public onNetworkSync?: (snapshot: any) => void;
   public onGameEventBroadcast?: (event: any) => void;
 
@@ -189,9 +217,7 @@ export class GameEngine {
     this.baseY = this.baseR * BLOCK_SIZE;
 
     if (this.multiMode === 'versus') {
-      // 1v1 Duel: opposite ends. The bottom spawn must NEVER be the eagle
-      // bunker pocket (cols 12-13 / rows 24-25) - it is enclosed on three
-      // sides by the bunker walls, so the tank could never leave.
+      // 1v1 Duel: opposite ends
       this.playerSpawn = {
         x: (this.baseC - 4) * BLOCK_SIZE,
         y: this.baseR * BLOCK_SIZE,
@@ -200,6 +226,38 @@ export class GameEngine {
         x: this.baseC * BLOCK_SIZE,
         y: 0,
       };
+      this.playerSpawns.set(1, this.playerSpawn);
+      this.playerSpawns.set(2, this.p2Spawn);
+    } else if (this.multiMode === '2v2') {
+      // Team A: bottom left & right of base
+      const s1 = { x: Math.max(0, (this.baseC - 5)) * BLOCK_SIZE, y: this.baseR * BLOCK_SIZE };
+      const s3 = { x: Math.min(this.gridSize - 2, (this.baseC + 5)) * BLOCK_SIZE, y: this.baseR * BLOCK_SIZE };
+      // Team B: top left & right
+      const s2 = { x: Math.max(0, (this.baseC - 5)) * BLOCK_SIZE, y: 0 };
+      const s4 = { x: Math.min(this.gridSize - 2, (this.baseC + 5)) * BLOCK_SIZE, y: 0 };
+      this.playerSpawns.set(1, s1);
+      this.playerSpawns.set(2, s2);
+      this.playerSpawns.set(3, s3);
+      this.playerSpawns.set(4, s4);
+      this.playerSpawn = s1;
+      this.p2Spawn = s2;
+    } else if (this.multiMode === 'ffa') {
+      // 8 distinct perimeter and corner points
+      const pSpawns: Position[] = [
+        { x: 2 * BLOCK_SIZE, y: (this.gridSize - 4) * BLOCK_SIZE },
+        { x: (this.gridSize - 4) * BLOCK_SIZE, y: 2 * BLOCK_SIZE },
+        { x: (this.gridSize - 4) * BLOCK_SIZE, y: (this.gridSize - 4) * BLOCK_SIZE },
+        { x: 2 * BLOCK_SIZE, y: 2 * BLOCK_SIZE },
+        { x: this.baseC * BLOCK_SIZE, y: 2 * BLOCK_SIZE },
+        { x: this.baseC * BLOCK_SIZE, y: (this.gridSize - 4) * BLOCK_SIZE },
+        { x: 2 * BLOCK_SIZE, y: Math.floor(this.gridSize / 2) * BLOCK_SIZE },
+        { x: (this.gridSize - 4) * BLOCK_SIZE, y: Math.floor(this.gridSize / 2) * BLOCK_SIZE },
+      ];
+      pSpawns.forEach((pt, idx) => {
+        this.playerSpawns.set(idx + 1, pt);
+      });
+      this.playerSpawn = pSpawns[0];
+      this.p2Spawn = pSpawns[1];
     } else {
       this.playerSpawn = {
         x: (this.baseC - 4) * BLOCK_SIZE,
@@ -209,6 +267,8 @@ export class GameEngine {
         x: (this.baseC + 4) * BLOCK_SIZE,
         y: this.baseR * BLOCK_SIZE,
       };
+      this.playerSpawns.set(1, this.playerSpawn);
+      this.playerSpawns.set(2, this.p2Spawn);
     }
 
     this.spawnPoints = [
@@ -230,6 +290,16 @@ export class GameEngine {
       this.scoreData.playerLives = 5;
       this.scoreData.player2Lives = 5;
       this.scoreData.player2Score = 0;
+    } else if (mode === '2v2') {
+      this.scoreData.teamWinsA = 0;
+      this.scoreData.teamWinsB = 0;
+      this.scoreData.playerLives = 1;
+      this.scoreData.player2Lives = 1;
+    } else if (mode === 'ffa') {
+      this.scoreData.playerStats = {};
+      for (let i = 1; i <= 8; i++) {
+        this.scoreData.playerStats[i] = { kills: 0, deaths: 0, score: 0, lives: 3 };
+      }
     } else if (mode === 'coop') {
       this.scoreData.playerLives = 3;
       this.scoreData.player2Lives = 3;
@@ -237,18 +307,32 @@ export class GameEngine {
     }
   }
 
-  public setP2Input(input: Partial<InputState>) {
-    this.p2Input = { ...this.p2Input, ...input };
+  public setPlayerSlotInput(slot: number, input: Partial<InputState>) {
+    const current = this.playerInputs.get(slot) || {
+      up: false,
+      right: false,
+      down: false,
+      left: false,
+      fire: false,
+      pause: false,
+    };
+    this.playerInputs.set(slot, { ...current, ...input });
   }
 
-  public triggerTaunt(text: string, sender: 'P1' | 'P2') {
+  public setP2Input(input: Partial<InputState>) {
+    this.setPlayerSlotInput(2, input);
+  }
+
+  public triggerTaunt(text: string, sender: 'P1' | 'P2' | string) {
     this.tauntMessage = { text, sender, timer: 120 };
   }
 
   public setPlayerSpeed(speed: number) {
     this.playerBaseSpeed = speed;
-    if (this.player) {
-      this.player.speed = this.player.tier >= 2 ? speed * 1.3 : speed;
+    for (const p of this.playerTanks.values()) {
+      if (p) {
+        p.speed = p.tier >= 2 ? speed * 1.3 : speed;
+      }
     }
   }
 
@@ -277,6 +361,18 @@ export class GameEngine {
     if (customMap) {
       this.currentMap = customMap;
     }
+    // FFA (8-Player) strictly enforces the expanded Large arena (34x34) to avoid overlapping
+    if (this.multiMode === 'ffa' && this.currentMap && this.currentMap.grid.length < 34) {
+      const isBlank = this.currentMap.name === 'empty' || !this.currentMap.grid.some((row) => row.some((cell) => cell !== 0));
+      if (isBlank) {
+        this.currentMap = {
+          name: 'empty',
+          grid: Array.from({ length: 34 }, () => Array(34).fill(0)),
+        };
+      } else {
+        this.currentMap = getStageMapForPresetAndStage(stageNumber || 1, 'large', this.multiMode);
+      }
+    }
     this.setupDimensions(this.currentMap);
     this.initGrid(this.currentMap.grid);
 
@@ -288,8 +384,7 @@ export class GameEngine {
     }
 
     this.scoreData.stage = stageNumber;
-    this.player = null;
-    this.player2 = null;
+    this.playerTanks.clear();
     this.enemies = [];
     this.spawningTanks = [];
     this.bullets = [];
@@ -319,6 +414,22 @@ export class GameEngine {
       this.scoreData.roundWinsP2 = 0;
       this.scoreData.roundWinner = undefined;
       this.scoreData.matchWinner = undefined;
+    } else if (this.multiMode === '2v2') {
+      this.enemyPool = [];
+      this.scoreData.enemiesRemaining = [];
+      this.scoreData.roundNumber = 1;
+      this.scoreData.teamWinsA = 0;
+      this.scoreData.teamWinsB = 0;
+      this.scoreData.teamWinner = undefined;
+      this.scoreData.matchWinner = undefined;
+    } else if (this.multiMode === 'ffa') {
+      this.enemyPool = [];
+      this.scoreData.enemiesRemaining = [];
+      this.scoreData.playerStats = {};
+      const ffaCount = Math.min(8, this.totalFfaPlayers || 8);
+      for (let i = 1; i <= ffaCount; i++) {
+        this.scoreData.playerStats[i] = { kills: 0, deaths: 0, score: 0, lives: 3 };
+      }
     } else {
       // Generate 20 enemies with difficulty scaling based on stage
       this.enemyPool = this.generateEnemyPool(stageNumber);
@@ -331,21 +442,32 @@ export class GameEngine {
     }
     this.scoreData.activeEnemiesCount = 0;
 
-    // Clear 2x2 spawn area for Player 1 and Player 2 so they never overlap obstacles
-    this.clearSpawnArea(this.playerSpawn.x, this.playerSpawn.y);
-    if (this.multiMode !== 'single') {
-      this.clearSpawnArea(this.p2Spawn.x, this.p2Spawn.y);
-    }
-
-    // Spawn Player 1 (host/single only - guest receives entities via snapshots)
+    // Clear spawn areas and spawn active players
     if (!this.isRemoteViewer) {
-      this.spawnPlayer(1);
-      if (this.multiMode !== 'single') {
-        this.spawnPlayer(2);
+      if (this.multiMode === '2v2') {
+        for (let i = 1; i <= 4; i++) {
+          const pt = this.playerSpawns.get(i);
+          if (pt) this.clearSpawnArea(pt.x, pt.y);
+          this.spawnPlayer(i);
+        }
+      } else if (this.multiMode === 'ffa') {
+        const ffaCount = Math.min(8, this.totalFfaPlayers || 8);
+        for (let i = 1; i <= ffaCount; i++) {
+          const pt = this.playerSpawns.get(i);
+          if (pt) this.clearSpawnArea(pt.x, pt.y);
+          this.spawnPlayer(i);
+        }
+      } else {
+        this.clearSpawnArea(this.playerSpawn.x, this.playerSpawn.y);
+        this.spawnPlayer(1);
+        if (this.multiMode !== 'single') {
+          this.clearSpawnArea(this.p2Spawn.x, this.p2Spawn.y);
+          this.spawnPlayer(2);
+        }
       }
     }
 
-    if (this.multiMode === 'versus') {
+    if (this.multiMode === 'versus' || this.multiMode === '2v2') {
       this.beginRoundIntro(1);
     } else {
       this.gameState = GameState.PLAYING;
@@ -405,7 +527,54 @@ export class GameEngine {
     }, this.roundEndMs);
   }
 
+  public endRound2v2(winner: 'A' | 'B' | 'DRAW') {
+    if (this.gameState === GameState.ROUND_END) return;
+    if (winner === 'A') {
+      this.scoreData.teamWinsA = (this.scoreData.teamWinsA ?? 0) + 1;
+      this.scoreData.teamWinner = 'A';
+    } else if (winner === 'B') {
+      this.scoreData.teamWinsB = (this.scoreData.teamWinsB ?? 0) + 1;
+      this.scoreData.teamWinner = 'B';
+    } else {
+      this.scoreData.teamWinner = 'DRAW';
+    }
+    this.gameState = GameState.ROUND_END;
+    soundManager.playPowerUpCollect();
+    this.onStateChange(this.gameState, this.scoreData);
+    if (this.isRemoteViewer) return;
+    this.clearRoundTimer();
+    this.roundTransitionTimer = setTimeout(() => {
+      this.roundTransitionTimer = null;
+      this.resolveRoundAfterBanner();
+    }, this.roundEndMs);
+  }
+
+  /** FFA: the kill target was reached - crown the champion and end the match. */
+  private endFfaMatch(winnerSlot: number) {
+    if (this.gameState === GameState.MATCH_END) return;
+    this.scoreData.ffaWinner = winnerSlot;
+    this.gameState = GameState.MATCH_END;
+    soundManager.playStageStart();
+    this.onStateChange(this.gameState, this.scoreData);
+  }
+
   private resolveRoundAfterBanner() {
+    if (this.multiMode === '2v2') {
+      const wA = this.scoreData.teamWinsA ?? 0;
+      const wB = this.scoreData.teamWinsB ?? 0;
+      const target = 5;
+      if (wA >= target || wB >= target) {
+        this.scoreData.matchWinner = wA >= target ? 1 : 2;
+        this.gameState = GameState.MATCH_END;
+        soundManager.playStageStart();
+        this.onStateChange(this.gameState, this.scoreData);
+        return;
+      }
+      this.resetRoundArena();
+      this.beginRoundIntro((this.scoreData.roundNumber ?? 1) + 1);
+      return;
+    }
+
     const w1 = this.scoreData.roundWinsP1 ?? 0;
     const w2 = this.scoreData.roundWinsP2 ?? 0;
     if (w1 >= VERSUS_ROUNDS_TO_WIN || w2 >= VERSUS_ROUNDS_TO_WIN) {
@@ -421,8 +590,7 @@ export class GameEngine {
 
   /** Fresh duel: same map, cleared field, both tanks back at their spawns. */
   private resetRoundArena() {
-    this.player = null;
-    this.player2 = null;
+    this.playerTanks.clear();
     this.enemies = [];
     this.spawningTanks = [];
     this.bullets = [];
@@ -433,10 +601,18 @@ export class GameEngine {
     this.shovelTimer = 0;
     this.initGrid(this.currentMap.grid);
     this.gridVersion++;
-    this.clearSpawnArea(this.playerSpawn.x, this.playerSpawn.y);
-    this.clearSpawnArea(this.p2Spawn.x, this.p2Spawn.y);
-    this.spawnPlayer(1);
-    this.spawnPlayer(2);
+    if (this.multiMode === '2v2') {
+      for (let i = 1; i <= 4; i++) {
+        const pt = this.playerSpawns.get(i);
+        if (pt) this.clearSpawnArea(pt.x, pt.y);
+        this.spawnPlayer(i);
+      }
+    } else {
+      this.clearSpawnArea(this.playerSpawn.x, this.playerSpawn.y);
+      this.clearSpawnArea(this.p2Spawn.x, this.p2Spawn.y);
+      this.spawnPlayer(1);
+      this.spawnPlayer(2);
+    }
   }
 
   private generateEnemyPool(stage: number): EnemyType[] {
@@ -466,10 +642,7 @@ export class GameEngine {
     for (let r = startR; r < Math.min(this.gridSize, startR + 2); r++) {
       for (let c = startC; c < Math.min(this.gridSize, startC + 2); c++) {
         if (this.grid[r]?.[c]) {
-          this.grid[r][c] = {
-            type: TileType.EMPTY,
-            damageMask: 0,
-          };
+          this.grid[r][c] = { type: TileType.EMPTY, damageMask: 15 };
         }
       }
     }
@@ -522,32 +695,38 @@ export class GameEngine {
     return { x: preferredX, y }; // unchanged behaviour + clearSpawnArea carve
   }
 
-  private spawnPlayer(index: 1 | 2 = 1) {
-    const isP2 = index === 2;
-    const pt = isP2 ? this.p2Spawn : this.playerSpawn;
+  private spawnPlayer(index: number = 1) {
+    const pt = this.playerSpawns.get(index) || (index === 2 ? this.p2Spawn : this.playerSpawn);
     this.clearSpawnArea(pt.x, pt.y);
+    const isTeamB = (this.multiMode === '2v2' && (index === 2 || index === 4)) || (this.multiMode === 'versus' && index === 2);
     this.spawningTanks.push({
-      id: (isP2 ? 'player2_spawn_' : 'player1_spawn_') + Date.now(),
+      id: `player_${index}_spawn_${Date.now()}`,
       isPlayer: true,
       playerIndex: index,
       type: 'PLAYER',
       x: pt.x,
       y: pt.y,
-      direction: isP2 && this.multiMode === 'versus' ? 'DOWN' : 'UP',
+      direction: isTeamB ? 'DOWN' : 'UP',
       progress: 0,
     });
   }
 
-  private createPlayerTank(x: number, y: number, index: 1 | 2 = 1): Tank {
-    const isP2 = index === 2;
+  private createPlayerTank(x: number, y: number, index: number = 1): Tank {
+    const isTeamB = (this.multiMode === '2v2' && (index === 2 || index === 4)) || (this.multiMode === 'versus' && index === 2);
+    let team: 'A' | 'B' | 'FFA' = 'FFA';
+    if (this.multiMode === '2v2') {
+      team = index % 2 === 1 ? 'A' : 'B';
+    }
     return {
-      id: isP2 ? 'player_2' : 'player_1',
+      id: `player_${index}`,
       isPlayer: true,
       playerIndex: index,
+      team,
+      slot: index,
       type: 'PLAYER',
       x,
       y,
-      direction: isP2 && this.multiMode === 'versus' ? 'DOWN' : 'UP',
+      direction: isTeamB ? 'DOWN' : 'UP',
       desiredDirection: null,
       speed: this.playerBaseSpeed,
       moving: false,
@@ -790,10 +969,9 @@ export class GameEngine {
       this.freezeEnemiesTimer--;
     }
 
-    // 5. Update Player Tanks
-    this.updatePlayer();
-    if (this.multiMode !== 'single') {
-      this.updatePlayer2();
+    // 5. Update Player Tanks (All active players)
+    for (const slot of this.playerTanks.keys()) {
+      this.updatePlayerSlot(slot);
     }
 
     // 6. Update Enemy Tanks
@@ -814,11 +992,11 @@ export class GameEngine {
     this.updateEffects();
 
     // 10. Engine Sound
-    const isPlayerDriving = Boolean((this.player && this.player.moving) || (this.player2 && this.player2.moving));
+    const isPlayerDriving = Array.from(this.playerTanks.values()).some((p) => p && p.moving);
     soundManager.updateEngineSound(isPlayerDriving);
 
-    // 11. Check Victory / Stage Cleared
-    if (this.multiMode !== 'versus') {
+    // 11. Check Victory / Stage Cleared (Single Player and Co-Op only)
+    if (this.multiMode !== 'versus' && this.multiMode !== '2v2' && this.multiMode !== 'ffa') {
       if (
         this.enemyPool.length === 0 &&
         this.enemies.length === 0 &&
@@ -842,39 +1020,67 @@ export class GameEngine {
     if (view) this.applyRemoteView(view);
 
     // Client-side prediction only while the fight is live (frozen during
-    // round banners; the host authority resets the arena between rounds)
+    // Client-side prediction for the local player's own slot
     if (this.gameState === GameState.PLAYING) {
-      this.updatePlayer2();
-      this.reconcileP2();
+      const mySlot = this.localPlayerSlot || 2;
+      this.updatePlayerSlot(mySlot);
+      this.reconcileLocalPlayer();
     }
 
     this.updateEffects();
-    const driving = Boolean((this.player && this.player.moving) || (this.player2 && this.player2.moving));
+    const driving = Array.from(this.playerTanks.values()).some((p) => p && p.moving);
     soundManager.updateEngineSound(driving);
   }
 
   private applyRemoteView(view: NetSnapshot) {
-    if (view.p1) {
-      if (!this.player) this.player = this.createPlayerTank(view.p1.x as number, view.p1.y as number, 1);
-      const prevX = this.player.x;
-      const prevY = this.player.y;
-      this.player.x = view.p1.x as number;
-      this.player.y = view.p1.y as number;
-      this.player.direction = view.p1.dir as Direction;
-      this.player.moving = view.p1.moving as boolean;
-      this.player.tier = view.p1.tier as number;
-      this.player.shieldTimer = view.p1.shield as number;
-      this.player.distanceTraveled += Math.abs(this.player.x - prevX) + Math.abs(this.player.y - prevY);
+    if (Array.isArray(view.players)) {
+      const activeSlots = new Set<number>();
+      for (const p of view.players) {
+        const slot = ((p as any).pIdx || (p as any).slot || 1) as number;
+        activeSlots.add(slot);
+        let tank = this.playerTanks.get(slot);
+        if (!tank) {
+          tank = this.createPlayerTank(p.x as number, p.y as number, slot);
+          this.playerTanks.set(slot, tank);
+        }
+        if (slot !== this.localPlayerSlot) {
+          const prevX = tank.x;
+          const prevY = tank.y;
+          tank.x = p.x as number;
+          tank.y = p.y as number;
+          tank.direction = p.dir as Direction;
+          tank.moving = p.moving as boolean;
+          tank.tier = (p.tier as number) || 0;
+          tank.shieldTimer = (p.shield as number) || 0;
+          tank.distanceTraveled += Math.abs(tank.x - prevX) + Math.abs(tank.y - prevY);
+        }
+      }
+      for (const slot of Array.from(this.playerTanks.keys())) {
+        if (!activeSlots.has(slot)) {
+          this.playerTanks.delete(slot);
+        }
+      }
     } else {
-      this.player = null;
-    }
+      if (view.p1) {
+        if (!this.player) this.player = this.createPlayerTank(view.p1.x as number, view.p1.y as number, 1);
+        const prevX = this.player.x;
+        const prevY = this.player.y;
+        this.player.x = view.p1.x as number;
+        this.player.y = view.p1.y as number;
+        this.player.direction = view.p1.dir as Direction;
+        this.player.moving = view.p1.moving as boolean;
+        this.player.tier = view.p1.tier as number;
+        this.player.shieldTimer = view.p1.shield as number;
+        this.player.distanceTraveled += Math.abs(this.player.x - prevX) + Math.abs(this.player.y - prevY);
+      } else {
+        this.player = null;
+      }
 
-    if (view.p2) {
-      // P2 is the guest's own predicted tank - create it once, then let
-      // updatePlayer2 (prediction) + reconcileP2 (authority) drive it.
-      if (!this.player2) this.player2 = this.createPlayerTank(view.p2.x as number, view.p2.y as number, 2);
-    } else {
-      this.player2 = null;
+      if (view.p2) {
+        if (!this.player2) this.player2 = this.createPlayerTank(view.p2.x as number, view.p2.y as number, 2);
+      } else {
+        this.player2 = null;
+      }
     }
 
     const previous = new Map(this.enemies.map((e) => [e.id, e]));
@@ -938,23 +1144,29 @@ export class GameEngine {
     );
   }
 
-  private reconcileP2() {
+  private reconcileLocalPlayer() {
     const auth = this.p2AuthTarget;
-    if (!auth || !this.player2) return;
-    const dx = auth.x - this.player2.x;
-    const dy = auth.y - this.player2.y;
+    const mySlot = this.localPlayerSlot || 2;
+    const tank = this.playerTanks.get(mySlot);
+    if (!auth || !tank) return;
+    const dx = auth.x - tank.x;
+    const dy = auth.y - tank.y;
     const err = Math.abs(dx) + Math.abs(dy);
     if (err > 32) {
-      // Large divergence (teleport/respawn/wall correction): snap
-      this.player2.x = auth.x;
-      this.player2.y = auth.y;
-      this.player2.direction = auth.dir;
+      // Large divergence: snap
+      tank.x = auth.x;
+      tank.y = auth.y;
+      tank.direction = auth.dir;
     } else if (err > 3) {
       // Small drift: ease toward the authoritative position
-      this.player2.x += dx * 0.18;
-      this.player2.y += dy * 0.18;
-      if (!this.player2.moving) this.player2.direction = auth.dir;
+      tank.x += dx * 0.18;
+      tank.y += dy * 0.18;
+      if (!tank.moving) tank.direction = auth.dir;
     }
+  }
+
+  private reconcileP2() {
+    this.reconcileLocalPlayer();
   }
 
   // Discrete events relayed from the host drive guest-side sound & effects
@@ -999,11 +1211,19 @@ export class GameEngine {
     return out;
   }
 
-  private decodeGrid(flat: number[], version: number) {
-    if (!Array.isArray(flat) || flat.length < this.gridSize * this.gridSize) return;
-    for (let r = 0; r < this.gridSize; r++) {
-      for (let c = 0; c < this.gridSize; c++) {
-        const v = flat[r * this.gridSize + c] | 0;
+  private decodeGrid(flat: number[], version: number, hostGridSize?: number) {
+    const size = hostGridSize && hostGridSize > 0 ? hostGridSize : this.gridSize;
+    if (!Array.isArray(flat) || flat.length < size * size) return;
+    if (size !== this.gridSize || !this.grid || this.grid.length !== size) {
+      this.gridSize = size;
+      this.canvasSize = size * BLOCK_SIZE;
+      this.grid = Array.from({ length: size }, () =>
+        Array.from({ length: size }, () => ({ type: TileType.EMPTY, damageMask: 15 }))
+      );
+    }
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const v = flat[r * size + c] | 0;
         this.grid[r][c] = { type: Math.floor(v / 16) as TileType, damageMask: v % 16 };
       }
     }
@@ -1017,17 +1237,14 @@ export class GameEngine {
       sp.progress += 0.025; // ~40 frames
       if (sp.progress >= 1) {
         if (sp.isPlayer) {
-          if (sp.playerIndex === 2) {
-            this.player2 = this.createPlayerTank(sp.x, sp.y, 2);
-          } else {
-            this.player = this.createPlayerTank(sp.x, sp.y, 1);
-          }
+          const idx = sp.playerIndex || 1;
+          const tank = this.createPlayerTank(sp.x, sp.y, idx);
+          this.playerTanks.set(idx, tank);
           this.spawningTanks.splice(i, 1);
         } else {
           // Verify that spawn point is clear of other tanks before materializing
           const isBlocked =
-            (this.player && this.rectIntersect(sp.x, sp.y, 32, 32, this.player.x, this.player.y, 32, 32)) ||
-            (this.player2 && this.rectIntersect(sp.x, sp.y, 32, 32, this.player2.x, this.player2.y, 32, 32)) ||
+            Array.from(this.playerTanks.values()).some((p) => p && this.rectIntersect(sp.x, sp.y, 32, 32, p.x, p.y, 32, 32)) ||
             this.enemies.some((e) => this.rectIntersect(sp.x, sp.y, 32, 32, e.x, e.y, 32, 32));
 
           if (isBlocked) {
@@ -1049,108 +1266,71 @@ export class GameEngine {
     }
   }
 
-  // --- Player 2 Tank Physics (Green Tank) ---
-  private updatePlayer2() {
-    if (!this.player2) return;
+  // --- Slot-based Player Physics (All Players 1..8) ---
+  private updatePlayerSlot(slot: number) {
+    const tank = this.playerTanks.get(slot);
+    if (!tank) return;
 
-    if (this.player2.shieldTimer > 0) {
-      this.player2.shieldTimer--;
+    if (tank.shieldTimer > 0) {
+      tank.shieldTimer--;
     }
-    if (this.player2.shootCooldown > 0) {
-      this.player2.shootCooldown--;
+    if (tank.shootCooldown > 0) {
+      tank.shootCooldown--;
     }
 
-    // Fire Button (edge triggered or rapid if high tier)
-    const fireRequested = this.p2Input.fire;
-    if (fireRequested && (!this.prevP2FireInput || this.player2.tier >= 2)) {
-      if (this.player2.shootCooldown <= 0) {
-        // Remote viewer: the authoritative bullet spawns on the host and
-        // arrives via snapshots - we only give instant audio feedback.
-        if (this.isRemoteViewer) soundManager.playShoot();
-        else this.fireBullet(this.player2);
-        this.player2.shootCooldown = this.player2.tier >= 2 ? 14 : 22;
+    const input = (slot === 1 ? this.currentInput : this.playerInputs.get(slot)) || {
+      up: false,
+      down: false,
+      left: false,
+      right: false,
+      fire: false,
+      pause: false,
+    };
+
+    const prevFire = this.prevPlayerFire.get(slot) || false;
+    const fireRequested = input.fire;
+    if (fireRequested && (!prevFire || tank.tier >= 2)) {
+      if (tank.shootCooldown <= 0) {
+        if (this.isRemoteViewer && slot === this.localPlayerSlot) soundManager.playShoot();
+        else this.fireBullet(tank);
+        tank.shootCooldown = tank.tier >= 2 ? 14 : 22;
       }
     }
-    this.prevP2FireInput = fireRequested;
+    this.prevPlayerFire.set(slot, fireRequested);
 
-    // Movement Direction
     let dir: Direction | null = null;
-    if (this.p2Input.up) dir = 'UP';
-    else if (this.p2Input.down) dir = 'DOWN';
-    else if (this.p2Input.left) dir = 'LEFT';
-    else if (this.p2Input.right) dir = 'RIGHT';
+    if (input.up) dir = 'UP';
+    else if (input.down) dir = 'DOWN';
+    else if (input.left) dir = 'LEFT';
+    else if (input.right) dir = 'RIGHT';
 
-    // Ice slide mechanic
-    const currentSubX = Math.floor((this.player2.x + 16) / BLOCK_SIZE);
-    const currentSubY = Math.floor((this.player2.y + 16) / BLOCK_SIZE);
+    const currentSubX = Math.floor((tank.x + 16) / BLOCK_SIZE);
+    const currentSubY = Math.floor((tank.y + 16) / BLOCK_SIZE);
     const isOnIce = this.grid[currentSubY]?.[currentSubX]?.type === TileType.ICE;
 
     if (dir) {
-      this.player2.direction = dir;
-      this.moveTankWithCorridorSnap(this.player2, dir, this.player2.speed);
-      this.player2.moving = true;
+      tank.direction = dir;
+      this.moveTankWithCorridorSnap(tank, dir, tank.speed);
+      tank.moving = true;
       if (isOnIce) {
-        this.player2.slideFrames = 12;
+        tank.slideFrames = 12;
       }
-    } else if (this.player2.slideFrames > 0 && isOnIce) {
-      this.moveTankWithCorridorSnap(this.player2, this.player2.direction, this.player2.speed * 0.7);
-      this.player2.slideFrames--;
-      this.player2.moving = true;
+    } else if (tank.slideFrames > 0 && isOnIce) {
+      this.moveTankWithCorridorSnap(tank, tank.direction, tank.speed * 0.7);
+      tank.slideFrames--;
+      tank.moving = true;
     } else {
-      this.player2.moving = false;
-      this.player2.slideFrames = 0;
+      tank.moving = false;
+      tank.slideFrames = 0;
     }
   }
 
-  // --- Player Tank Physics ---
   private updatePlayer() {
-    if (!this.player) return;
+    this.updatePlayerSlot(1);
+  }
 
-    if (this.player.shieldTimer > 0) {
-      this.player.shieldTimer--;
-    }
-    if (this.player.shootCooldown > 0) {
-      this.player.shootCooldown--;
-    }
-
-    // Fire Button (edge triggered or rapid if high tier)
-    const fireRequested = this.currentInput.fire;
-    if (fireRequested && (!this.prevFireInput || this.player.tier >= 2)) {
-      if (this.player.shootCooldown <= 0) {
-        this.fireBullet(this.player);
-        this.player.shootCooldown = this.player.tier >= 2 ? 14 : 22;
-      }
-    }
-    this.prevFireInput = fireRequested;
-
-    // Movement Direction
-    let dir: Direction | null = null;
-    if (this.currentInput.up) dir = 'UP';
-    else if (this.currentInput.down) dir = 'DOWN';
-    else if (this.currentInput.left) dir = 'LEFT';
-    else if (this.currentInput.right) dir = 'RIGHT';
-
-    // Ice slide mechanic
-    const currentSubX = Math.floor((this.player.x + 16) / BLOCK_SIZE);
-    const currentSubY = Math.floor((this.player.y + 16) / BLOCK_SIZE);
-    const isOnIce = this.grid[currentSubY]?.[currentSubX]?.type === TileType.ICE;
-
-    if (dir) {
-      this.player.direction = dir;
-      this.moveTankWithCorridorSnap(this.player, dir, this.player.speed);
-      this.player.moving = true;
-      if (isOnIce) {
-        this.player.slideFrames = 12; // Store momentum for sliding
-      }
-    } else if (this.player.slideFrames > 0 && isOnIce) {
-      // Continue sliding forward
-      this.moveTankWithCorridorSnap(this.player, this.player.direction, this.player.speed * 0.7);
-      this.player.slideFrames--;
-      this.player.moving = true;
-    } else {
-      this.player.moving = false;
-      this.player.slideFrames = 0;
-    }
+  private updatePlayer2() {
+    this.updatePlayerSlot(2);
   }
 
   // --- Smooth Corridor Corner-Snapping (Authentic NES Navigation) ---
@@ -1337,14 +1517,11 @@ export class GameEngine {
 
     // 2. Tank vs Tank
     if (tank.isPlayer) {
-      // Player 1 vs Player 2 collision
-      if (tank === this.player && this.player2) {
-        if (this.isTankBlockedByOtherTank(tank, targetX, targetY, this.player2)) {
-          return false;
-        }
-      } else if (tank === this.player2 && this.player) {
-        if (this.isTankBlockedByOtherTank(tank, targetX, targetY, this.player)) {
-          return false;
+      for (const otherPlayer of this.playerTanks.values()) {
+        if (otherPlayer && otherPlayer !== tank) {
+          if (this.isTankBlockedByOtherTank(tank, targetX, targetY, otherPlayer)) {
+            return false;
+          }
         }
       }
       for (const enemy of this.enemies) {
@@ -1353,15 +1530,11 @@ export class GameEngine {
         }
       }
     } else {
-      // Enemy vs Player 1
-      if (this.player && this.isTankBlockedByOtherTank(tank, targetX, targetY, this.player)) {
-        return false;
+      for (const p of this.playerTanks.values()) {
+        if (p && this.isTankBlockedByOtherTank(tank, targetX, targetY, p)) {
+          return false;
+        }
       }
-      // Enemy vs Player 2
-      if (this.player2 && this.isTankBlockedByOtherTank(tank, targetX, targetY, this.player2)) {
-        return false;
-      }
-      // Enemy vs Other Enemies
       for (const other of this.enemies) {
         if (this.isTankBlockedByOtherTank(tank, targetX, targetY, other)) {
           return false;
@@ -1376,8 +1549,9 @@ export class GameEngine {
   // Guarantees no two tanks ever stay stuck or overlapping inside each other
   private resolveTankIntersections() {
     const allTanks: Tank[] = [];
-    if (this.player) allTanks.push(this.player);
-    if (this.player2) allTanks.push(this.player2);
+    for (const p of this.playerTanks.values()) {
+      if (p) allTanks.push(p);
+    }
     for (const enemy of this.enemies) {
       if (enemy) allTanks.push(enemy);
     }
@@ -1531,6 +1705,7 @@ export class GameEngine {
       ownerId: tank.id,
       isPlayer: tank.isPlayer,
       playerIndex: tank.playerIndex,
+      team: tank.team,
       x: bx,
       y: by,
       direction: tank.direction,
@@ -1594,6 +1769,7 @@ export class GameEngine {
       // C. Bullet vs Base Eagle
       if (
         this.multiMode !== 'versus' &&
+        this.multiMode !== 'ffa' &&
         this.baseState === BaseState.ALIVE &&
         this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, this.baseX, this.baseY, 32, 32)
       ) {
@@ -1731,62 +1907,45 @@ export class GameEngine {
           }
         }
       } else {
-        // Enemy bullet hitting player 1 tank
-        if (
-          this.player &&
-          this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, this.player.x + 2, this.player.y + 2, 28, 28)
-        ) {
-          if (this.player.shieldTimer <= 0) {
-            this.handlePlayerKilled();
-          } else {
-            // Shield ricochet
-            soundManager.playHitSteel();
-            this.createExplosion(bullet.x, bullet.y, false);
+        // Enemy bullet hitting any player tank
+        for (const targetTank of this.playerTanks.values()) {
+          if (!targetTank) continue;
+          if (this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, targetTank.x + 2, targetTank.y + 2, 28, 28)) {
+            if (targetTank.shieldTimer <= 0) {
+              this.handlePlayerTankKilled(targetTank, bullet);
+            } else {
+              soundManager.playHitSteel();
+              this.createExplosion(bullet.x, bullet.y, false);
+            }
+            bulletsToRemove.add(bullet.id);
+            break;
           }
-          bulletsToRemove.add(bullet.id);
-          continue;
-        }
-
-        // Enemy bullet hitting player 2 tank
-        if (
-          this.player2 &&
-          this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, this.player2.x + 2, this.player2.y + 2, 28, 28)
-        ) {
-          if (this.player2.shieldTimer <= 0) {
-            this.handlePlayer2Killed();
-          } else {
-            // Shield ricochet
-            soundManager.playHitSteel();
-            this.createExplosion(bullet.x, bullet.y, false);
-          }
-          bulletsToRemove.add(bullet.id);
-          continue;
         }
       }
 
-      // 1v1 Versus Mode: Player vs Player direct hits
-      if (this.multiMode === 'versus' && bullet.isPlayer) {
-        if (bullet.playerIndex === 1 && this.player2) {
-          if (this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, this.player2.x + 2, this.player2.y + 2, 28, 28)) {
-            if (this.player2.shieldTimer <= 0) {
-              this.handlePlayer2Killed();
+      // PvP hit checks (Versus, 2v2, FFA)
+      if (bullet.isPlayer && (this.multiMode === 'versus' || this.multiMode === '2v2' || this.multiMode === 'ffa')) {
+        for (const targetTank of this.playerTanks.values()) {
+          if (!targetTank || targetTank.id === bullet.ownerId) continue;
+
+          if (this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, targetTank.x + 2, targetTank.y + 2, 28, 28)) {
+            // Friendly fire protection in 2v2:
+            if (this.multiMode === '2v2' && bullet.team && targetTank.team && bullet.team === targetTank.team) {
+              // Teammates cannot harm each other! Harmless ricochet
+              soundManager.playHitSteel();
+              this.createExplosion(bullet.x, bullet.y, false);
+              bulletsToRemove.add(bullet.id);
+              break;
+            }
+
+            if (targetTank.shieldTimer <= 0) {
+              this.handlePlayerTankKilled(targetTank, bullet);
             } else {
               soundManager.playHitSteel();
               this.createExplosion(bullet.x, bullet.y, false);
             }
             bulletsToRemove.add(bullet.id);
-            continue;
-          }
-        } else if (bullet.playerIndex === 2 && this.player) {
-          if (this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, this.player.x + 2, this.player.y + 2, 28, 28)) {
-            if (this.player.shieldTimer <= 0) {
-              this.handlePlayerKilled();
-            } else {
-              soundManager.playHitSteel();
-              this.createExplosion(bullet.x, bullet.y, false);
-            }
-            bulletsToRemove.add(bullet.id);
-            continue;
+            break;
           }
         }
       }
@@ -1799,53 +1958,92 @@ export class GameEngine {
   }
 
   // --- Player Death & Respawn ---
-  private handlePlayerKilled() {
-    if (!this.player) return;
-    this.createExplosion(this.player.x + 16, this.player.y + 16, true);
+  private handlePlayerTankKilled(tank: Tank, killerBullet?: Bullet) {
+    if (!tank) return;
+    this.createExplosion(tank.x + 16, tank.y + 16, true);
     soundManager.playBigExplosion();
-    this.player = null;
+    const slot = tank.playerIndex || 1;
+    this.playerTanks.delete(slot);
 
     if (this.multiMode === 'versus') {
-      // Round system: gold destroyed = green takes the round
-      this.endRound(2);
+      this.endRound(slot === 1 ? 2 : 1);
       return;
     }
 
-    this.scoreData.playerLives--;
-    this.onStateChange(this.gameState, this.scoreData);
-
-    // Respawn Player 1
-    setTimeout(() => {
-      if (this.gameState === GameState.PLAYING && (this.baseState === BaseState.ALIVE || this.multiMode === 'versus')) {
-        this.spawnPlayer(1);
+    if (this.multiMode === '2v2') {
+      // Check if either team is completely eliminated
+      const teamAAlive = [1, 3].some((s) => this.playerTanks.has(s));
+      const teamBAlive = [2, 4].some((s) => this.playerTanks.has(s));
+      if (!teamAAlive && !teamBAlive) {
+        this.endRound2v2('DRAW');
+      } else if (!teamAAlive) {
+        this.endRound2v2('B');
+      } else if (!teamBAlive) {
+        this.endRound2v2('A');
       }
-    }, 1000);
+      return;
+    }
+
+    if (this.multiMode === 'ffa') {
+      let champion: number | null = null;
+      if (killerBullet && killerBullet.playerIndex) {
+        const killer = killerBullet.playerIndex;
+        if (this.scoreData.playerStats && this.scoreData.playerStats[killer]) {
+          this.scoreData.playerStats[killer].kills++;
+          this.scoreData.playerStats[killer].score += 100;
+          if (this.scoreData.playerStats[killer].kills >= FFA_KILLS_TO_WIN) {
+            champion = killer;
+          }
+        }
+      }
+      // Record the victim's death even on the crown-winning kill
+      if (this.scoreData.playerStats && this.scoreData.playerStats[slot]) {
+        this.scoreData.playerStats[slot].deaths++;
+        this.scoreData.playerStats[slot].lives = Math.max(0, this.scoreData.playerStats[slot].lives - 1);
+      }
+      if (champion !== null) {
+        this.endFfaMatch(champion);
+        return;
+      }
+      this.onStateChange(this.gameState, this.scoreData);
+
+      // Respawn in FFA after 1.5 seconds with fresh shield
+      setTimeout(() => {
+        if (this.gameState === GameState.PLAYING) {
+          this.spawnPlayer(slot);
+        }
+      }, 1500);
+      return;
+    }
+
+    // Single Player / Coop
+    if (slot === 1) {
+      this.scoreData.playerLives--;
+      this.onStateChange(this.gameState, this.scoreData);
+      setTimeout(() => {
+        if (this.gameState === GameState.PLAYING && (this.baseState === BaseState.ALIVE || this.multiMode === 'versus')) {
+          this.spawnPlayer(1);
+        }
+      }, 1000);
+    } else if (slot === 2) {
+      if (this.scoreData.player2Lives !== undefined) {
+        this.scoreData.player2Lives--;
+      }
+      this.onStateChange(this.gameState, this.scoreData);
+      setTimeout(() => {
+        if (this.gameState === GameState.PLAYING && (this.baseState === BaseState.ALIVE || this.multiMode === 'versus')) {
+          this.spawnPlayer(2);
+        }
+      }, 1000);
+    }
   }
 
-  // --- Player 2 Death & Respawn ---
+  private handlePlayerKilled() {
+    if (this.player) this.handlePlayerTankKilled(this.player);
+  }
+
   private handlePlayer2Killed() {
-    if (!this.player2) return;
-    this.createExplosion(this.player2.x + 16, this.player2.y + 16, true);
-    soundManager.playBigExplosion();
-    this.player2 = null;
-
-    if (this.multiMode === 'versus') {
-      // Round system: green destroyed = gold takes the round
-      this.endRound(1);
-      return;
-    }
-
-    if (this.scoreData.player2Lives !== undefined) {
-      this.scoreData.player2Lives--;
-    }
-    this.onStateChange(this.gameState, this.scoreData);
-
-    // Respawn Player 2
-    setTimeout(() => {
-      if (this.gameState === GameState.PLAYING && (this.baseState === BaseState.ALIVE || this.multiMode === 'versus')) {
-        this.spawnPlayer(2);
-      }
-    }, 1000);
+    if (this.player2) this.handlePlayerTankKilled(this.player2);
   }
 
   // --- Base Eagle Destroyed ---
@@ -1853,6 +2051,12 @@ export class GameEngine {
     this.baseState = BaseState.DESTROYED;
     soundManager.playBigExplosion();
     this.createExplosion(this.baseX + 16, this.baseY + 16, true);
+    if (this.multiMode === '2v2') {
+      setTimeout(() => {
+        this.endRound2v2('B');
+      }, 1200);
+      return;
+    }
     setTimeout(() => {
       this.handleGameOver();
     }, 1200);
@@ -2079,8 +2283,8 @@ export class GameEngine {
       }
     }
 
-    // 5. Render Base Eagle (co-op and single-player only)
-    if (this.multiMode !== 'versus') {
+    // 5. Render Base Eagle (co-op, single-player, and 2v2 only)
+    if (this.multiMode !== 'versus' && this.multiMode !== 'ffa') {
       SpriteRenderer.renderBase(ctx, this.baseX, this.baseY, this.baseState);
     }
 
@@ -2089,17 +2293,16 @@ export class GameEngine {
       SpriteRenderer.renderSpawnAnimation(ctx, sp.x, sp.y, sp.progress);
     }
 
-    // 7. Render Tanks (Enemies, Player 1 Gold Tank, Player 2 Green Tank)
+    // 7. Render Tanks (Enemies and All Active Player Tanks 1..8)
     for (const enemy of this.enemies) {
       if (enemy) {
         SpriteRenderer.renderTank(ctx, enemy, this.tickCount);
       }
     }
-    if (this.player) {
-      SpriteRenderer.renderTank(ctx, this.player, this.tickCount);
-    }
-    if (this.player2) {
-      SpriteRenderer.renderTank(ctx, this.player2, this.tickCount);
+    for (const p of this.playerTanks.values()) {
+      if (p) {
+        SpriteRenderer.renderTank(ctx, p, this.tickCount);
+      }
     }
 
     // 8. Render Bullets
@@ -2136,7 +2339,7 @@ export class GameEngine {
     // 13. Render Taunt Speech Bubble
     if (this.tauntMessage && this.tauntMessage.timer > 0) {
       this.tauntMessage.timer--;
-      const targetTank = this.tauntMessage.sender === 'P1' ? this.player : this.player2;
+      const targetTank = this.tauntMessage.sender === 'P1' ? this.player : (this.player2 || Array.from(this.playerTanks.values())[1]);
       if (targetTank) {
         ctx.save();
         ctx.fillStyle = '#f8b800';
@@ -2189,14 +2392,29 @@ export class GameEngine {
         return 300;
       case 'ARMOR':
         return 400;
+      default:
+        return 100;
     }
   }
 
   public getNetworkSnapshot() {
-    // Grid payload rides along only when the terrain actually changed -
+    // Delta-encode grid: only include when damaged or changed. This ensures
     // brick destruction syncs to the guest without per-frame overhead.
     const sendGrid = this.gridVersion !== this.lastSentGridVersion;
     if (sendGrid) this.lastSentGridVersion = this.gridVersion;
+
+    const playersList = Array.from(this.playerTanks.values()).map((p) => ({
+      id: p.id,
+      pIdx: p.playerIndex,
+      team: p.team,
+      slot: p.slot,
+      x: p.x,
+      y: p.y,
+      dir: p.direction,
+      moving: p.moving,
+      tier: p.tier,
+      shield: p.shieldTimer,
+    }));
 
     return {
       tick: this.tickCount,
@@ -2220,6 +2438,7 @@ export class GameEngine {
             shield: this.player2.shieldTimer,
           }
         : null,
+      players: playersList,
       enemies: this.enemies.map((e) => ({
         id: e.id,
         type: e.type,
@@ -2257,6 +2476,7 @@ export class GameEngine {
       baseState: this.baseState,
       gameState: this.gameState,
       gv: this.gridVersion,
+      gs: this.gridSize,
       ...(sendGrid ? { grid: this.encodeGrid() } : {}),
     };
   }
@@ -2268,11 +2488,19 @@ export class GameEngine {
       // Thin client: buffer for interpolation + authoritative bookkeeping.
       // Entity positions come from the interpolated view, never written raw.
       this.snapBuffer.push(data);
-      this.p2AuthTarget = data.p2
-        ? { x: data.p2.x, y: data.p2.y, dir: data.p2.dir, moving: data.p2.moving }
-        : null;
+      if (Array.isArray(data.players)) {
+        const mySlot = this.localPlayerSlot || 2;
+        const myAuth = data.players.find((p: any) => p.pIdx === mySlot || p.slot === mySlot);
+        this.p2AuthTarget = myAuth
+          ? { x: myAuth.x, y: myAuth.y, dir: myAuth.dir, moving: myAuth.moving }
+          : null;
+      } else {
+        this.p2AuthTarget = data.p2
+          ? { x: data.p2.x, y: data.p2.y, dir: data.p2.dir, moving: data.p2.moving }
+          : null;
+      }
       if (Array.isArray(data.grid) && typeof data.gv === 'number' && data.gv !== this.gridVersion) {
-        this.decodeGrid(data.grid, data.gv);
+        this.decodeGrid(data.grid, data.gv, data.gs);
       }
       if (data.scoreData) {
         this.scoreData = { ...this.scoreData, ...data.scoreData };

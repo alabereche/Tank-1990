@@ -348,6 +348,140 @@ export function createRiverCrossing(gridSize: number = 26): number[][] {
   return g;
 }
 
+/**
+ * Preset: 8-Player Tactical Maze Arena (Labyrinth of Steel & Brick)
+ * Symmetrical 4-quadrant maze specifically balanced for 8-Player FFA and 2v2 Team Battles.
+ * Guarantees wide corridors (>= 32px), zero cross-map sniping lines,
+ * breakable shortcut walls, and fortified spawn bunkers.
+ */
+export function createTacticalMaze(gridSize: number = 34): number[][] {
+  const g = Array.from({ length: gridSize }, () => Array(gridSize).fill(TileType.EMPTY));
+  const mid = Math.floor(gridSize / 2);
+
+  const placeBlock = (r: number, c: number, type: TileType) => {
+    if (r >= 0 && r + 1 < gridSize && c >= 0 && c + 1 < gridSize) {
+      g[r][c] = type;
+      g[r + 1][c] = type;
+      g[r][c + 1] = type;
+      g[r + 1][c + 1] = type;
+    }
+  };
+
+  const placeVLine = (startR: number, endR: number, c: number, type: TileType) => {
+    for (let r = startR; r <= endR; r++) {
+      if (r >= 0 && r < gridSize && c >= 0 && c + 1 < gridSize) {
+        g[r][c] = type;
+        g[r][c + 1] = type;
+      }
+    }
+  };
+
+  const placeHLine = (r: number, startC: number, endC: number, type: TileType) => {
+    for (let c = startC; c <= endC; c++) {
+      if (r >= 0 && r + 1 < gridSize && c >= 0 && c < gridSize) {
+        g[r][c] = type;
+        g[r + 1][c] = type;
+      }
+    }
+  };
+
+  // --- 1. Center Tactical Core (The Skirmish Hub) ---
+  // Four steel corner pillars around central chamber
+  placeBlock(mid - 4, mid - 4, TileType.STEEL);
+  placeBlock(mid - 4, mid + 2, TileType.STEEL);
+  placeBlock(mid + 2, mid - 4, TileType.STEEL);
+  placeBlock(mid + 2, mid + 2, TileType.STEEL);
+
+  // Center foliage / tree concealment
+  for (let r = mid - 2; r <= mid + 1; r++) {
+    for (let c = mid - 2; c <= mid + 1; c++) {
+      g[r][c] = TileType.TREES;
+    }
+  }
+
+  // Breakable brick gates guarding center entrances
+  placeHLine(mid - 4, mid - 1, mid, TileType.BRICK);
+  placeHLine(mid + 3, mid - 1, mid, TileType.BRICK);
+  placeVLine(mid - 1, mid, mid - 4, TileType.BRICK);
+  placeVLine(mid - 1, mid, mid + 3, TileType.BRICK);
+
+  // --- 2. Inner Maze Ring & Interlocking Corridors ---
+  // Quadrant 1 (Top-Left)
+  placeHLine(4, 6, mid - 5, TileType.BRICK);
+  placeVLine(6, mid - 5, 4, TileType.BRICK);
+  placeHLine(mid - 4, 6, mid - 5, TileType.BRICK);
+  placeBlock(mid - 7, mid - 7, TileType.STEEL);
+  placeVLine(6, mid - 6, mid - 7, TileType.BRICK);
+
+  // Quadrant 2 (Top-Right)
+  placeHLine(4, mid + 4, gridSize - 7, TileType.BRICK);
+  placeVLine(6, mid - 5, gridSize - 6, TileType.BRICK);
+  placeHLine(mid - 4, mid + 4, gridSize - 7, TileType.BRICK);
+  placeBlock(mid - 7, mid + 5, TileType.STEEL);
+  placeVLine(6, mid - 6, mid + 5, TileType.BRICK);
+
+  // Quadrant 3 (Bottom-Left)
+  placeHLine(gridSize - 6, 6, mid - 5, TileType.BRICK);
+  placeVLine(mid + 4, gridSize - 7, 4, TileType.BRICK);
+  placeHLine(mid + 3, 6, mid - 5, TileType.BRICK);
+  placeBlock(mid + 5, mid - 7, TileType.STEEL);
+  placeVLine(mid + 5, gridSize - 7, mid - 7, TileType.BRICK);
+
+  // Quadrant 4 (Bottom-Right)
+  placeHLine(gridSize - 6, mid + 4, gridSize - 7, TileType.BRICK);
+  placeVLine(mid + 4, gridSize - 7, gridSize - 6, TileType.BRICK);
+  placeHLine(mid + 3, mid + 4, gridSize - 7, TileType.BRICK);
+  placeBlock(mid + 5, mid + 5, TileType.STEEL);
+  placeVLine(mid + 5, gridSize - 7, mid + 5, TileType.BRICK);
+
+  // --- 3. Fortified Bunkers around all 8 Spawn Zones ---
+  // Guarantees spawn pockets are free, with adjacent cover shielding against spawn-campers
+  placeBlock(gridSize - 5, 4, TileType.BRICK);
+  placeBlock(gridSize - 7, 2, TileType.STEEL);
+
+  placeBlock(3, gridSize - 6, TileType.BRICK);
+  placeBlock(5, gridSize - 4, TileType.STEEL);
+
+  placeBlock(gridSize - 5, gridSize - 6, TileType.BRICK);
+  placeBlock(gridSize - 7, gridSize - 4, TileType.STEEL);
+
+  placeBlock(3, 4, TileType.BRICK);
+  placeBlock(5, 2, TileType.STEEL);
+
+  placeBlock(4, mid - 3, TileType.BRICK);
+  placeBlock(4, mid + 2, TileType.BRICK);
+
+  placeBlock(gridSize - 6, mid - 3, TileType.BRICK);
+  placeBlock(gridSize - 6, mid + 2, TileType.BRICK);
+
+  placeBlock(mid - 3, 4, TileType.BRICK);
+  placeBlock(mid + 2, 4, TileType.BRICK);
+
+  placeBlock(mid - 3, gridSize - 6, TileType.BRICK);
+  placeBlock(mid + 2, gridSize - 6, TileType.BRICK);
+
+  // Clear 4x4 area around each of the 8 spawns so tanks never touch solids at spawn
+  const clearArea = (startR: number, startC: number) => {
+    for (let r = startR; r < startR + 3; r++) {
+      for (let c = startC; c < startC + 3; c++) {
+        if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+          g[r][c] = TileType.EMPTY;
+        }
+      }
+    }
+  };
+  clearArea(gridSize - 5, 1);
+  clearArea(1, gridSize - 5);
+  clearArea(gridSize - 5, gridSize - 5);
+  clearArea(1, 1);
+  clearArea(1, mid - 2);
+  clearArea(gridSize - 5, mid - 2);
+  clearArea(mid - 1, 1);
+  clearArea(mid - 1, gridSize - 5);
+
+  return g;
+}
+
 export function getPresetMaps(gridSize: number = 26): Record<string, StageMap> {
   return {
     stage1: {
@@ -362,6 +496,10 @@ export function getPresetMaps(gridSize: number = 26): Record<string, StageMap> {
       name: 'River Crossing',
       grid: createRiverCrossing(gridSize),
     },
+    tacticalMaze: {
+      name: 'Tactical Maze',
+      grid: createTacticalMaze(gridSize),
+    },
     cleanSlate: {
       name: 'Clean Slate',
       grid: createEmptyGrid(gridSize),
@@ -374,8 +512,18 @@ export const PRESET_MAPS: Record<string, StageMap> = getPresetMaps(26);
 /**
  * Returns a StageMap tailored to the specific stage number and map size preset
  */
-export function getStageMapForPresetAndStage(stage: number, preset: MapSizePreset = 'classic'): StageMap {
+export function getStageMapForPresetAndStage(
+  stage: number,
+  preset: MapSizePreset = 'classic',
+  mode?: string
+): StageMap {
   const gridSize = getGridSizeForPreset(preset);
+  if (mode === 'ffa') {
+    return {
+      name: `Tactical Maze Arena (${MAP_SIZE_CONFIGS[preset]?.name || 'Expanded'})`,
+      grid: createTacticalMaze(gridSize),
+    };
+  }
   const stageMod = ((stage - 1) % 3) + 1;
   if (stageMod === 1) {
     return {

@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { GameScore } from '../types';
+import { GameScore, MultiplayerMode } from '../types';
 import { Volume2, VolumeX, Gamepad2, Keyboard } from 'lucide-react';
 import { soundManager } from '../engine/SoundManager';
 import { GamepadInfo } from '../engine/GamepadManager';
@@ -20,6 +20,7 @@ interface HudProps {
   isPaused?: boolean;
   isMaxScale?: boolean;
   versus?: boolean;
+  mode?: MultiplayerMode;
 }
 
 export const Hud: React.FC<HudProps> = ({
@@ -32,6 +33,7 @@ export const Hud: React.FC<HudProps> = ({
   isPaused,
   isMaxScale,
   versus,
+  mode,
 }) => {
   // 20 enemy icons total: remaining enemies in pool + active enemies on field
   const totalRemainingCount = scoreData.enemiesRemaining.length;
@@ -45,9 +47,51 @@ export const Hud: React.FC<HudProps> = ({
           : 'w-24 sm:w-28 p-2 sm:p-2.5 text-[10px]'
       }`}
     >
-      {/* Top: Versus round scoreboard OR enemy tank grid */}
+      {/* Top: 2v2 Teams / FFA Leaderboard / Versus round scoreboard / Co-Op enemy grid */}
       <div className="w-full flex flex-col items-center">
-        {versus ? (
+        {mode === '2v2' || scoreData.teamWinsA !== undefined ? (
+          <div className="w-full flex flex-col items-center mb-3">
+            <div className="text-[8px] text-zinc-900 mb-1 tracking-wider uppercase font-bold">TEAMS (FT5)</div>
+            <div className="w-full bg-[#505050] rounded border border-[#383838] shadow-inner p-2 flex items-center justify-between">
+              <div className="flex flex-col items-center">
+                <span className="text-[7px] text-blue-300 font-bold tracking-wider">TEAM A</span>
+                <span className="font-mono font-bold text-base text-[#4a9eff]">
+                  {scoreData.teamWinsA ?? 0}
+                </span>
+              </div>
+              <span className="text-[8px] text-zinc-400 font-bold">:</span>
+              <div className="flex flex-col items-center">
+                <span className="text-[7px] text-red-300 font-bold tracking-wider">TEAM B</span>
+                <span className="font-mono font-bold text-base text-[#ff4a4a]">
+                  {scoreData.teamWinsB ?? 0}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : mode === 'ffa' || scoreData.playerStats ? (
+          <div className="w-full flex flex-col items-center mb-3">
+            <div className="text-[8px] text-zinc-900 mb-1 tracking-wider uppercase font-bold">KILLS (FT30)</div>
+            <div className="w-full bg-[#505050] rounded border border-[#383838] shadow-inner p-1.5 flex flex-col gap-1">
+              {Object.entries(scoreData.playerStats || {})
+                .map(([slotStr, stats]) => ({ slot: parseInt(slotStr, 10), stats: stats as { kills: number; deaths: number } }))
+                .sort((a, b) => b.stats.kills - a.stats.kills)
+                .slice(0, 4)
+                .map(({ slot: s, stats }) => {
+                  const colors = [
+                    '#f8b800', '#00a800', '#00a8a8', '#e40058',
+                    '#940088', '#f87800', '#b8b8b8', '#78f800',
+                  ];
+                  const col = colors[(s - 1) % colors.length] || '#fff';
+                  return (
+                    <div key={s} className="flex items-center justify-between text-[8px] font-mono font-bold">
+                      <span style={{ color: col }}>P{s}</span>
+                      <span className="text-zinc-200">{stats.kills} K</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        ) : versus ? (
           <div className="w-full flex flex-col items-center mb-3">
             <div className="text-[8px] text-zinc-900 mb-1 tracking-wider uppercase font-bold">ROUNDS</div>
             <div className="w-full bg-[#505050] rounded border border-[#383838] shadow-inner p-2 flex items-center justify-between">
@@ -88,7 +132,6 @@ export const Hud: React.FC<HudProps> = ({
                   >
                     {isRemaining ? (
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-black">
-                        {/* Retro mini tank silhouette */}
                         <rect x="1" y="2" width="3" height="12" />
                         <rect x="12" y="2" width="3" height="12" />
                         <rect x="4" y="4" width="8" height="8" />
@@ -105,12 +148,11 @@ export const Hud: React.FC<HudProps> = ({
           </div>
         )}
 
-        {/* Player 1 Lives Counter (NES IP style) - round scoreboard covers versus */}
-        {!versus && (
+        {/* Player 1 Lives Counter (NES IP style) - Co-Op mode only */}
+        {!versus && mode !== '2v2' && mode !== 'ffa' && (
           <div className="w-full bg-[#787878] p-1.5 rounded border border-[#404040] mb-2 flex flex-col items-center shadow-sm">
             <div className="text-[9px] font-bold text-black tracking-widest mb-0.5">I P</div>
             <div className="flex items-center gap-1.5">
-              {/* Player 1 Yellow Tank Icon */}
               <svg viewBox="0 0 16 16" className="w-4 h-4 fill-[#d89000]">
                 <rect x="1" y="2" width="3" height="12" />
                 <rect x="12" y="2" width="3" height="12" />
@@ -124,11 +166,10 @@ export const Hud: React.FC<HudProps> = ({
         )}
 
         {/* Player 2 Lives Counter (NES II P style, Green Tank) */}
-        {!versus && scoreData.player2Lives !== undefined && (
+        {!versus && mode !== '2v2' && mode !== 'ffa' && scoreData.player2Lives !== undefined && (
           <div className="w-full bg-[#787878] p-1.5 rounded border border-[#404040] mb-2 flex flex-col items-center shadow-sm">
             <div className="text-[9px] font-bold text-black tracking-widest mb-0.5">II P</div>
             <div className="flex items-center gap-1.5">
-              {/* Player 2 Green Tank Icon */}
               <svg viewBox="0 0 16 16" className="w-4 h-4 fill-[#00a800]">
                 <rect x="1" y="2" width="3" height="12" />
                 <rect x="12" y="2" width="3" height="12" />

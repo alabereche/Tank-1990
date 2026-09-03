@@ -33,17 +33,21 @@ interface ClientSession {
   ws: WebSocket;
   roomCode: string | null;
   role: 'host' | 'guest' | null;
+  slot: number;
+  team: 'A' | 'B' | 'FFA';
   lastPing: number;
 }
 
 interface Room {
   code: string;
-  mode: 'coop' | 'versus';
+  mode: 'coop' | 'versus' | '2v2' | 'ffa';
   mapSize: 'classic' | 'large' | 'giant';
   stage: number;
   customMapGrid?: number[][];
   host: ClientSession | null;
-  guest: ClientSession | null;
+  guest: ClientSession | null; // Kept for backward compatibility
+  clients: ClientSession[];
+  maxPlayers: number;
   status: 'waiting' | 'starting' | 'playing' | 'ended';
   createdAt: number;
   lastActivity: number;
@@ -69,10 +73,9 @@ function generateRoomCode(): string {
 setInterval(() => {
   const now = Date.now();
   for (const [code, room] of rooms.entries()) {
-    const isHostAlive = room.host && room.host.ws.readyState === WebSocket.OPEN;
-    const isGuestAlive = room.guest && room.guest.ws.readyState === WebSocket.OPEN;
-    // Expire if both players disconnected or inactive for > 10 minutes
-    if ((!isHostAlive && !isGuestAlive) || now - room.lastActivity > 600000) {
+    const anyAlive = room.clients.some((c) => c.ws.readyState === WebSocket.OPEN);
+    // Expire if no players connected or inactive for > 10 minutes
+    if (!anyAlive || now - room.lastActivity > 600000) {
       rooms.delete(code);
     }
   }
@@ -96,6 +99,8 @@ wss.on('connection', (ws: WebSocket) => {
     ws,
     roomCode: null,
     role: null,
+    slot: 1,
+    team: 'A',
     lastPing: Date.now(),
   };
   clientSessions.set(ws, session);
@@ -114,9 +119,16 @@ wss.on('connection', (ws: WebSocket) => {
       // Create Room
       if (msg.type === 'create_room') {
         const code = generateRoomCode();
-        const mode = msg.mode === 'versus' ? 'versus' : 'coop';
-        const mapSize = msg.mapSize || 'classic';
+        const mode = msg.mode === 'versus' ? 'versus' : msg.mode === '2v2' ? '2v2' : msg.mode === 'ffa' ? 'ffa' : 'coop';
+        const rawMapSize = msg.mapSize || (mode === 'ffa' ? 'large' : mode === '2v2' ? 'large' : 'classic');
+        const mapSize = mode === 'ffa' && rawMapSize === 'classic' ? 'large' : rawMapSize;
         const stage = typeof msg.stage === 'number' ? msg.stage : 1;
+        const maxPlayers = mode === 'ffa' ? 8 : mode === '2v2' ? 4 : 2;
+
+        session.slot = 1;
+        session.team = mode === '2v2' ? 'A' : 'FFA';
+        session.role = 'host';
+        session.roomCode = code;
 
         const newRoom: Room = {
           code,
@@ -126,22 +138,26 @@ wss.on('connection', (ws: WebSocket) => {
           customMapGrid: msg.customMapGrid,
           host: session,
           guest: null,
+          clients: [session],
+          maxPlayers,
           status: 'waiting',
           createdAt: Date.now(),
           lastActivity: Date.now(),
         };
 
         rooms.set(code, newRoom);
-        session.roomCode = code;
-        session.role = 'host';
 
         safeSend(ws, {
           type: 'room_created',
           code,
           role: 'host',
+          slot: 1,
+          team: session.team,
           mode,
           mapSize,
           stage,
+          maxPlayers,
+          players: [{ slot: 1, role: 'host', team: session.team, id: session.id }],
         });
         return;
       }
@@ -156,34 +172,72 @@ wss.on('connection', (ws: WebSocket) => {
           return;
         }
 
-        if (room.guest && room.guest.ws.readyState === WebSocket.OPEN) {
-          safeSend(ws, { type: 'error', message: 'ROOM IS ALREADY FULL (2/2)' });
+        if (room.clients.length >= room.maxPlayers) {
+          safeSend(ws, { type: 'error', message: `ROOM IS ALREADY FULL (${room.clients.length}/${room.maxPlayers})` });
           return;
         }
 
-        room.guest = session;
-        room.lastActivity = Date.now();
+        // Determine next available slot (1..maxPlayers)
+        const occupiedSlots = new Set(room.clients.map((c) => c.slot));
+        let assignedSlot = 2;
+        for (let s = 1; s <= room.maxPlayers; s++) {
+          if (!occupiedSlots.has(s)) {
+            assignedSlot = s;
+            break;
+          }
+        }
+
+        let assignedTeam: 'A' | 'B' | 'FFA' = 'FFA';
+        if (room.mode === '2v2') {
+          // Team assignment: slots 1 & 3 are Team A, slots 2 & 4 are Team B
+          assignedTeam = assignedSlot % 2 === 1 ? 'A' : 'B';
+        }
+
         session.roomCode = room.code;
         session.role = 'guest';
+        session.slot = assignedSlot;
+        session.team = assignedTeam;
+
+        room.clients.push(session);
+        if (!room.guest) room.guest = session;
+        room.lastActivity = Date.now();
+
+        const playerList = room.clients.map((c) => ({
+          slot: c.slot,
+          role: c.role,
+          team: c.team,
+          id: c.id,
+        }));
 
         // Notify Guest
         safeSend(ws, {
           type: 'room_joined',
           code: room.code,
           role: 'guest',
+          slot: session.slot,
+          team: session.team,
           mode: room.mode,
           mapSize: room.mapSize,
           stage: room.stage,
           customMapGrid: room.customMapGrid,
+          maxPlayers: room.maxPlayers,
+          players: playerList,
         });
 
-        // Notify Host
-        if (room.host) {
-          safeSend(room.host.ws, {
-            type: 'player_joined',
-            role: 'guest',
-          });
-        }
+        // Notify all other clients in the room
+        room.clients.forEach((c) => {
+          if (c !== session) {
+            safeSend(c.ws, {
+              type: 'player_joined',
+              role: 'guest',
+              slot: session.slot,
+              team: session.team,
+              totalPlayers: room.clients.length,
+              maxPlayers: room.maxPlayers,
+              players: playerList,
+            });
+          }
+        });
         return;
       }
 
@@ -198,52 +252,64 @@ wss.on('connection', (ws: WebSocket) => {
         const startPayload = {
           type: 'game_countdown',
           count: 3,
+          code: room.code,
           mode: room.mode,
           mapSize: room.mapSize,
           stage: room.stage,
+          customMapGrid: room.customMapGrid,
           randomSeed: Math.floor(Math.random() * 100000),
+          totalPlayers: room.clients.length,
+          players: room.clients.map((c) => ({ slot: c.slot, role: c.role, team: c.team })),
         };
-        if (room.host) safeSend(room.host.ws, startPayload);
-        if (room.guest) safeSend(room.guest.ws, startPayload);
+        room.clients.forEach((c) => safeSend(c.ws, startPayload));
         return;
       }
 
-      // Relay State from Host to Guest (High frequency broadcast)
+      // Relay State from Host to all Guests
       if (msg.type === 'sync_state' && session.role === 'host') {
-        if (room.guest && room.guest.ws.readyState === WebSocket.OPEN) {
-          // Direct relay for minimum latency
-          safeSend(room.guest.ws, msg);
-        }
+        room.clients.forEach((c) => {
+          if (c !== session && c.ws.readyState === WebSocket.OPEN) {
+            safeSend(c.ws, msg);
+          }
+        });
         return;
       }
 
-      // Relay Input from Guest to Host (Real-time tank controls)
+      // Relay Input from any Guest to Host (Tagged with the guest's slot)
       if (msg.type === 'player_input' && session.role === 'guest') {
         if (room.host && room.host.ws.readyState === WebSocket.OPEN) {
-          safeSend(room.host.ws, msg);
+          safeSend(room.host.ws, {
+            ...msg,
+            slot: session.slot || msg.slot || 2,
+          });
         }
         return;
       }
 
-      // Relay Discrete Game Events (Bullet fired, Explosion, Brick destruction, Base hit, Taunt)
+      // Relay Discrete Game Events (Broadcast to other room members)
       if (msg.type === 'game_event') {
-        const recipient = session.role === 'host' ? room.guest : room.host;
-        if (recipient && recipient.ws.readyState === WebSocket.OPEN) {
-          safeSend(recipient.ws, msg);
-        }
+        room.clients.forEach((c) => {
+          if (c !== session && c.ws.readyState === WebSocket.OPEN) {
+            safeSend(c.ws, msg);
+          }
+        });
         return;
       }
 
       // Taunt message (Retro chat popup like "ATTACK!", "DEFEND!", "GG!")
       if (msg.type === 'taunt') {
-        const recipient = session.role === 'host' ? room.guest : room.host;
-        if (recipient && recipient.ws.readyState === WebSocket.OPEN) {
-          safeSend(recipient.ws, {
-            type: 'taunt',
-            from: session.role,
-            text: String(msg.text || '').slice(0, 16),
-          });
-        }
+        const senderLabel = `P${session.slot}`;
+        room.clients.forEach((c) => {
+          if (c !== session && c.ws.readyState === WebSocket.OPEN) {
+            safeSend(c.ws, {
+              type: 'taunt',
+              from: session.role,
+              slot: session.slot,
+              sender: senderLabel,
+              text: String(msg.text || '').slice(0, 16),
+            });
+          }
+        });
         return;
       }
     } catch {
@@ -256,24 +322,31 @@ wss.on('connection', (ws: WebSocket) => {
     if (currentSession && currentSession.roomCode) {
       const room = rooms.get(currentSession.roomCode);
       if (room) {
+        // Remove from room clients list
+        room.clients = room.clients.filter((c) => c !== currentSession);
+
         if (currentSession.role === 'host') {
           room.host = null;
-          if (room.guest) {
-            safeSend(room.guest.ws, {
+          room.clients.forEach((c) => {
+            safeSend(c.ws, {
               type: 'peer_disconnected',
               role: 'host',
               message: 'HOST HAS DISCONNECTED',
             });
+          });
+        } else {
+          // Guest disconnected
+          if (room.guest === currentSession) {
+            room.guest = room.clients.find((c) => c.role === 'guest') || null;
           }
-        } else if (currentSession.role === 'guest') {
-          room.guest = null;
-          if (room.host) {
-            safeSend(room.host.ws, {
-              type: 'peer_disconnected',
-              role: 'guest',
-              message: 'GUEST HAS DISCONNECTED',
+          room.clients.forEach((c) => {
+            safeSend(c.ws, {
+              type: 'player_left',
+              slot: currentSession.slot,
+              remaining: room.clients.length,
+              message: `PLAYER ${currentSession.slot} HAS DISCONNECTED`,
             });
-          }
+          });
         }
       }
     }

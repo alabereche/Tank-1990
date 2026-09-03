@@ -51,6 +51,8 @@ interface GameCanvasProps {
     mapSize: 'classic' | 'large' | 'giant';
     stage: number;
     customMapGrid?: number[][];
+    slot?: number;
+    team?: 'A' | 'B' | 'FFA';
   };
   onGameOver: (finalScore: GameScore) => void;
   onVictory: (finalScore: GameScore) => void;
@@ -183,6 +185,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     if (multiplayerConfig) {
       engine.setMultiplayerMode(multiplayerConfig.mode, multiplayerConfig.role);
+      engine.localPlayerSlot = multiplayerConfig.slot || (multiplayerConfig.role === 'host' ? 1 : 2);
     }
 
     if (settings?.playerSpeed) {
@@ -221,11 +224,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       setMultiplayerPing(data.ping);
     });
 
-    // Host receives input packets from Guest (Player 2) - stored for the
-    // unified input composer to merge (single-writer principle)
+    // Host receives input packets from Guest (Player 2..8) - stored and fed to engine
     const unsubInput = multiplayerClient.on('player_input', (data) => {
       if (multiplayerConfig.role === 'host') {
-        netP2Input.current = data.input;
+        const slot = data.slot || 2;
+        if (engineRef.current) {
+          engineRef.current.setPlayerSlotInput(slot, data.input);
+        }
+        if (slot === 2) {
+          netP2Input.current = data.input;
+        }
       }
     });
 
@@ -429,12 +437,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         };
 
         if (multiplayerConfig?.role === 'guest') {
-          // Prediction locally + transmit on change (the host is the authority)
-          engine?.setP2Input(merged);
+          // Prediction locally + transmit on change with slot (host is the authority)
+          const mySlot = multiplayerConfig.slot || 2;
+          engine?.setPlayerSlotInput(mySlot, merged);
           const sig = inputSig(merged);
           if (sig !== lastSentInput.current) {
             lastSentInput.current = sig;
-            multiplayerClient.sendInput({ ...merged, pause: false });
+            multiplayerClient.sendInput({ ...merged, pause: false }, mySlot);
           }
         } else {
           engine?.updateInput(merged);
@@ -625,14 +634,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 </span>
               )}
               <span className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-600 rounded text-[9px] text-[#f8b800]">
-                {multiplayerConfig.mode === 'coop' ? '2P CO-OP' : '1V1 VERSUS'}
+                {multiplayerConfig.mode === 'coop'
+                  ? '2P CO-OP'
+                  : multiplayerConfig.mode === 'versus'
+                  ? '1V1 VERSUS'
+                  : multiplayerConfig.mode === '2v2'
+                  ? '2V2 TEAMS'
+                  : '8 FREE-FOR-ALL'}
               </span>
               <span className="text-[9px] text-zinc-400 hidden sm:inline">
                 {multiplayerConfig.roomCode === 'LOCAL'
                   ? 'P1: WASD / P2: ARROWS'
                   : multiplayerConfig.role === 'host'
                   ? 'YOU: P1 (GOLD)'
-                  : 'YOU: P2 (GREEN)'}
+                  : `YOU: P${multiplayerConfig.slot || 2} (${multiplayerConfig.team === 'A' ? 'TEAM A' : multiplayerConfig.team === 'B' ? 'TEAM B' : 'FFA'})`}
               </span>
             </div>
 
@@ -689,17 +704,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             {/* CRT Scanline Visual Effect Overlay */}
             {showScanlines && <div className="absolute inset-0 scanlines pointer-events-none" />}
 
-            {/* Versus round flow: intro/winner banners + match result panel */}
-            {multiplayerConfig?.mode === 'versus' &&
+            {/* Versus & 2v2 round flow: intro/winner banners + match result panel */}
+            {(multiplayerConfig?.mode === 'versus' || multiplayerConfig?.mode === '2v2') &&
               (gameState === GameState.ROUND_INTRO || gameState === GameState.ROUND_END) && (
-                <RoundBanner state={gameState} scoreData={scoreData} />
+                <RoundBanner state={gameState} scoreData={scoreData} mode={multiplayerConfig.mode} />
               )}
-            {multiplayerConfig?.mode === 'versus' && gameState === GameState.MATCH_END && (
+            {(multiplayerConfig?.mode === 'versus' || multiplayerConfig?.mode === '2v2' || multiplayerConfig?.mode === 'ffa') &&
+              gameState === GameState.MATCH_END && (
               <MatchEndPanel
                 scoreData={scoreData}
                 isHost={!multiplayerConfig || multiplayerConfig.role === 'host' || multiplayerConfig.roomCode === 'LOCAL'}
                 onRematch={handleRestartStage}
                 onExit={onReturnToMenu}
+                mode={multiplayerConfig.mode}
               />
             )}
           </div>
@@ -715,6 +732,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             isPaused={gameState === GameState.PAUSED}
             isMaxScale={windowScale === 'max'}
             versus={multiplayerConfig?.mode === 'versus'}
+            mode={multiplayerConfig?.mode}
           />
         </div>
       </div>

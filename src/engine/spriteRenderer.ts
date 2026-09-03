@@ -272,7 +272,8 @@ export class SpriteRenderer {
     let treadColor = '#404040';
 
     if (isPlayer) {
-      if (tank.playerIndex === 2) {
+      const pIdx = tank.playerIndex || 1;
+      if (pIdx === 2) {
         // Player 2 - Authentic NES Battle City Green Tank
         if (tank.tier === 0) {
           bodyColor = '#00a800'; // Forest Green
@@ -291,6 +292,36 @@ export class SpriteRenderer {
           darkColor = '#1c6400';
           highlightColor = '#c0ff90';
         }
+      } else if (pIdx === 3) {
+        // Player 3 - Cyan / Ice Blue (Team A or FFA)
+        bodyColor = '#0088e8';
+        darkColor = '#003888';
+        highlightColor = '#88d8ff';
+      } else if (pIdx === 4) {
+        // Player 4 - Crimson Red (Team B or FFA)
+        bodyColor = '#d82828';
+        darkColor = '#780808';
+        highlightColor = '#ff8888';
+      } else if (pIdx === 5) {
+        // Player 5 - Royal Violet (FFA)
+        bodyColor = '#a838d8';
+        darkColor = '#581088';
+        highlightColor = '#e898ff';
+      } else if (pIdx === 6) {
+        // Player 6 - Hot Amber Orange (FFA)
+        bodyColor = '#e86800';
+        darkColor = '#803000';
+        highlightColor = '#ffb860';
+      } else if (pIdx === 7) {
+        // Player 7 - Metallic Silver (FFA)
+        bodyColor = '#c0c0c0';
+        darkColor = '#606060';
+        highlightColor = '#ffffff';
+      } else if (pIdx === 8) {
+        // Player 8 - Neon Lime (FFA)
+        bodyColor = '#78d800';
+        darkColor = '#387800';
+        highlightColor = '#b8ff60';
       } else {
         // Player 1 - Classic Gold / Amber Tank
         if (tank.tier === 0) {
@@ -427,6 +458,17 @@ export class SpriteRenderer {
     ctx.fillRect(-3, -16, 6, 2);
 
     ctx.restore();
+
+    // --- TEAM INDICATOR (2v2 Team Battles) ---
+    if (isPlayer && (tank.team === 'A' || tank.team === 'B')) {
+      const isTeamA = tank.team === 'A';
+      ctx.fillStyle = isTeamA ? '#00b0f0' : '#e02020'; // Blue for Team A, Red for Team B
+      ctx.fillRect(x + 13, y + 13, 6, 6);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + 14, y + 14, 4, 4);
+      ctx.fillStyle = isTeamA ? '#00b0f0' : '#e02020';
+      ctx.fillRect(x + 15, y + 15, 2, 2);
+    }
 
     // --- INVULNERABILITY SHIELD RING ---
     if (tank.shieldTimer > 0) {

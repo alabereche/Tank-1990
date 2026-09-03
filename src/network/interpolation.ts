@@ -18,6 +18,7 @@ export interface NetSnapshot {
   recvAt: number;
   p1: Record<string, any> | null;
   p2: Record<string, any> | null;
+  players?: NetEntity[];
   enemies: NetEntity[];
   spawning: NetEntity[];
   bullets: NetEntity[];
@@ -96,10 +97,14 @@ export class SnapshotBuffer {
   private blendPair(older: NetSnapshot, newer: NetSnapshot, t: number): NetSnapshot {
     const olderEnemies = new Map(older.enemies.map((e) => [e.id, e]));
     const olderBullets = new Map(older.bullets.map((b) => [b.id, b]));
+    const olderPlayers = older.players ? new Map(older.players.map((p) => [p.id, p])) : null;
     return {
       ...newer,
       p1: blendTank(older.p1, newer.p1, t),
       p2: blendTank(older.p2, newer.p2, t),
+      players: newer.players
+        ? newer.players.map((p) => blendEntity(olderPlayers?.get(p.id), p, t))
+        : undefined,
       enemies: newer.enemies.map((e) => blendEntity(olderEnemies.get(e.id), e, t)),
       bullets: newer.bullets.map((b) => blendEntity(olderBullets.get(b.id), b, t)),
       powerUps: newer.powerUps,

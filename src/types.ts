@@ -31,7 +31,9 @@ export interface Position {
 export interface Tank {
   id: string;
   isPlayer: boolean;
-  playerIndex?: 1 | 2; // 1 = Gold Player 1, 2 = Green Player 2
+  playerIndex?: number; // 1 to 8 (1 = Gold, 2 = Green, etc.)
+  team?: 'A' | 'B' | 'FFA';
+  slot?: number;
   type: EnemyType | 'PLAYER';
   x: number;
   y: number;
@@ -56,7 +58,8 @@ export interface Bullet {
   id: string;
   ownerId: string;
   isPlayer: boolean;
-  playerIndex?: 1 | 2;
+  playerIndex?: number;
+  team?: 'A' | 'B' | 'FFA';
   x: number;
   y: number;
   direction: Direction;
@@ -150,6 +153,12 @@ export interface GameScore {
   roundWinsP2?: number;
   roundWinner?: 0 | 1 | 2; // 0 = draw (mutual destruction)
   matchWinner?: 1 | 2;
+  // 2v2 Team & 8 FFA stats
+  teamWinsA?: number;
+  teamWinsB?: number;
+  teamWinner?: 'A' | 'B' | 'DRAW';
+  playerStats?: Record<number, { kills: number; deaths: number; score: number; lives: number }>;
+  ffaWinner?: number; // winning player slot when the FFA kill target is reached
 }
 
 export interface InputState {
@@ -161,8 +170,16 @@ export interface InputState {
   pause: boolean;
 }
 
-export type MultiplayerMode = 'single' | 'coop' | 'versus';
+export type MultiplayerMode = 'single' | 'coop' | 'versus' | '2v2' | 'ffa';
 export type MultiplayerRole = 'host' | 'guest';
+
+export interface MultiplayerPlayerInfo {
+  slot: number;
+  team?: 'A' | 'B' | 'FFA';
+  role: MultiplayerRole;
+  ping?: number;
+  ready?: boolean;
+}
 
 export interface MultiplayerState {
   roomCode: string;
