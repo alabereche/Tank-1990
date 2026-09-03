@@ -1,0 +1,109 @@
+/**
+ * Battle City 1990 - Snapshot Interpolation Buffer (Guest Thin-Client)
+ * Holds recent authoritative snapshots from the host and produces a smooth,
+ * delayed view by blending entity positions between the two snapshots that
+ * surround the render timestamp. The guest renders ONLY this view - its own
+ * simulation stays off, which removes the double-simulation jitter.
+ */
+
+export interface NetEntity {
+  id: string;
+  x: number;
+  y: number;
+  [key: string]: unknown;
+}
+
+export interface NetSnapshot {
+  tick: number;
+  recvAt: number;
+  p1: Record<string, any> | null;
+  p2: Record<string, any> | null;
+  enemies: NetEntity[];
+  spawning: NetEntity[];
+  bullets: NetEntity[];
+  powerUps: NetEntity[];
+  scoreData?: unknown;
+  baseState?: unknown;
+  gameState?: unknown;
+  gv?: number;
+  grid?: number[];
+}
+
+export const RENDER_DELAY_MS = 120;
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function blendTank(older: Record<string, any> | null, newer: Record<string, any> | null, t: number): Record<string, any> | null {
+  if (!newer) return null;
+  if (!older) return { ...newer };
+  return { ...newer, x: lerp(older.x, newer.x, t), y: lerp(older.y, newer.y, t) };
+}
+
+function blendEntity(
+  older: NetEntity | undefined,
+  newer: NetEntity,
+  t: number
+): NetEntity {
+  if (!older) return { ...newer }; // Brand-new entity: appear at authoritative position
+  return { ...newer, x: lerp(older.x, newer.x, t), y: lerp(older.y, newer.y, t) };
+}
+
+export class SnapshotBuffer {
+  private snaps: NetSnapshot[] = [];
+  private readonly limit = 30;
+
+  public push(s: NetSnapshot): void {
+    s.recvAt = performance.now();
+    this.snaps.push(s);
+    if (this.snaps.length > this.limit) this.snaps.shift();
+  }
+
+  public clear(): void {
+    this.snaps = [];
+  }
+
+  public get count(): number {
+    return this.snaps.length;
+  }
+
+  /**
+   * Interpolated view for (now - delayMs). Falls back to the newest snapshot
+   * when the stream stalls (host pause / hiccup) so the field never rewinds.
+   */
+  public sample(delayMs: number = RENDER_DELAY_MS): NetSnapshot | null {
+    if (this.snaps.length === 0) return null;
+    const now = performance.now();
+    const newest = this.snaps[this.snaps.length - 1];
+    if (now - newest.recvAt > 600) return newest;
+
+    const renderTime = now - delayMs;
+    if (renderTime >= newest.recvAt) return newest; // caught up: hold newest
+    if (renderTime <= this.snaps[0].recvAt) return this.snaps[0];
+    for (let i = this.snaps.length - 1; i > 0; i--) {
+      const older = this.snaps[i - 1];
+      const newer = this.snaps[i];
+      if (older.recvAt <= renderTime && renderTime <= newer.recvAt) {
+        const span = newer.recvAt - older.recvAt || 1;
+        const t = Math.min(1, Math.max(0, (renderTime - older.recvAt) / span));
+        return this.blendPair(older, newer, t);
+      }
+    }
+    return newest;
+  }
+
+  private blendPair(older: NetSnapshot, newer: NetSnapshot, t: number): NetSnapshot {
+    const olderEnemies = new Map(older.enemies.map((e) => [e.id, e]));
+    const olderBullets = new Map(older.bullets.map((b) => [b.id, b]));
+    return {
+      ...newer,
+      p1: blendTank(older.p1, newer.p1, t),
+      p2: blendTank(older.p2, newer.p2, t),
+      enemies: newer.enemies.map((e) => blendEntity(olderEnemies.get(e.id), e, t)),
+      bullets: newer.bullets.map((b) => blendEntity(olderBullets.get(b.id), b, t)),
+      powerUps: newer.powerUps,
+      spawning: newer.spawning,
+    };
+  }
+}

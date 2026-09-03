@@ -1,0 +1,6 @@
+{
+  "name": "Battle City 1990",
+  "description": "A pixel-perfect retro recreation of NES Battle City / Tank 1990 featuring real-time online 2P co-op and 1v1 versus multiplayer, 60 FPS canvas physics, Web Audio 8-bit synthesizer, full construction mode, power-ups, and gamepad support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

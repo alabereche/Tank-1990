@@ -1,0 +1,255 @@
+/**
+ * Battle City 1990 - High Precision Multiplayer Client
+ * Handles WebSocket connection, heartbeat ping/pong, room joining,
+ * and high-frequency input & state synchronization.
+ */
+
+import { InputState, MultiplayerMode, MultiplayerRole } from '../types';
+
+export type NetworkEventHandler = (payload: any) => void;
+
+export class MultiplayerClient {
+  private ws: WebSocket | null = null;
+  private handlers: Map<string, Set<NetworkEventHandler>> = new Map();
+  private pingInterval: number | null = null;
+  private currentPing: number = 0;
+  private roomCode: string | null = null;
+  private role: MultiplayerRole | null = null;
+  private mode: MultiplayerMode = 'coop';
+  private isConnecting: boolean = false;
+  private shouldReconnect: boolean = true;
+  private reconnectAttempts: number = 0;
+
+  constructor() {
+    // Initialized on demand
+  }
+
+  public connect(): Promise<boolean> {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return Promise.resolve(true);
+    }
+
+    this.shouldReconnect = true;
+    this.isConnecting = true;
+
+    return new Promise((resolve) => {
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${protocol}//${host}/ws`;
+
+        const socket = new WebSocket(wsUrl);
+        this.ws = socket;
+
+        socket.onopen = () => {
+          this.isConnecting = false;
+          this.reconnectAttempts = 0;
+          this.startHeartbeat();
+          this.emit('connected', { success: true });
+          resolve(true);
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'pong') {
+              const rtt = Math.round(performance.now() - data.timestamp);
+              this.currentPing = Math.max(1, rtt);
+              this.emit('ping_updated', { ping: this.currentPing });
+              return;
+            }
+
+            if (data.type === 'room_created') {
+              this.roomCode = data.code;
+              this.role = 'host';
+              this.mode = data.mode;
+            } else if (data.type === 'room_joined') {
+              this.roomCode = data.code;
+              this.role = 'guest';
+              this.mode = data.mode;
+            }
+
+            this.emit(data.type, data);
+          } catch {
+            // Ignore non-JSON messages
+          }
+        };
+
+        socket.onclose = () => {
+          this.isConnecting = false;
+          this.stopHeartbeat();
+          this.emit('disconnected', { code: this.roomCode });
+
+          // Auto-reconnect if not closed manually
+          if (this.shouldReconnect && this.reconnectAttempts < 5) {
+            this.reconnectAttempts++;
+            const backoff = Math.min(3000, 500 * Math.pow(1.5, this.reconnectAttempts));
+            setTimeout(() => {
+              if (this.shouldReconnect) {
+                this.connect();
+              }
+            }, backoff);
+          }
+        };
+
+        socket.onerror = (err) => {
+          this.isConnecting = false;
+          this.emit('error', { message: 'Connection Error', error: err });
+          resolve(false);
+        };
+      } catch (err) {
+        this.isConnecting = false;
+        resolve(false);
+      }
+    });
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.pingInterval = window.setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.send({
+          type: 'ping',
+          timestamp: performance.now(),
+        });
+      }
+    }, 2500);
+  }
+
+  private stopHeartbeat() {
+    if (this.pingInterval !== null) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  public send(payload: Record<string, unknown>) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify(payload));
+      } catch {
+        // Send buffer full or connection reset
+      }
+    }
+  }
+
+  // --- Actions ---
+  public createRoom(
+    mode: MultiplayerMode = 'coop',
+    mapSize: string = 'classic',
+    stage: number = 1,
+    customMapGrid?: number[][]
+  ) {
+    this.send({
+      type: 'create_room',
+      mode,
+      mapSize,
+      stage,
+      customMapGrid,
+    });
+  }
+
+  public joinRoom(code: string) {
+    this.send({
+      type: 'join_room',
+      code: code.trim().toUpperCase(),
+    });
+  }
+
+  public requestStartGame() {
+    this.send({
+      type: 'request_start',
+    });
+  }
+
+  public sendSyncState(state: Record<string, unknown>) {
+    // Wrapped under `snapshot` - the guest handler reads data.snapshot
+    this.send({
+      type: 'sync_state',
+      snapshot: state,
+    });
+  }
+
+  public sendInput(input: InputState) {
+    this.send({
+      type: 'player_input',
+      input,
+    });
+  }
+
+  public sendGameEvent(event: Record<string, unknown>) {
+    this.send({
+      type: 'game_event',
+      ...event,
+    });
+  }
+
+  public sendTaunt(text: string, sender?: 'P1' | 'P2' | string) {
+    this.send({
+      type: 'taunt',
+      text,
+      sender,
+    });
+  }
+
+  // --- Subscriptions ---
+  public on(event: string, handler: NetworkEventHandler): () => void {
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, new Set());
+    }
+    this.handlers.get(event)!.add(handler);
+
+    return () => {
+      this.handlers.get(event)?.delete(handler);
+    };
+  }
+
+  private emit(event: string, payload: any) {
+    const list = this.handlers.get(event);
+    if (list) {
+      list.forEach((handler) => {
+        try {
+          handler(payload);
+        } catch (e) {
+          console.error(`Error in network handler for event "${event}":`, e);
+        }
+      });
+    }
+  }
+
+  public getPing(): number {
+    return this.currentPing;
+  }
+
+  public getRoomCode(): string | null {
+    return this.roomCode;
+  }
+
+  public getRole(): MultiplayerRole | null {
+    return this.role;
+  }
+
+  public getMode(): MultiplayerMode {
+    return this.mode;
+  }
+
+  public isConnected(): boolean {
+    return Boolean(this.ws && this.ws.readyState === WebSocket.OPEN);
+  }
+
+  public disconnect() {
+    this.shouldReconnect = false;
+    this.stopHeartbeat();
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {}
+      this.ws = null;
+    }
+    this.roomCode = null;
+    this.role = null;
+  }
+}
+
+// Global Singleton for easy access across the game engine
+export const multiplayerClient = new MultiplayerClient();
