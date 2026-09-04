@@ -112,6 +112,18 @@ export enum BaseState {
   DESTROYED = 'DESTROYED',
 }
 
+export interface BaseEntity {
+  id: string;
+  team: 'A' | 'B' | 'FFA' | 'NEUTRAL';
+  ownerSlot?: number;
+  x: number;
+  y: number;
+  r: number;
+  c: number;
+  state: BaseState;
+  palette?: 'gold' | 'crimson' | 'green' | 'blue';
+}
+
 export enum GameState {
   MENU = 'MENU',
   STAGE_START = 'STAGE_START',

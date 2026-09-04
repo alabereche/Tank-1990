@@ -183,7 +183,8 @@ export class SpriteRenderer {
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
-    state: BaseState
+    state: BaseState,
+    palette: 'gold' | 'crimson' = 'gold'
   ) {
     if (state === BaseState.DESTROYED) {
       // Burnt, destroyed eagle / flag
@@ -210,13 +211,17 @@ export class SpriteRenderer {
       return;
     }
 
-    // ALIVE: Majestic Golden Eagle Phoenix Emblem
+    // ALIVE: Majestic Eagle Phoenix Emblem
     // Black background
     ctx.fillStyle = '#000000';
     ctx.fillRect(x, y, 32, 32);
 
-    // Golden wings
-    ctx.fillStyle = '#f8b800'; // Rich NES Gold
+    const primaryColor = palette === 'crimson' ? '#d82800' : '#f8b800';
+    const highlightColor = palette === 'crimson' ? '#f87858' : '#ffe078';
+    const crestColor = palette === 'crimson' ? '#f8b800' : '#d82800';
+
+    // Wings
+    ctx.fillStyle = primaryColor;
     // Left Wing
     ctx.fillRect(x + 4, y + 8, 8, 4);
     ctx.fillRect(x + 2, y + 12, 10, 8);
@@ -238,19 +243,19 @@ export class SpriteRenderer {
     ctx.fillRect(x + 15, y + 4, 2, 2);
 
     // Highlight feathers
-    ctx.fillStyle = '#ffe078';
+    ctx.fillStyle = highlightColor;
     ctx.fillRect(x + 4, y + 10, 4, 2);
     ctx.fillRect(x + 24, y + 10, 4, 2);
     ctx.fillRect(x + 14, y + 10, 4, 6);
 
     // Center emblem star
-    ctx.fillStyle = '#d82800'; // Red center crest
+    ctx.fillStyle = crestColor;
     ctx.fillRect(x + 14, y + 14, 4, 4);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(x + 15, y + 15, 2, 2);
 
     // Talons & pedestal
-    ctx.fillStyle = '#f8b800';
+    ctx.fillStyle = primaryColor;
     ctx.fillRect(x + 8, y + 26, 16, 4);
   }
 

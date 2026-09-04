@@ -275,12 +275,13 @@ wss.on('connection', (ws: WebSocket) => {
         return;
       }
 
-      // Relay Input from any Guest to Host (Tagged with the guest's slot)
+      // Relay Input from any Guest to Host (Tagged with the guest's slot or relayed slot)
       if (msg.type === 'player_input' && session.role === 'guest') {
         if (room.host && room.host.ws.readyState === WebSocket.OPEN) {
+          const targetSlot = typeof msg.slot === 'number' ? msg.slot : (session.slot || 2);
           safeSend(room.host.ws, {
             ...msg,
-            slot: session.slot || msg.slot || 2,
+            slot: targetSlot,
           });
         }
         return;

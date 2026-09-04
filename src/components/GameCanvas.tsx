@@ -365,16 +365,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [inputDebug, setInputDebug] = useState('');
 
   const mergeInput = (
-    kb: Partial<InputState>,
-    pad?: Partial<InputState> | null,
-    touch?: Partial<InputState> | null
+    ...inputs: (Partial<InputState> | null | undefined)[]
   ): InputState => ({
-    up: Boolean(kb.up || pad?.up || touch?.up),
-    down: Boolean(kb.down || pad?.down || touch?.down),
-    left: Boolean(kb.left || pad?.left || touch?.left),
-    right: Boolean(kb.right || pad?.right || touch?.right),
-    fire: Boolean(kb.fire || pad?.fire || touch?.fire),
-    pause: false,
+    up: inputs.some((i) => Boolean(i?.up)),
+    down: inputs.some((i) => Boolean(i?.down)),
+    left: inputs.some((i) => Boolean(i?.left)),
+    right: inputs.some((i) => Boolean(i?.right)),
+    fire: inputs.some((i) => Boolean(i?.fire)),
+    pause: inputs.some((i) => Boolean(i?.pause)),
   });
 
   const inputSig = (i: InputState) =>
@@ -446,24 +444,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             multiplayerClient.sendInput({ ...merged, pause: false }, mySlot);
           }
         } else {
+          // Host drives P1 locally (keyboard, gamepad, touch)
           engine?.updateInput(merged);
 
-          // Host also drives P2: the guest's networked input, OR-merged with
-          // a SECOND pad plugged into this machine. Browsers deliver keyboard
-          // events (and live pad state) only to the FOCUSED window, so with
-          // two windows on one machine the unfocused one is input-dead. This
-          // relay makes such local testing fully playable from the host
-          // window: pad 1 = gold, pad 2 = green. On real internet (one pad
-          // per machine) the merge is a no-op.
-          const pad2 = gamepadManager.pollInputForOrdinal(1)?.input;
-          const p2 = mergeInput(netP2Input.current, pad2);
+          // P2 is driven exclusively by the guest's network packet (no local gamepad interference)
+          const p2 = netP2Input.current ? (netP2Input.current as InputState) : { up: false, down: false, left: false, right: false, fire: false, pause: false };
           engine?.setP2Input(p2);
           dbgRef.current.p2Sig = inputSig(p2);
 
-          // The guest never pauses locally - the host owns the pause and
-          // syncs it via snapshots. Start edges from a pad that has never
-          // shown real input are connection noise - gating on trust prevents
-          // a phantom pause that would silently freeze the whole match.
+          // Host pause controls
           const padActive = Boolean(pad && (pad.up || pad.down || pad.left || pad.right || pad.fire));
           if (padActive) padTrusted.current = true;
           if (pad?.pause && padTrusted.current) engine?.togglePause();
@@ -707,7 +696,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             {/* Versus & 2v2 round flow: intro/winner banners + match result panel */}
             {(multiplayerConfig?.mode === 'versus' || multiplayerConfig?.mode === '2v2') &&
               (gameState === GameState.ROUND_INTRO || gameState === GameState.ROUND_END) && (
-                <RoundBanner state={gameState} scoreData={scoreData} mode={multiplayerConfig.mode} />
+                <RoundBanner
+                  state={gameState}
+                  scoreData={scoreData}
+                  mode={multiplayerConfig.mode}
+                  defenderSlot={multiplayerConfig.mode === 'versus' ? ((scoreData.roundNumber ?? 1) % 2 === 1 ? 1 : 2) : undefined}
+                  mySlot={multiplayerConfig.slot || (multiplayerConfig.role === 'host' ? 1 : 2)}
+                />
               )}
             {(multiplayerConfig?.mode === 'versus' || multiplayerConfig?.mode === '2v2' || multiplayerConfig?.mode === 'ffa') &&
               gameState === GameState.MATCH_END && (

@@ -5,6 +5,7 @@
  */
 
 import {
+  BaseEntity,
   BaseState,
   Bullet,
   Direction,
@@ -58,6 +59,10 @@ export class GameEngine {
   public baseC: number = 12;
   public baseX: number = 192;
   public baseY: number = 384;
+  public baseB_R: number = 0;
+  public baseB_C: number = 12;
+  public baseB_X: number = 192;
+  public baseB_Y: number = 0;
   private spawnPoints: Position[] = [
     { x: 0, y: 0 },
     { x: 192, y: 0 },
@@ -69,7 +74,9 @@ export class GameEngine {
 
   // Grid state: sub-tiles with damage mask
   private grid: SubTile[][] = [];
-  private baseState: BaseState = BaseState.ALIVE;
+  public baseState: BaseState = BaseState.ALIVE;
+  public baseStateB: BaseState = BaseState.ALIVE;
+  public bases: Map<string, BaseEntity> = new Map();
   private shovelTimer: number = 0; // Frames remaining of steel base bunker
   private shovelBunkerTiles: { r: number; c: number; prevType: TileType }[] = [];
 
@@ -137,6 +144,10 @@ export class GameEngine {
   public roundIntroMs = 2200;
   public roundEndMs = 2600;
   private roundTransitionTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // 1v1 alternating eagle: which slot defends the single eagle this round
+  public vsDefenderSlot: 1 | 2 = 1;
+  private pendingVsDefender: 1 | 2 | null = null;
 
   public get isRemoteViewer(): boolean {
     return this.localRole === 'guest';
@@ -216,14 +227,48 @@ export class GameEngine {
     this.baseX = this.baseC * BLOCK_SIZE;
     this.baseY = this.baseR * BLOCK_SIZE;
 
+    // North Base (Team B / Player 2)
+    this.baseB_R = 0;
+    this.baseB_C = this.baseC;
+    this.baseB_X = this.baseB_C * BLOCK_SIZE;
+    this.baseB_Y = 0;
+
+    // Register active bases
+    this.bases.clear();
+    this.bases.set('A', {
+      id: 'base_a',
+      team: 'A',
+      ownerSlot: 1,
+      x: this.baseX,
+      y: this.baseY,
+      r: this.baseR,
+      c: this.baseC,
+      state: this.baseState,
+      palette: 'gold',
+    });
+
+    if (this.multiMode === 'versus' || this.multiMode === '2v2') {
+      this.bases.set('B', {
+        id: 'base_b',
+        team: 'B',
+        ownerSlot: 2,
+        x: this.baseB_X,
+        y: this.baseB_Y,
+        r: this.baseB_R,
+        c: this.baseB_C,
+        state: this.baseStateB,
+        palette: 'crimson',
+      });
+    }
+
     if (this.multiMode === 'versus') {
-      // 1v1 Duel: opposite ends
+      // 1v1 Duel: opposite ends (flanking bases so tanks don't overlap eagle)
       this.playerSpawn = {
         x: (this.baseC - 4) * BLOCK_SIZE,
         y: this.baseR * BLOCK_SIZE,
       };
       this.p2Spawn = {
-        x: this.baseC * BLOCK_SIZE,
+        x: (this.baseC + 4) * BLOCK_SIZE,
         y: 0,
       };
       this.playerSpawns.set(1, this.playerSpawn);
@@ -317,6 +362,9 @@ export class GameEngine {
       pause: false,
     };
     this.playerInputs.set(slot, { ...current, ...input });
+    if (slot === 1) {
+      this.currentInput = { ...this.currentInput, ...input };
+    }
   }
 
   public setP2Input(input: Partial<InputState>) {
@@ -351,7 +399,64 @@ export class GameEngine {
           }))
       );
     this.baseState = BaseState.ALIVE;
+    this.baseStateB = BaseState.ALIVE;
     this.shovelTimer = 0;
+    if (this.bases.get('A')) this.bases.get('A')!.state = BaseState.ALIVE;
+    if (this.bases.get('B')) this.bases.get('B')!.state = BaseState.ALIVE;
+
+    // 1v1: ONE alternating eagle — the defender's side keeps its eagle +
+    // bunker, the attacker's side is stripped clean. Roles flip each round.
+    if (this.multiMode === 'versus') {
+      const defender: 1 | 2 =
+        this.pendingVsDefender ?? (((this.scoreData.roundNumber ?? 1) % 2 === 1) ? 1 : 2);
+      this.pendingVsDefender = null;
+      this.vsDefenderSlot = defender;
+      const bCol = this.baseC;
+      if (defender === 2) {
+        // North eagle (rows 0-1) + symmetrical bunker
+        if (this.grid[0]?.[bCol]) this.grid[0][bCol] = { type: TileType.BASE, damageMask: 15 };
+        if (this.grid[0]?.[bCol + 1]) this.grid[0][bCol + 1] = { type: TileType.BASE, damageMask: 15 };
+        if (this.grid[1]?.[bCol]) this.grid[1][bCol] = { type: TileType.BASE, damageMask: 15 };
+        if (this.grid[1]?.[bCol + 1]) this.grid[1][bCol + 1] = { type: TileType.BASE, damageMask: 15 };
+        for (let c = bCol - 1; c <= bCol + 2; c++) {
+          if (this.grid[2]?.[c]) this.grid[2][c] = { type: TileType.BRICK, damageMask: 15 };
+        }
+        if (this.grid[0]?.[bCol - 1]) this.grid[0][bCol - 1] = { type: TileType.BRICK, damageMask: 15 };
+        if (this.grid[1]?.[bCol - 1]) this.grid[1][bCol - 1] = { type: TileType.BRICK, damageMask: 15 };
+        if (this.grid[0]?.[bCol + 2]) this.grid[0][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
+        if (this.grid[1]?.[bCol + 2]) this.grid[1][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
+        this.clearBaseArea('south');
+      } else {
+        // South eagle lives in the map template — strip the north side only
+        this.clearBaseArea('north');
+      }
+      this.bases.clear();
+      if (defender === 1) {
+        this.bases.set('A', {
+          id: 'base_a', team: 'A', x: this.baseX, y: this.baseY, r: this.baseR, c: this.baseC,
+          state: this.baseState, palette: 'gold',
+        });
+      } else {
+        this.bases.set('B', {
+          id: 'base_b', team: 'B', x: this.baseB_X, y: this.baseB_Y, r: this.baseB_R, c: this.baseB_C,
+          state: this.baseStateB, palette: 'crimson',
+        });
+      }
+    } else if (this.multiMode === '2v2') {
+      const bCol = this.baseC;
+      if (this.grid[0]?.[bCol]) this.grid[0][bCol] = { type: TileType.BASE, damageMask: 15 };
+      if (this.grid[0]?.[bCol + 1]) this.grid[0][bCol + 1] = { type: TileType.BASE, damageMask: 15 };
+      if (this.grid[1]?.[bCol]) this.grid[1][bCol] = { type: TileType.BASE, damageMask: 15 };
+      if (this.grid[1]?.[bCol + 1]) this.grid[1][bCol + 1] = { type: TileType.BASE, damageMask: 15 };
+
+      for (let c = bCol - 1; c <= bCol + 2; c++) {
+        if (this.grid[2]?.[c]) this.grid[2][c] = { type: TileType.BRICK, damageMask: 15 };
+      }
+      if (this.grid[0]?.[bCol - 1]) this.grid[0][bCol - 1] = { type: TileType.BRICK, damageMask: 15 };
+      if (this.grid[1]?.[bCol - 1]) this.grid[1][bCol - 1] = { type: TileType.BRICK, damageMask: 15 };
+      if (this.grid[0]?.[bCol + 2]) this.grid[0][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
+      if (this.grid[1]?.[bCol + 2]) this.grid[1][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
+    }
   }
 
   /**
@@ -374,13 +479,14 @@ export class GameEngine {
       }
     }
     this.setupDimensions(this.currentMap);
+    // A versus stage always opens with round 1 (P1 defends the south eagle)
+    if (this.multiMode === 'versus') this.pendingVsDefender = 1;
     this.initGrid(this.currentMap.grid);
 
-    // Versus duels resolve spawns against the REAL grid: a pocket is only
-    // valid if the tank can actually drive out of it (any map, any preset).
-    if (this.multiMode === 'versus' && !this.isRemoteViewer) {
-      this.playerSpawn = this.pickViableSpawn('bottom', this.playerSpawn.x);
-      this.p2Spawn = this.pickViableSpawn('top', this.p2Spawn.x);
+    // Every spawn pocket (all modes) must have a tank-wide exit; the check
+    // rewrites playerSpawns in place, fixing the old field-only re-pick gap.
+    if (!this.isRemoteViewer) {
+      this.hardenSpawnPoints();
     }
 
     this.scoreData.stage = stageNumber;
@@ -558,6 +664,11 @@ export class GameEngine {
     this.onStateChange(this.gameState, this.scoreData);
   }
 
+  /** Odd rounds: P1 defends the south eagle. Even rounds: P2 defends the north. */
+  private versusDefenderForRound(roundNumber: number): 1 | 2 {
+    return roundNumber % 2 === 1 ? 1 : 2;
+  }
+
   private resolveRoundAfterBanner() {
     if (this.multiMode === '2v2') {
       const wA = this.scoreData.teamWinsA ?? 0;
@@ -584,8 +695,11 @@ export class GameEngine {
       this.onStateChange(this.gameState, this.scoreData);
       return;
     }
+    const nextRound = (this.scoreData.roundNumber ?? 1) + 1;
+    // Eagle sides flip with round parity — decide BEFORE the arena re-init
+    if (this.multiMode === 'versus') this.pendingVsDefender = this.versusDefenderForRound(nextRound);
     this.resetRoundArena();
-    this.beginRoundIntro((this.scoreData.roundNumber ?? 1) + 1);
+    this.beginRoundIntro(nextRound);
   }
 
   /** Fresh duel: same map, cleared field, both tanks back at their spawns. */
@@ -612,6 +726,21 @@ export class GameEngine {
       this.clearSpawnArea(this.p2Spawn.x, this.p2Spawn.y);
       this.spawnPlayer(1);
       this.spawnPlayer(2);
+    }
+  }
+
+  /** Strips an eagle + its bunker ring (11..14 band) from the grid. */
+  private clearBaseArea(side: 'north' | 'south') {
+    const bCol = this.baseC;
+    const rows: [number, number][] = side === 'south'
+      ? [[23, bCol - 1], [23, bCol], [23, bCol + 1], [23, bCol + 2],
+         [24, bCol - 1], [24, bCol], [24, bCol + 1], [24, bCol + 2],
+         [25, bCol - 1], [25, bCol], [25, bCol + 1], [25, bCol + 2]]
+      : [[0, bCol - 1], [0, bCol], [0, bCol + 1], [0, bCol + 2],
+         [1, bCol - 1], [1, bCol], [1, bCol + 1], [1, bCol + 2],
+         [2, bCol - 1], [2, bCol], [2, bCol + 1], [2, bCol + 2]];
+    for (const [r, c] of rows) {
+      if (this.grid[r]?.[c]) this.grid[r][c] = { type: TileType.EMPTY, damageMask: 0 };
     }
   }
 
@@ -649,6 +778,34 @@ export class GameEngine {
   }
 
   /**
+   * Ensures EVERY player spawn pocket has a tank-wide exit, across all modes.
+   * Rewrites the playerSpawns MAP in place — the previous per-field re-pick
+   * never propagated there, so trapped pockets could still be used.
+   */
+  private hardenSpawnPoints() {
+    for (const [slot, pt] of Array.from(this.playerSpawns.entries())) {
+      if (this.isViableSpawn(pt.x, pt.y)) continue;
+      const candidates = [
+        pt.x,
+        (this.baseC - 4) * BLOCK_SIZE,
+        (this.baseC + 4) * BLOCK_SIZE,
+        (this.baseC - 6) * BLOCK_SIZE,
+        (this.baseC + 6) * BLOCK_SIZE,
+        0,
+        (this.gridSize - 2) * BLOCK_SIZE,
+      ];
+      for (const x of candidates) {
+        if (this.isViableSpawn(x, pt.y)) {
+          this.playerSpawns.set(slot, { x, y: pt.y });
+          break;
+        }
+      }
+    }
+    this.playerSpawn = this.playerSpawns.get(1) ?? this.playerSpawn;
+    this.p2Spawn = this.playerSpawns.get(2) ?? this.p2Spawn;
+  }
+
+  /**
    * A 32px spawn pocket is viable only if it avoids the eagle/steel/water
    * (which clearSpawnArea cannot carve) and has a tank-wide (2 sub-tile)
    * opening after the pocket is virtually cleared.
@@ -679,6 +836,7 @@ export class GameEngine {
   /**
    * Picks the preferred X for an edge whose pocket actually has an exit.
    * Falls back through near-center lanes to the edges.
+   * (Superseded by hardenSpawnPoints — kept for external callers/tests.)
    */
   private pickViableSpawn(edge: 'top' | 'bottom', preferredX: number): Position {
     const y = edge === 'top' ? 0 : (this.gridSize - 2) * BLOCK_SIZE;
@@ -1142,6 +1300,15 @@ export class GameEngine {
           progress: s.progress as number,
         }) as SpawningTank
     );
+
+    if (view.baseState !== undefined) {
+      this.baseState = view.baseState as BaseState;
+      if (this.bases.get('A')) this.bases.get('A')!.state = this.baseState;
+    }
+    if (view.baseStateB !== undefined) {
+      this.baseStateB = view.baseStateB as BaseState;
+      if (this.bases.get('B')) this.bases.get('B')!.state = this.baseStateB;
+    }
   }
 
   private reconcileLocalPlayer() {
@@ -1278,14 +1445,25 @@ export class GameEngine {
       tank.shootCooldown--;
     }
 
-    const input = (slot === 1 ? this.currentInput : this.playerInputs.get(slot)) || {
-      up: false,
-      down: false,
-      left: false,
-      right: false,
-      fire: false,
-      pause: false,
-    };
+    const slotInput = this.playerInputs.get(slot);
+    const input =
+      slot === 1
+        ? {
+            up: Boolean(this.currentInput.up || slotInput?.up),
+            down: Boolean(this.currentInput.down || slotInput?.down),
+            left: Boolean(this.currentInput.left || slotInput?.left),
+            right: Boolean(this.currentInput.right || slotInput?.right),
+            fire: Boolean(this.currentInput.fire || slotInput?.fire),
+            pause: Boolean(this.currentInput.pause || slotInput?.pause),
+          }
+        : (slotInput || {
+            up: false,
+            down: false,
+            left: false,
+            right: false,
+            fire: false,
+            pause: false,
+          });
 
     const prevFire = this.prevPlayerFire.get(slot) || false;
     const fireRequested = input.fire;
@@ -1766,17 +1944,84 @@ export class GameEngine {
       }
       if (bulletCancelled) continue;
 
-      // C. Bullet vs Base Eagle
-      if (
-        this.multiMode !== 'versus' &&
-        this.multiMode !== 'ffa' &&
-        this.baseState === BaseState.ALIVE &&
-        this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, this.baseX, this.baseY, 32, 32)
-      ) {
-        this.destroyBase();
-        this.createExplosion(this.baseX + 16, this.baseY + 16, true);
-        bulletsToRemove.add(bullet.id);
-        continue;
+      // C. Bullet vs Base Eagle (1v1 alternating single base / 2v2 dual base)
+      if (this.multiMode !== 'ffa') {
+        const southActive = this.multiMode !== 'versus' || this.vsDefenderSlot === 1;
+        const northActive = this.multiMode === '2v2' || (this.multiMode === 'versus' && this.vsDefenderSlot === 2);
+        // 1) Bullet vs South Base (Base A - Team A / Player 1)
+        if (
+          southActive &&
+          this.baseState === BaseState.ALIVE &&
+          this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, this.baseX, this.baseY, 32, 32)
+        ) {
+          if (this.multiMode === 'versus') {
+            if (bullet.playerIndex === 1) {
+              // Friendly fire protection: Player 1 cannot destroy own base
+              soundManager.playHitSteel();
+              this.createExplosion(bullet.x, bullet.y, false);
+              bulletsToRemove.add(bullet.id);
+              continue;
+            } else {
+              // Player 2 destroys Player 1's South Base -> Player 2 wins round
+              this.destroyBase('A');
+              bulletsToRemove.add(bullet.id);
+              continue;
+            }
+          } else if (this.multiMode === '2v2') {
+            if (bullet.team === 'A') {
+              // Friendly fire protection: Team A cannot destroy own base
+              soundManager.playHitSteel();
+              this.createExplosion(bullet.x, bullet.y, false);
+              bulletsToRemove.add(bullet.id);
+              continue;
+            } else {
+              // Team B destroys Team A's South Base -> Team B wins round
+              this.destroyBase('A');
+              bulletsToRemove.add(bullet.id);
+              continue;
+            }
+          } else {
+            // Single Player & Co-op
+            this.destroyBase('A');
+            bulletsToRemove.add(bullet.id);
+            continue;
+          }
+        }
+
+        // 2) Bullet vs North Base (Base B - Team B / Player 2) in 1v1 and 2v2
+        if (
+          northActive &&
+          this.baseStateB === BaseState.ALIVE &&
+          this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, this.baseB_X, this.baseB_Y, 32, 32)
+        ) {
+          if (this.multiMode === 'versus') {
+            if (bullet.playerIndex === 2) {
+              // Friendly fire protection: Player 2 cannot destroy own base
+              soundManager.playHitSteel();
+              this.createExplosion(bullet.x, bullet.y, false);
+              bulletsToRemove.add(bullet.id);
+              continue;
+            } else {
+              // Player 1 destroys Player 2's North Base -> Player 1 wins round
+              this.destroyBase('B');
+              bulletsToRemove.add(bullet.id);
+              continue;
+            }
+          } else if (this.multiMode === '2v2') {
+            if (bullet.team === 'B') {
+              // Friendly fire protection: Team B cannot destroy own base
+              soundManager.playHitSteel();
+              this.createExplosion(bullet.x, bullet.y, false);
+              bulletsToRemove.add(bullet.id);
+              continue;
+            } else {
+              // Team A destroys Team B's North Base -> Team A wins round
+              this.destroyBase('B');
+              bulletsToRemove.add(bullet.id);
+              continue;
+            }
+          }
+        }
       }
 
       // D. Bullet vs Tiles (Sub-quadrant brick chipping)
@@ -2047,19 +2292,49 @@ export class GameEngine {
   }
 
   // --- Base Eagle Destroyed ---
-  private destroyBase() {
-    this.baseState = BaseState.DESTROYED;
-    soundManager.playBigExplosion();
-    this.createExplosion(this.baseX + 16, this.baseY + 16, true);
-    if (this.multiMode === '2v2') {
+  public destroyBase(baseId: 'A' | 'B' = 'A') {
+    if (baseId === 'A') {
+      if (this.baseState === BaseState.DESTROYED) return;
+      this.baseState = BaseState.DESTROYED;
+      const bA = this.bases.get('A');
+      if (bA) bA.state = BaseState.DESTROYED;
+      soundManager.playBigExplosion();
+      this.createExplosion(this.baseX + 16, this.baseY + 16, true);
+      if (this.multiMode === 'versus') {
+        setTimeout(() => {
+          this.endRound(2);
+        }, 1200);
+        return;
+      }
+      if (this.multiMode === '2v2') {
+        setTimeout(() => {
+          this.endRound2v2('B');
+        }, 1200);
+        return;
+      }
       setTimeout(() => {
-        this.endRound2v2('B');
+        this.handleGameOver();
       }, 1200);
-      return;
+    } else if (baseId === 'B') {
+      if (this.baseStateB === BaseState.DESTROYED) return;
+      this.baseStateB = BaseState.DESTROYED;
+      const bB = this.bases.get('B');
+      if (bB) bB.state = BaseState.DESTROYED;
+      soundManager.playBigExplosion();
+      this.createExplosion(this.baseB_X + 16, this.baseB_Y + 16, true);
+      if (this.multiMode === 'versus') {
+        setTimeout(() => {
+          this.endRound(1);
+        }, 1200);
+        return;
+      }
+      if (this.multiMode === '2v2') {
+        setTimeout(() => {
+          this.endRound2v2('A');
+        }, 1200);
+        return;
+      }
     }
-    setTimeout(() => {
-      this.handleGameOver();
-    }, 1200);
   }
 
   // --- Game Over ---
@@ -2110,25 +2385,29 @@ export class GameEngine {
       }
 
       // Check player collection
-      if (this.player && this.rectIntersect(this.player.x, this.player.y, 32, 32, pup.x, pup.y, 30, 30)) {
-        this.collectPowerUp(pup.type);
-        this.addScorePopup(pup.x + 15, pup.y + 15, 500);
-        this.scoreData.score += 500;
-        this.onStateChange(this.gameState, this.scoreData);
-        soundManager.playPowerUpCollect();
-        this.emitNetEvent({ t: 'pickup' });
-        this.powerUps.splice(i, 1);
+      for (const tank of this.playerTanks.values()) {
+        if (tank && this.rectIntersect(tank.x, tank.y, 32, 32, pup.x, pup.y, 30, 30)) {
+          this.collectPowerUp(pup.type, tank);
+          this.addScorePopup(pup.x + 15, pup.y + 15, 500);
+          this.scoreData.score += 500;
+          this.onStateChange(this.gameState, this.scoreData);
+          soundManager.playPowerUpCollect();
+          this.emitNetEvent({ t: 'pickup' });
+          this.powerUps.splice(i, 1);
+          break;
+        }
       }
     }
   }
 
-  private collectPowerUp(type: PowerUpType) {
-    if (!this.player) return;
+  private collectPowerUp(type: PowerUpType, collector?: Tank) {
+    const target = collector || this.player;
+    if (!target) return;
 
     if (type === 'STAR') {
-      this.player.tier = Math.min(3, this.player.tier + 1);
-      if (this.player.tier >= 1) this.player.bulletSpeed = 6.0;
-      if (this.player.tier >= 2) this.player.speed = this.playerBaseSpeed * 1.3;
+      target.tier = Math.min(3, target.tier + 1);
+      if (target.tier >= 1) target.bulletSpeed = 6.0;
+      if (target.tier >= 2) target.speed = this.playerBaseSpeed * 1.3;
     } else if (type === 'BOMB') {
       // Destroy all active enemy tanks
       for (const enemy of this.enemies) {
@@ -2144,21 +2423,35 @@ export class GameEngine {
       this.freezeEnemiesTimer = 600;
     } else if (type === 'SHOVEL') {
       // Turn base bunker walls into steel for 20 seconds (1200 frames)
-      this.applyShovelBunker();
+      const targetTeam = target.team === 'B' || target.playerIndex === 2 ? 'B' : 'A';
+      this.applyShovelBunker(targetTeam);
     } else if (type === 'HELMET') {
       // 15 seconds invulnerability
-      this.player.shieldTimer = 900;
+      target.shieldTimer = 900;
     } else if (type === 'LIFE') {
-      this.scoreData.playerLives++;
+      if (target.playerIndex === 2 && this.scoreData.player2Lives !== undefined) {
+        this.scoreData.player2Lives++;
+      } else {
+        this.scoreData.playerLives++;
+      }
     }
   }
 
-  private applyShovelBunker() {
+  private applyShovelBunker(team: 'A' | 'B' = 'A') {
     this.shovelTimer = 1200;
     this.shovelBunkerTiles = [];
 
-    // Base eagle surrounding coordinates:
-    const bunkerCoords = [
+    // Coordinates according to team's base:
+    const bunkerCoords = team === 'B' ? [
+      { r: 2, c: this.baseB_C - 1 },
+      { r: 2, c: this.baseB_C },
+      { r: 2, c: this.baseB_C + 1 },
+      { r: 2, c: this.baseB_C + 2 },
+      { r: 0, c: this.baseB_C - 1 },
+      { r: 0, c: this.baseB_C + 2 },
+      { r: 1, c: this.baseB_C - 1 },
+      { r: 1, c: this.baseB_C + 2 },
+    ] : [
       { r: this.baseR - 1, c: this.baseC - 1 },
       { r: this.baseR - 1, c: this.baseC },
       { r: this.baseR - 1, c: this.baseC + 1 },
@@ -2283,9 +2576,18 @@ export class GameEngine {
       }
     }
 
-    // 5. Render Base Eagle (co-op, single-player, and 2v2 only)
-    if (this.multiMode !== 'versus' && this.multiMode !== 'ffa') {
-      SpriteRenderer.renderBase(ctx, this.baseX, this.baseY, this.baseState);
+    // 5. Render Base Eagle(s) (All modes except FFA)
+    if (this.multiMode !== 'ffa') {
+      // South Base (Base A - Gold Phoenix for Team A / Player 1 / Classic)
+      // 1v1: rendered only on rounds where the south defender owns it
+      if (this.multiMode !== 'versus' || this.vsDefenderSlot === 1) {
+        SpriteRenderer.renderBase(ctx, this.baseX, this.baseY, this.baseState, 'gold');
+      }
+
+      // North Base (Base B - Crimson Phoenix for Team B / Player 2 in 1v1 and 2v2)
+      if (this.multiMode === '2v2' || (this.multiMode === 'versus' && this.vsDefenderSlot === 2)) {
+        SpriteRenderer.renderBase(ctx, this.baseB_X, this.baseB_Y, this.baseStateB, 'crimson');
+      }
     }
 
     // 6. Render Spawning Stars
@@ -2474,6 +2776,8 @@ export class GameEngine {
       })),
       scoreData: this.scoreData,
       baseState: this.baseState,
+      baseStateB: this.baseStateB,
+      bases: Array.from(this.bases.values()),
       gameState: this.gameState,
       gv: this.gridVersion,
       gs: this.gridSize,
@@ -2508,6 +2812,11 @@ export class GameEngine {
       }
       if (data.baseState !== undefined) {
         this.baseState = data.baseState;
+        if (this.bases.get('A')) this.bases.get('A')!.state = data.baseState;
+      }
+      if (data.baseStateB !== undefined) {
+        this.baseStateB = data.baseStateB;
+        if (this.bases.get('B')) this.bases.get('B')!.state = data.baseStateB;
       }
       if (data.gameState && data.gameState !== this.gameState) {
         this.gameState = data.gameState;
@@ -2605,6 +2914,11 @@ export class GameEngine {
     }
     if (data.baseState !== undefined) {
       this.baseState = data.baseState;
+      if (this.bases.get('A')) this.bases.get('A')!.state = data.baseState;
+    }
+    if (data.baseStateB !== undefined) {
+      this.baseStateB = data.baseStateB;
+      if (this.bases.get('B')) this.bases.get('B')!.state = data.baseStateB;
     }
     if (data.gameState && data.gameState !== this.gameState) {
       this.gameState = data.gameState;

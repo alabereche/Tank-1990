@@ -54,11 +54,18 @@ const Scoreline: React.FC<{ scoreData: GameScore; big?: boolean; is2v2?: boolean
   );
 };
 
-export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mode?: MultiplayerMode }> = ({ state, scoreData, mode }) => {
+export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mode?: MultiplayerMode; defenderSlot?: number; mySlot?: number }> = ({ state, scoreData, mode, defenderSlot, mySlot }) => {
   const isIntro = state === GameState.ROUND_INTRO;
   const is2v2 = mode === '2v2' || scoreData.teamWinsA !== undefined;
   const winner = scoreData.roundWinner ?? 0;
   const teamWinner = scoreData.teamWinner;
+  // 1v1 alternating eagle: personal objective for this round
+  const myRole =
+    mode === 'versus' && defenderSlot && mySlot
+      ? mySlot === defenderSlot
+        ? 'DEFEND'
+        : 'ATTACK'
+      : null;
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 font-pixel select-none">
@@ -70,6 +77,14 @@ export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mod
               ROUND {scoreData.roundNumber ?? 1}
             </div>
             <Scoreline scoreData={scoreData} is2v2={is2v2} />
+            {myRole && (
+              <div
+                className="flex items-center gap-2 text-xs tracking-widest"
+                style={{ color: myRole === 'DEFEND' ? '#58b8d8' : '#f87858' }}
+              >
+                {myRole === 'DEFEND' ? '🛡 DEFEND YOUR EAGLE' : '⚔ DESTROY THE ENEMY EAGLE'}
+              </div>
+            )}
             <div className="text-[9px] text-zinc-500 tracking-widest animate-pulse">
               {is2v2 ? '2V2 TEAM BATTLE — FIRST TO 5 WINS' : 'GET READY — FIRST TO 7 WINS'}
             </div>

@@ -89,6 +89,35 @@ export function createEmptyGrid(gridSize: number = 26): number[][] {
 }
 
 /**
+ * Adds the North Base Eagle and symmetrical protective brick bunker for dual-base modes (1v1, 2v2)
+ */
+export function addNorthBaseBunker(grid: number[][], gridSize: number): void {
+  const baseCol = Math.floor(gridSize / 2) - 1;
+
+  // Set North Eagle Base (2x2 sub-tiles at row 0, 1)
+  grid[0][baseCol] = TileType.BASE;
+  grid[0][baseCol + 1] = TileType.BASE;
+  grid[1][baseCol] = TileType.BASE;
+  grid[1][baseCol + 1] = TileType.BASE;
+
+  // Symmetrical brick bunker in front of North Base (row 2)
+  for (let c = baseCol - 1; c <= baseCol + 2; c++) {
+    if (c >= 0 && c < gridSize && 2 < gridSize) {
+      grid[2][c] = TileType.BRICK;
+    }
+  }
+  // Symmetrical brick bunker sides (row 0, 1)
+  if (baseCol - 1 >= 0) {
+    grid[0][baseCol - 1] = TileType.BRICK;
+    grid[1][baseCol - 1] = TileType.BRICK;
+  }
+  if (baseCol + 2 < gridSize) {
+    grid[0][baseCol + 2] = TileType.BRICK;
+    grid[1][baseCol + 2] = TileType.BRICK;
+  }
+}
+
+/**
  * NES Battle City Stage 1 Original Map Layout (with dynamic scaling for larger arenas)
  */
 export function createStage1(gridSize: number = 26): number[][] {
@@ -525,22 +554,25 @@ export function getStageMapForPresetAndStage(
     };
   }
   const stageMod = ((stage - 1) % 3) + 1;
+  let grid: number[][];
+  let name: string;
+
   if (stageMod === 1) {
-    return {
-      name: `Stage ${stage} (${MAP_SIZE_CONFIGS[preset]?.name || 'Default'})`,
-      grid: createStage1(gridSize),
-    };
+    name = `Stage ${stage} (${MAP_SIZE_CONFIGS[preset]?.name || 'Default'})`;
+    grid = createStage1(gridSize);
   } else if (stageMod === 2) {
-    return {
-      name: `Stage ${stage} - Iron Fortress (${MAP_SIZE_CONFIGS[preset]?.name || 'Large'})`,
-      grid: createIronFortress(gridSize),
-    };
+    name = `Stage ${stage} - Iron Fortress (${MAP_SIZE_CONFIGS[preset]?.name || 'Large'})`;
+    grid = createIronFortress(gridSize);
   } else {
-    return {
-      name: `Stage ${stage} - River Crossing (${MAP_SIZE_CONFIGS[preset]?.name || 'Giant'})`,
-      grid: createRiverCrossing(gridSize),
-    };
+    name = `Stage ${stage} - River Crossing (${MAP_SIZE_CONFIGS[preset]?.name || 'Giant'})`;
+    grid = createRiverCrossing(gridSize);
   }
+
+  if (mode === 'versus' || mode === '2v2') {
+    addNorthBaseBunker(grid, gridSize);
+  }
+
+  return { name, grid };
 }
 
 /**

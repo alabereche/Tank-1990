@@ -25,6 +25,8 @@ export interface NetSnapshot {
   powerUps: NetEntity[];
   scoreData?: unknown;
   baseState?: unknown;
+  baseStateB?: unknown;
+  bases?: unknown[];
   gameState?: unknown;
   gv?: number;
   grid?: number[];

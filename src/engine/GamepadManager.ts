@@ -105,8 +105,10 @@ class GamepadManager {
    */
   public getConnectedPads(): Gamepad[] {
     if (typeof navigator === 'undefined' || !navigator.getGamepads) return [];
+    const raw = navigator.getGamepads ? navigator.getGamepads() : [];
     const out: Gamepad[] = [];
-    for (const gp of navigator.getGamepads()) {
+    for (let i = 0; i < raw.length; i++) {
+      const gp = raw[i];
       if (gp && gp.connected) out.push(gp);
     }
     return out;
@@ -135,18 +137,7 @@ class GamepadManager {
   }
 
   private readPad(pad: Gamepad): { input: Partial<InputState>; selectPressed: boolean } {
-    // Standard Mapping:
     // Axes: 0 = Left/Right, 1 = Up/Down
-    // Buttons:
-    // 0: A / Cross (Fire)
-    // 1: B / Circle
-    // 8: Select / Share / Back
-    // 9: Start / Options
-    // 12: D-pad Up
-    // 13: D-pad Down
-    // 14: D-pad Left
-    // 15: D-pad Right
-
     const axisX = pad.axes[0] || 0;
     const axisY = pad.axes[1] || 0;
     const deadzone = 0.35;
@@ -161,11 +152,15 @@ class GamepadManager {
     const left = dpadLeft || axisX < -deadzone;
     const right = dpadRight || axisX > deadzone;
 
-    // Buttons: 0 (A/Cross), 1 (B/Circle), 2 (X/Square), 7 (R2 trigger)
+    // Fire: Buttons 0 (A/Cross), 1 (B/Circle), 2 (X/Square), 3 (Y/Triangle), 4 (L1), 5 (R1), 6 (L2), 7 (R2)
     const fire = Boolean(
       pad.buttons[0]?.pressed ||
       pad.buttons[1]?.pressed ||
       pad.buttons[2]?.pressed ||
+      pad.buttons[3]?.pressed ||
+      pad.buttons[4]?.pressed ||
+      pad.buttons[5]?.pressed ||
+      pad.buttons[6]?.pressed ||
       pad.buttons[7]?.pressed
     );
 
