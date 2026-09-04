@@ -1,13 +1,13 @@
 /**
- * Battle City 1990 - Authentic NES Title Screen
- * Displays high score, iconic logo, interactive tank cursor,
- * and game mode selector.
+ * Battle City 1990 - Authentic NES Arcade Title Screen
+ * Pure retro arcade aesthetic with perfectly centered layout, bold pixel typography,
+ * interactive tank cursor, and seamless NES-style menu navigation.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { soundManager } from '../engine/SoundManager';
-import { Gamepad2, Trophy, HelpCircle, Settings, Maximize2, Minimize2 } from 'lucide-react';
-import { toggleFullscreen, isFullscreen, onFullscreenChange } from '../utils/fullscreen';
+import { gamepadManager } from '../engine/GamepadManager';
+import { toggleFullscreen, onFullscreenChange } from '../utils/fullscreen';
 
 interface TitleScreenProps {
   highScore: number;
@@ -18,6 +18,7 @@ interface TitleScreenProps {
   onOpenConstruction: () => void;
   onOpenSettings: () => void;
   inCabinet?: boolean;
+  disabled?: boolean;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -29,12 +30,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenConstruction,
   onOpenSettings,
   inCabinet = false,
+  disabled = false,
 }) => {
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showLocal2PModal, setShowLocal2PModal] = useState<boolean>(false);
   const [local2PMode, setLocal2PMode] = useState<'coop' | 'versus'>('coop');
-  const [fullscreenActive, setFullscreenActive] = useState<boolean>(isFullscreen());
+  const [fullscreenActive, setFullscreenActive] = useState<boolean>(false);
 
   useEffect(() => {
     const unsub = onFullscreenChange((active) => {
@@ -43,98 +45,388 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     return unsub;
   }, []);
 
+  const handleToggleFullscreen = () => {
+    soundManager.unlockAudio();
+    soundManager.playPowerUpCollect();
+    toggleFullscreen();
+  };
+
   const menuOptions = [
     { label: '1 PLAYER', action: onStart1Player },
     { label: '2 PLAYERS (LOCAL)', action: () => setShowLocal2PModal(true) },
     { label: 'ONLINE MULTIPLAYER', action: onOpenMultiplayer },
     { label: 'CONSTRUCTION', action: onOpenConstruction },
     { label: 'SETTINGS', action: onOpenSettings },
+    { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
+    { label: 'FULLSCREEN', action: handleToggleFullscreen },
   ];
 
+  // Stable references so polling and keyboard loops never re-create and never reset their state
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
+
+  const selectedIdxRef = useRef(selectedIdx);
+  selectedIdxRef.current = selectedIdx;
+
+  const showHelpModalRef = useRef(showHelpModal);
+  showHelpModalRef.current = showHelpModal;
+
+  const showLocal2PModalRef = useRef(showLocal2PModal);
+  showLocal2PModalRef.current = showLocal2PModal;
+
+  const local2PModeRef = useRef(local2PMode);
+  local2PModeRef.current = local2PMode;
+
+  const menuOptionsRef = useRef(menuOptions);
+  menuOptionsRef.current = menuOptions;
+
+  const onStartLocal2PlayerRef = useRef(onStartLocal2Player);
+  onStartLocal2PlayerRef.current = onStartLocal2Player;
+
+  // Keyboard navigation
   useEffect(() => {
+    const mountTime = Date.now();
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Absorb initial key presses from previous screen upon mount
+      if (Date.now() - mountTime < 350) return;
+      if (disabledRef.current) return;
       soundManager.unlockAudio();
-      if (e.key === 'ArrowUp' || e.key === 'w') {
-        setSelectedIdx((prev) => (prev > 0 ? prev - 1 : menuOptions.length - 1));
-        soundManager.playHitSteel();
-      } else if (e.key === 'ArrowDown' || e.key === 's') {
-        setSelectedIdx((prev) => (prev < menuOptions.length - 1 ? prev + 1 : 0));
-        soundManager.playHitSteel();
+
+      if (showLocal2PModalRef.current) {
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowRight' || e.key === 'd') {
+          setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : 'coop'));
+          soundManager.playMenuMove();
+        } else if (e.key === 'Enter' || e.key === ' ') {
+          setShowLocal2PModal(false);
+          onStartLocal2PlayerRef.current(local2PModeRef.current);
+        } else if (e.key === 'Escape') {
+          setShowLocal2PModal(false);
+          soundManager.playMenuMove();
+        }
+        return;
+      }
+
+      if (showHelpModalRef.current) {
+        const el = document.getElementById('field-manual-scroll-area');
+        if (e.key === 'ArrowUp' || e.key === 'w') {
+          if (el) el.scrollTop -= 70;
+        } else if (e.key === 'ArrowDown' || e.key === 's') {
+          if (el) el.scrollTop += 70;
+        } else if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape' || e.key.toLowerCase() === 'h') {
+          setShowHelpModal(false);
+          soundManager.playMenuMove();
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        setSelectedIdx((prev) => (prev > 0 ? prev - 1 : menuOptionsRef.current.length - 1));
+        soundManager.playMenuMove();
+      } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        setSelectedIdx((prev) => (prev < menuOptionsRef.current.length - 1 ? prev + 1 : 0));
+        soundManager.playMenuMove();
       } else if (e.key === 'Enter' || e.key === ' ') {
-        soundManager.playPowerUpCollect();
-        menuOptions[selectedIdx].action();
+        soundManager.playMenuSelect();
+        menuOptionsRef.current[selectedIdxRef.current]?.action();
       } else if (e.key.toLowerCase() === 'f') {
-        toggleFullscreen();
+        handleToggleFullscreen();
+      } else if (e.key.toLowerCase() === 'h') {
+        setShowHelpModal((prev) => !prev);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIdx, menuOptions]);
+  }, []);
 
-  const handleToggleFullscreen = async () => {
-    soundManager.unlockAudio();
-    soundManager.playHitSteel();
-    await toggleFullscreen();
-  };
+  // Controller / Gamepad Navigation Loop (D-pad, Left Stick, A/B/Start/Select)
+  // Uses empty dependency array [] so the loop and edge-trigger states are NEVER destroyed on state change
+  useEffect(() => {
+    let animId: number;
+    let prevUp = false;
+    let prevDown = false;
+    let prevLeft = false;
+    let prevRight = false;
+    let holdTimer = 0;
+    let heldDirection: 'up' | 'down' | 'left' | 'right' | null = null;
+    let prevConfirm = false;
+    let prevCancel = false;
+    let prevSelect = false;
+    let enableCooldownUntil = 0;
+    let initialized = false;
+    let mountCooldownUntil = 0;
+
+    const INITIAL_HOLD_DELAY = 450; // ms before repeat starts when holding
+    const REPEAT_RATE = 250;        // ms between repeats when held
+
+    const poll = (time: number) => {
+      // Absorb initial button holds from previous screen upon mount
+      if (!initialized) {
+        initialized = true;
+        mountCooldownUntil = time + 350;
+        const pad = gamepadManager.pollMenuInput();
+        if (pad) {
+          prevUp = pad.up;
+          prevDown = pad.down;
+          prevLeft = pad.left;
+          prevRight = pad.right;
+          prevConfirm = pad.confirm || pad.start;
+          prevCancel = pad.cancel;
+          prevSelect = pad.select;
+        }
+        animId = requestAnimationFrame(poll);
+        return;
+      }
+
+      if (time < mountCooldownUntil) {
+        const pad = gamepadManager.pollMenuInput();
+        if (pad) {
+          prevUp = pad.up;
+          prevDown = pad.down;
+          prevLeft = pad.left;
+          prevRight = pad.right;
+          prevConfirm = pad.confirm || pad.start;
+          prevCancel = pad.cancel;
+          prevSelect = pad.select;
+        }
+        animId = requestAnimationFrame(poll);
+        return;
+      }
+
+      // IF DISABLED (e.g. SettingsModal is open on top), COMPLETELY SUSPEND TITLESCREEN GAMEPAD INPUT
+      // While disabled, keep updating edge states so returning to this screen never triggers held buttons
+      if (disabledRef.current) {
+        const pad = gamepadManager.pollMenuInput();
+        if (pad) {
+          prevUp = pad.up;
+          prevDown = pad.down;
+          prevLeft = pad.left;
+          prevRight = pad.right;
+          prevConfirm = pad.confirm || pad.start;
+          prevCancel = pad.cancel;
+          prevSelect = pad.select;
+        } else {
+          prevUp = false;
+          prevDown = false;
+          prevLeft = false;
+          prevRight = false;
+          prevConfirm = false;
+          prevCancel = false;
+          prevSelect = false;
+        }
+        heldDirection = null;
+        holdTimer = 0;
+        enableCooldownUntil = time + 250;
+        animId = requestAnimationFrame(poll);
+        return;
+      }
+
+      // Re-enable grace period: absorb any buttons being released after closing modal
+      if (time < enableCooldownUntil) {
+        const pad = gamepadManager.pollMenuInput();
+        if (pad) {
+          prevUp = pad.up;
+          prevDown = pad.down;
+          prevLeft = pad.left;
+          prevRight = pad.right;
+          prevConfirm = pad.confirm || pad.start;
+          prevCancel = pad.cancel;
+          prevSelect = pad.select;
+        }
+        heldDirection = null;
+        animId = requestAnimationFrame(poll);
+        return;
+      }
+
+      const pad = gamepadManager.pollMenuInput();
+      if (pad) {
+        if (pad.anyButton) {
+          soundManager.unlockAudio();
+        }
+
+        const isUp = pad.up;
+        const isDown = pad.down;
+        const isLeft = pad.left;
+        const isRight = pad.right;
+
+        // --- Handle Vertical Navigation (Up / Down) ---
+        if (isUp && !prevUp) {
+          // Fresh press: move once immediately
+          heldDirection = 'up';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          if (showHelpModalRef.current) {
+            const el = document.getElementById('field-manual-scroll-area');
+            if (el) el.scrollTop -= 70;
+          } else if (!showLocal2PModalRef.current) {
+            setSelectedIdx((prev) => (prev > 0 ? prev - 1 : menuOptionsRef.current.length - 1));
+            soundManager.playMenuMove();
+          }
+        } else if (isDown && !prevDown) {
+          // Fresh press: move once immediately
+          heldDirection = 'down';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          if (showHelpModalRef.current) {
+            const el = document.getElementById('field-manual-scroll-area');
+            if (el) el.scrollTop += 70;
+          } else if (!showLocal2PModalRef.current) {
+            setSelectedIdx((prev) => (prev < menuOptionsRef.current.length - 1 ? prev + 1 : 0));
+            soundManager.playMenuMove();
+          }
+        } else if (heldDirection === 'up' && isUp) {
+          // Holding Up
+          if (time >= holdTimer) {
+            holdTimer = time + REPEAT_RATE;
+            if (showHelpModalRef.current) {
+              const el = document.getElementById('field-manual-scroll-area');
+              if (el) el.scrollTop -= 70;
+            } else if (!showLocal2PModalRef.current) {
+              setSelectedIdx((prev) => (prev > 0 ? prev - 1 : menuOptionsRef.current.length - 1));
+              soundManager.playMenuMove();
+            }
+          }
+        } else if (heldDirection === 'down' && isDown) {
+          // Holding Down
+          if (time >= holdTimer) {
+            holdTimer = time + REPEAT_RATE;
+            if (showHelpModalRef.current) {
+              const el = document.getElementById('field-manual-scroll-area');
+              if (el) el.scrollTop -= 70;
+            } else if (!showLocal2PModalRef.current) {
+              setSelectedIdx((prev) => (prev < menuOptionsRef.current.length - 1 ? prev + 1 : 0));
+              soundManager.playMenuMove();
+            }
+          }
+        } else if (!isUp && !isDown) {
+          if (heldDirection === 'up' || heldDirection === 'down') {
+            heldDirection = null;
+            holdTimer = 0;
+          }
+        }
+
+        // --- Handle Horizontal Navigation (Left / Right for Local 2P Modal) ---
+        if (showLocal2PModalRef.current) {
+          const freshHorizontal = (isLeft && !prevLeft) || (isRight && !prevRight) || (isUp && !prevUp) || (isDown && !prevDown);
+          if (freshHorizontal) {
+            setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : 'coop'));
+            soundManager.playMenuMove();
+          }
+        }
+
+        prevUp = isUp;
+        prevDown = isDown;
+        prevLeft = isLeft;
+        prevRight = isRight;
+
+        // Confirm Button: A (Button 0) or Start (Button 9) or X (Button 2) - Pure Edge Trigger
+        const confirmPressed = pad.confirm || pad.start;
+        const confirmTrigger = confirmPressed && !prevConfirm;
+        prevConfirm = confirmPressed;
+
+        if (confirmTrigger) {
+          soundManager.unlockAudio();
+          if (showLocal2PModalRef.current) {
+            setShowLocal2PModal(false);
+            onStartLocal2PlayerRef.current(local2PModeRef.current);
+          } else if (showHelpModalRef.current) {
+            setShowHelpModal(false);
+            soundManager.playMenuMove();
+          } else {
+            soundManager.playMenuSelect();
+            menuOptionsRef.current[selectedIdxRef.current]?.action();
+          }
+        }
+
+        // Cancel Button: B (Button 1) - Pure Edge Trigger
+        const cancelPressed = pad.cancel;
+        const cancelTrigger = cancelPressed && !prevCancel;
+        prevCancel = cancelPressed;
+
+        if (cancelTrigger) {
+          soundManager.unlockAudio();
+          if (showLocal2PModalRef.current) {
+            setShowLocal2PModal(false);
+            soundManager.playMenuMove();
+          } else if (showHelpModalRef.current) {
+            setShowHelpModal(false);
+            soundManager.playMenuMove();
+          }
+        }
+
+        // Select Button: Select (Button 8) cycles options like classic NES Battle City
+        const selectPressed = pad.select;
+        const selectTrigger = selectPressed && !prevSelect;
+        prevSelect = selectPressed;
+
+        if (selectTrigger) {
+          soundManager.unlockAudio();
+          if (showLocal2PModalRef.current) {
+            setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : 'coop'));
+            soundManager.playMenuMove();
+          } else if (!showHelpModalRef.current && !showLocal2PModalRef.current) {
+            setSelectedIdx((prev) => (prev < menuOptionsRef.current.length - 1 ? prev + 1 : 0));
+            soundManager.playMenuMove();
+          }
+        }
+      } else {
+        prevUp = false;
+        prevDown = false;
+        prevLeft = false;
+        prevRight = false;
+        heldDirection = null;
+        prevConfirm = false;
+        prevCancel = false;
+        prevSelect = false;
+      }
+
+      animId = requestAnimationFrame(poll);
+    };
+
+    animId = requestAnimationFrame(poll);
+    return () => cancelAnimationFrame(animId);
+  }, []); // <-- EMPTY DEPENDENCY ARRAY: Loop lives for the entire TitleScreen lifespan!
 
   return (
     <div
       id="title-screen-container"
-      className={
-        inCabinet
-          ? "flex flex-col items-center justify-between w-full h-full p-2 sm:p-3.5 text-white font-pixel select-none relative overflow-hidden"
-          : "flex flex-col items-center justify-between w-full max-w-lg mx-auto min-h-[540px] bg-black border-4 border-[#484848] p-6 text-white font-pixel select-none shadow-2xl relative"
-      }
+      className="flex flex-col items-center justify-between w-full h-full text-white font-pixel select-none relative overflow-hidden py-2 sm:py-3.5 px-3"
     >
-      {/* High Score & Fullscreen Header */}
-      <div className={`w-full flex items-center justify-between tracking-wider ${inCabinet ? 'text-[10px] sm:text-xs pb-1' : 'text-xs sm:text-sm pb-4 border-b border-zinc-800'}`}>
-        <div className="flex items-center gap-1.5 sm:gap-2">
+      {/* High Score Header (Authentic Arcade HUD) */}
+      <div className="w-full flex items-center justify-between px-2 sm:px-6 text-xs sm:text-sm tracking-widest border-b border-zinc-800/80 pb-1.5">
+        <div className="flex items-center gap-2">
           <span className="text-red-500 font-bold drop-shadow">I-</span>
           <span className="text-white tracking-widest drop-shadow">00</span>
         </div>
-        <div className="flex items-center gap-1.5 text-[#f8b800] drop-shadow">
-          <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
-          <span>HI- {highScore.toString().padStart(5, '0')}</span>
+        <div className="flex items-center gap-2 text-[#f8b800] drop-shadow">
+          <span className="text-amber-400">HI-</span>
+          <span>{highScore.toString().padStart(5, '0')}</span>
         </div>
-        <button
-          id="btn-title-fullscreen"
-          onClick={handleToggleFullscreen}
-          className="p-1 sm:p-1.5 bg-zinc-900/60 border border-zinc-700/60 hover:border-amber-400/80 rounded text-zinc-300 hover:text-white transition-colors flex items-center gap-1 text-[8px] sm:text-[9px]"
-          title="Toggle Fullscreen (F)"
-        >
-          {fullscreenActive ? (
-            <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
-          ) : (
-            <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
-          )}
-        </button>
       </div>
 
-      {/* Retro Pixel Logo Banner */}
-      <div className={`flex flex-col items-center ${inCabinet ? 'my-1 sm:my-2' : 'my-4'}`}>
-        <div className="relative text-center">
-          <h1 className={`font-extrabold tracking-widest text-red-600 select-none ${inCabinet ? 'text-2xl sm:text-3xl md:text-4xl drop-shadow-[0_4px_0_#400000]' : 'text-4xl sm:text-5xl drop-shadow-[0_6px_0_#400000]'}`}>
+      {/* Main Center Stage: Logo, Pixel Tanks, and Navigation Menu */}
+      <div className="flex-1 w-full flex flex-col items-center justify-center gap-2 sm:gap-4 my-auto">
+        {/* Retro Pixel Logo Banner */}
+        <div className="flex flex-col items-center text-center">
+          <h1 className="font-extrabold tracking-widest text-[#e52521] select-none text-4xl sm:text-5xl md:text-6xl drop-shadow-[0_4px_0_#500000]">
             BATTLE
           </h1>
-          <h2 className={`font-extrabold tracking-wider text-[#f8b800] mt-0.5 select-none ${inCabinet ? 'text-xl sm:text-2xl md:text-3xl drop-shadow-[0_3px_0_#704000]' : 'text-3xl sm:text-4xl drop-shadow-[0_5px_0_#704000]'}`}>
+          <h2 className="font-extrabold tracking-wider text-[#f8b800] select-none text-3xl sm:text-4xl md:text-5xl mt-0.5 drop-shadow-[0_4px_0_#704000]">
             CITY 1990
           </h2>
-          <div className="text-[8px] sm:text-[9px] text-zinc-400 tracking-widest mt-1 uppercase drop-shadow">
-            NES 8-Bit Tank Combat
+          <div className="text-[10px] sm:text-xs text-zinc-400 tracking-widest uppercase mt-1 drop-shadow">
+            NES 8-BIT TANK COMBAT
           </div>
           {mapSizeLabel && (
-            <div className="inline-block mt-1.5 px-2 py-0.5 bg-zinc-900/70 border border-amber-500/40 rounded-full text-[8px] text-amber-300 font-sans shadow-sm">
-              MAP: {mapSizeLabel}
+            <div className="inline-block mt-1 px-2.5 py-0.5 bg-black/70 border border-amber-500/40 rounded text-[9px] sm:text-[10px] text-amber-300 font-sans tracking-wide shadow-sm">
+              ARENA: {mapSizeLabel}
             </div>
           )}
         </div>
 
-        {/* Decorative Pixel Tanks */}
-        <div className={`flex items-center justify-center gap-4 ${inCabinet ? 'mt-2 sm:mt-2.5' : 'mt-5'}`}>
-          {/* Player Tank Sprite */}
-          <div className="w-6 h-6 sm:w-7 sm:h-7 relative">
-            <svg viewBox="0 0 16 16" className="w-full h-full fill-[#f8b800] drop-shadow-[0_2px_4px_rgba(248,184,0,0.5)]">
+        {/* Decorative Pixel Tanks Duel */}
+        <div className="flex items-center justify-center gap-4 sm:gap-6 my-0.5">
+          {/* Player Gold Tank */}
+          <div className="w-7 h-7 sm:w-8 sm:h-8 relative">
+            <svg viewBox="0 0 16 16" className="w-full h-full fill-[#f8b800] drop-shadow-[0_2px_6px_rgba(248,184,0,0.6)]">
               <rect x="1" y="2" width="3" height="12" />
               <rect x="12" y="2" width="3" height="12" />
               <rect x="4" y="4" width="8" height="8" />
@@ -143,11 +435,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </svg>
           </div>
 
-          <span className="text-[10px] text-zinc-500 font-bold drop-shadow">VS</span>
+          <span className="text-xs sm:text-sm text-zinc-500 font-bold drop-shadow">VS</span>
 
-          {/* Enemy Tank Sprite */}
-          <div className="w-6 h-6 sm:w-7 sm:h-7 relative">
-            <svg viewBox="0 0 16 16" className="w-full h-full fill-[#58b8d8] drop-shadow-[0_2px_4px_rgba(88,184,216,0.5)]">
+          {/* Enemy Cyan Tank */}
+          <div className="w-7 h-7 sm:w-8 sm:h-8 relative">
+            <svg viewBox="0 0 16 16" className="w-full h-full fill-[#58b8d8] drop-shadow-[0_2px_6px_rgba(88,184,216,0.6)]">
               <rect x="1" y="2" width="3" height="12" />
               <rect x="12" y="2" width="3" height="12" />
               <rect x="4" y="4" width="8" height="8" />
@@ -156,220 +448,213 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </svg>
           </div>
         </div>
+
+        {/* Menu Options with Animated Tank Cursor (Centered on Screen) */}
+        <div className="flex flex-col w-full max-w-[340px] sm:max-w-[400px] gap-1.5 sm:gap-2 my-1">
+          {menuOptions.map((opt, idx) => {
+            const isSelected = selectedIdx === idx;
+            return (
+              <button
+                key={opt.label}
+                id={`menu-option-${idx}`}
+                onClick={() => {
+                  soundManager.unlockAudio();
+                  setSelectedIdx(idx);
+                  soundManager.playMenuSelect();
+                  opt.action();
+                }}
+                onMouseEnter={() => {
+                  setSelectedIdx(idx);
+                  soundManager.playMenuMove();
+                }}
+                className="flex items-center gap-3 py-0.5 sm:py-1 px-2 text-left transition-colors group cursor-pointer"
+              >
+                {/* Tank Cursor */}
+                <div className="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center shrink-0">
+                  {isSelected ? (
+                    <svg viewBox="0 0 16 16" className="w-4 h-4 sm:w-5 sm:h-5 fill-[#f8b800] animate-pulse drop-shadow-[0_0_8px_rgba(248,184,0,0.9)]">
+                      <rect x="2" y="1" width="12" height="3" />
+                      <rect x="2" y="12" width="12" height="3" />
+                      <rect x="4" y="4" width="8" height="8" />
+                      <rect x="11" y="7" width="5" height="2" />
+                    </svg>
+                  ) : (
+                    <div className="w-2 h-2 bg-transparent" />
+                  )}
+                </div>
+
+                <span
+                  className={`text-xs sm:text-sm md:text-base tracking-wider font-bold whitespace-nowrap transition-all ${
+                    isSelected
+                      ? 'text-[#f8b800] underline decoration-2 drop-shadow-[0_0_10px_rgba(248,184,0,0.6)] translate-x-1'
+                      : 'text-zinc-200 group-hover:text-white drop-shadow'
+                  }`}
+                >
+                  {opt.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Menu Options with Tank Cursor */}
-      <div className={`flex flex-col w-60 sm:w-68 max-w-full text-[10px] sm:text-xs tracking-wider ${inCabinet ? 'gap-1.5 sm:gap-2 my-1' : 'gap-3 my-3'}`}>
-        {menuOptions.map((opt, idx) => {
-          const isSelected = selectedIdx === idx;
-          return (
-            <button
-              key={opt.label}
-              id={`menu-option-${idx}`}
-              onClick={() => {
-                soundManager.unlockAudio();
-                setSelectedIdx(idx);
-                soundManager.playPowerUpCollect();
-                opt.action();
-              }}
-              onMouseEnter={() => {
-                setSelectedIdx(idx);
-                soundManager.playHitSteel();
-              }}
-              className="flex items-center gap-2 sm:gap-2.5 py-1 px-1.5 text-left hover:text-amber-300 transition-colors group"
-            >
-              {/* Tank Cursor */}
-              <div className="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center shrink-0">
-                {isSelected ? (
-                  <svg viewBox="0 0 16 16" className="w-4 h-4 sm:w-5 sm:h-5 fill-[#f8b800] animate-pulse drop-shadow-[0_0_6px_rgba(248,184,0,0.8)]">
-                    <rect x="2" y="1" width="12" height="3" />
-                    <rect x="2" y="12" width="12" height="3" />
-                    <rect x="4" y="4" width="8" height="8" />
-                    <rect x="11" y="7" width="5" height="2" />
-                  </svg>
-                ) : (
-                  <div className="w-1.5 h-1.5 bg-transparent" />
-                )}
-              </div>
-
-              <span className={isSelected ? 'text-[#f8b800] underline decoration-2 drop-shadow-[0_0_8px_rgba(248,184,0,0.5)]' : 'text-white drop-shadow'}>
-                {opt.label}
-              </span>
-            </button>
-          );
-        })}
+      {/* Arcade Coin-Op Footer Prompt & Copyright */}
+      <div className="w-full flex flex-col items-center gap-1.5 text-center pt-2 border-t border-zinc-800/80">
+        <div className="text-[8px] sm:text-[10px] text-zinc-400 tracking-wider flex items-center justify-center flex-wrap gap-x-2 gap-y-1">
+          <span>[W/S • D-PAD] SELECT</span>
+          <span>•</span>
+          <span>[ENTER / SPACE • A / START] CONFIRM</span>
+          <span>•</span>
+          <span>[SELECT] CYCLE</span>
+          <span>•</span>
+          <span>[F] FULLSCREEN</span>
+        </div>
+        <div className="text-[8px] sm:text-[9px] text-zinc-500 tracking-widest">
+          © 1990 NAMCO LTD. / ENHANCED EDITION
+        </div>
       </div>
 
-      {/* Controls & Settings Quick Buttons */}
-      <div className={`flex items-center gap-2 ${inCabinet ? 'mt-1' : 'mt-3'}`}>
-        <button
-          id="btn-how-to-play"
-          onClick={() => setShowHelpModal(true)}
-          className="flex items-center gap-1 text-[8px] sm:text-[9px] text-zinc-300 hover:text-white bg-zinc-900/70 border border-zinc-700/60 hover:border-amber-400 px-2 sm:px-2.5 py-1 rounded transition-all"
-        >
-          <HelpCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
-          <span>GUIDE</span>
-        </button>
-        <button
-          id="btn-title-settings"
-          onClick={onOpenSettings}
-          className="flex items-center gap-1 text-[8px] sm:text-[9px] text-zinc-300 hover:text-amber-400 bg-zinc-900/70 border border-zinc-700/60 hover:border-amber-400 px-2 sm:px-2.5 py-1 rounded transition-all"
-        >
-          <Settings className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
-          <span>SETTINGS</span>
-        </button>
-        <button
-          id="btn-title-fullscreen-bot"
-          onClick={handleToggleFullscreen}
-          className="flex items-center gap-1 text-[8px] sm:text-[9px] text-zinc-300 hover:text-emerald-400 bg-zinc-900/70 border border-zinc-700/60 hover:border-emerald-400 px-2 sm:px-2.5 py-1 rounded transition-all"
-        >
-          {fullscreenActive ? (
-            <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
-          ) : (
-            <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
-          )}
-          <span>{fullscreenActive ? 'WIN' : 'FULL'}</span>
-        </button>
-      </div>
-
-      {/* Footer Copyright */}
-      <div className={`text-[7px] sm:text-[8px] text-zinc-400 tracking-wider text-center w-full ${inCabinet ? 'pt-1' : 'pt-4 border-t border-zinc-900'}`}>
-        (C) 1980 1985 NAMCO LTD. / 1990 RETRO EDITION
-      </div>
-
-      {/* Controls & Rules Modal */}
+      {/* Field Manual (Help Modal) - Authentic Pixel Theme */}
       {showHelpModal && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-sm font-pixel text-xs">
-          <div className="bg-[#242424] border-4 border-[#555] p-5 max-w-md w-full rounded shadow-2xl flex flex-col gap-4 text-zinc-200">
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setShowHelpModal(false)}
+        >
+          <div
+            className="bg-[#141414] border-4 border-[#444] rounded max-w-lg w-full p-5 space-y-4 font-sans text-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-zinc-700 pb-2">
-              <span className="text-amber-400 font-bold text-sm">MISSION BRIEFING</span>
+              <span className="font-pixel text-[#f8b800] text-sm tracking-wider">FIELD MANUAL</span>
               <button
                 onClick={() => setShowHelpModal(false)}
-                className="text-zinc-400 hover:text-white"
+                className="font-pixel text-zinc-400 hover:text-red-400 text-sm px-2 py-1 border border-zinc-700 hover:border-red-500"
               >
-                ✕
+                [X]
               </button>
             </div>
 
-            <div className="flex flex-col gap-3 text-[9px] leading-relaxed">
+            <div id="field-manual-scroll-area" className="space-y-3 text-zinc-300 text-xs leading-relaxed max-h-[60vh] overflow-y-auto pr-2">
               <div>
-                <span className="text-yellow-400 font-bold">OBJECTIVE:</span> Defend the Eagle Base at the bottom center and destroy all 20 enemy tanks. If your base is hit or you run out of lives, Game Over!
+                <strong className="text-white font-pixel text-xs">MISSION OBJECTIVE:</strong>
+                <p className="mt-1 text-zinc-300">
+                  Destroy all 20 enemy tanks and defend the Phoenix Eagle Base at the bottom of the map. If your base is destroyed, the mission fails immediately!
+                </p>
               </div>
 
               <div>
-                <span className="text-yellow-400 font-bold">KEYBOARD:</span>
-                <ul className="list-disc pl-4 mt-1 space-y-0.5 text-zinc-300">
-                  <li>Move: WASD or Arrow Keys</li>
-                  <li>Fire: Spacebar or J / Z</li>
-                  <li>Pause: Enter or P</li>
-                  <li>Mute SFX: M</li>
+                <strong className="text-amber-400 font-pixel text-xs">10 HANDCRAFTED TACTICAL STAGES:</strong>
+                <ul className="list-disc pl-5 mt-1.5 space-y-1 text-zinc-300 text-[11px]">
+                  <li><strong>Stage 1:</strong> Classic Citadel - NES homage with high-speed flank ice avenues</li>
+                  <li><strong>Stage 2:</strong> Iron Fortress - Impenetrable central steel cross & water moats</li>
+                  <li><strong>Stage 3:</strong> Twin Rivers - Double river crossing with slippery central ice bridge</li>
+                  <li><strong>Stage 4:</strong> Amazon Rainforest - Over 40% jungle canopy ambush cover & temple</li>
+                  <li><strong>Stage 5:</strong> Glacial Archipelago - Polar drift ice sheets & 4 fortified island bases</li>
+                  <li><strong>Stage 6:</strong> The Great Labyrinth - 90° maze corridors & breakable shortcut walls</li>
+                  <li><strong>Stage 7:</strong> Muddy Badlands - Three deep quagmire canyons (42% speed) & ridges</li>
+                  <li><strong>Stage 8:</strong> Urban Gridlock - City street avenues, 3x3 blocks & central fountain</li>
+                  <li><strong>Stage 9:</strong> Bunker Complex - Underground diamond bastion & 4 steel pillboxes</li>
+                  <li><strong>Stage 10:</strong> Death Valley Crater - Volcanic caldera, ash swamps & central Steel Throne</li>
                 </ul>
               </div>
 
               <div>
-                <span className="text-yellow-400 font-bold">GAMEPAD (PLUG & PLAY):</span>
-                <ul className="list-disc pl-4 mt-1 space-y-0.5 text-zinc-300">
-                  <li>Move: D-Pad or Left Joystick</li>
-                  <li>Fire: Button A / Cross (0)</li>
-                  <li>Pause: Start Button (9)</li>
+                <strong className="text-amber-400 font-pixel text-xs">COMBAT CONTROLS:</strong>
+                <ul className="list-disc pl-5 mt-1.5 space-y-1 text-zinc-300 text-[11px]">
+                  <li><strong>Move Tank:</strong> [W, A, S, D] or [Arrow Keys] or [Gamepad D-Pad]</li>
+                  <li><strong>Fire Cannon:</strong> [Space] or [J] or [Gamepad A / X]</li>
+                  <li><strong>Tactical Items:</strong> [1] Smoke Screen, [2] Grenade, [3] Deployable Shield</li>
+                  <li><strong>Fullscreen:</strong> [F] key anytime</li>
                 </ul>
-              </div>
-
-              <div>
-                <span className="text-yellow-400 font-bold">POWER-UPS:</span>
-                <div className="grid grid-cols-2 gap-1.5 mt-1 text-[8px] text-zinc-300">
-                  <div>⭐ Star: Tank upgrade / 2 bullets</div>
-                  <div>💣 Bomb: Destroy all enemies</div>
-                  <div>⏱️ Timer: Freeze enemies 10s</div>
-                  <div>🛡️ Helmet: Invulnerability shield</div>
-                  <div>⛏️ Shovel: Steel base bunker 20s</div>
-                  <div>🎖️ Tank: 1 Extra Player Life</div>
-                </div>
               </div>
             </div>
 
             <button
               onClick={() => setShowHelpModal(false)}
-              className="bg-amber-600 hover:bg-amber-500 text-white py-2 rounded text-[10px] font-bold mt-2"
+              className="w-full bg-[#e52521] hover:bg-red-600 text-white font-pixel text-xs py-2 border-2 border-red-800 transition-colors"
             >
-              UNDERSTOOD, COMMANDER!
+              CLOSE MANUAL
             </button>
           </div>
         </div>
       )}
 
-      {/* Local 2-Player Game Selection Modal */}
+      {/* Local 2-Player Combat Modal - Authentic Pixel Theme */}
       {showLocal2PModal && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-sm font-pixel text-xs">
-          <div className="bg-[#242424] border-4 border-[#555] p-5 max-w-md w-full rounded shadow-2xl flex flex-col gap-4 text-zinc-200">
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setShowLocal2PModal(false)}
+        >
+          <div
+            className="bg-[#141414] border-4 border-[#444] rounded max-w-md w-full p-5 space-y-4 font-pixel shadow-2xl text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-zinc-700 pb-2">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-                <span>LOCAL 2 PLAYERS (SAME PC)</span>
-              </div>
+              <span className="text-[#f8b800] text-xs tracking-wider">LOCAL 2-PLAYER COMBAT</span>
               <button
+                type="button"
                 onClick={() => setShowLocal2PModal(false)}
-                className="text-zinc-400 hover:text-white"
+                className="text-zinc-400 hover:text-red-400 text-xs px-2 py-1 border border-zinc-700 hover:border-red-500"
               >
-                ✕
+                [X]
               </button>
             </div>
 
-            <div className="flex flex-col gap-3 text-[10px]">
-              <div className="text-zinc-300">
-                Play together on one keyboard or with two gamepads:
+            <div className="space-y-3">
+              <div className="text-[10px] text-zinc-300">
+                SELECT COMBAT RULES:
               </div>
 
-              {/* Mode Selection */}
-              <div className="grid grid-cols-2 gap-2 mt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('coop')}
-                  className={`p-3 rounded border text-left flex flex-col gap-1 transition-all ${
+                  className={`p-3 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
                     local2PMode === 'coop'
-                      ? 'border-[#f8b800] bg-amber-950/40 text-white shadow-md'
+                      ? 'border-[#f8b800] bg-amber-950/50 text-white shadow-lg'
                       : 'border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-500'
                   }`}
                 >
                   <span className="font-bold text-[#f8b800] text-xs">CO-OP BATTLE</span>
-                  <span className="text-[8px] text-zinc-400">Team up to defend the base against 20 tanks</span>
+                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Team up to defend the eagle base against 20 tanks</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('versus')}
-                  className={`p-3 rounded border text-left flex flex-col gap-1 transition-all ${
+                  className={`p-3 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
                     local2PMode === 'versus'
-                      ? 'border-[#58b8d8] bg-sky-950/40 text-white shadow-md'
+                      ? 'border-[#58b8d8] bg-sky-950/50 text-white shadow-lg'
                       : 'border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-500'
                   }`}
                 >
                   <span className="font-bold text-[#58b8d8] text-xs">1V1 VERSUS</span>
-                  <span className="text-[8px] text-zinc-400">Head-to-head duel across symmetrical battlefield</span>
+                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Duel your friend across rotating battlefields</span>
                 </button>
               </div>
 
               {/* Controls Layout Guide */}
-              <div className="bg-black/60 p-2.5 rounded border border-zinc-800 flex flex-col gap-2 mt-2">
+              <div className="bg-black/70 p-3 rounded border border-zinc-800 flex flex-col gap-2 mt-2">
                 <div className="flex items-center justify-between border-b border-zinc-800 pb-1 text-[9px]">
-                  <span className="text-[#f8b800] font-bold">PLAYER 1 (GOLD TANK)</span>
-                  <span className="text-zinc-400">[W, A, S, D] Move + [SPACE / J] Fire</span>
+                  <span className="text-[#f8b800] font-bold">PLAYER 1 (GOLD)</span>
+                  <span className="text-zinc-300 font-sans">[W, A, S, D] + [SPACE]</span>
                 </div>
                 <div className="flex items-center justify-between text-[9px]">
-                  <span className="text-[#55f855] font-bold">PLAYER 2 (GREEN TANK)</span>
-                  <span className="text-zinc-400">[ARROWS] Move + [ENTER / K] Fire</span>
+                  <span className="text-[#55f855] font-bold">PLAYER 2 (GREEN)</span>
+                  <span className="text-zinc-300 font-sans">[ARROWS] + [ENTER]</span>
                 </div>
               </div>
 
-              <div className="text-[8px] text-zinc-400 italic text-center">
+              <div className="text-[8px] text-zinc-400 italic text-center font-sans">
                 * Dual gamepads supported: Gamepad 1 controls P1, Gamepad 2 controls P2.
               </div>
             </div>
 
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-3 mt-3">
               <button
                 type="button"
                 onClick={() => setShowLocal2PModal(false)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2 rounded text-[10px]"
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2 border border-zinc-600 text-xs transition-colors"
               >
                 CANCEL
               </button>
@@ -379,7 +664,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   setShowLocal2PModal(false);
                   onStartLocal2Player(local2PMode);
                 }}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded text-[10px] font-bold shadow-lg"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 border border-emerald-400 text-xs font-bold shadow-lg transition-colors"
               >
                 START BATTLE!
               </button>

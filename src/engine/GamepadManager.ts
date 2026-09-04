@@ -11,6 +11,24 @@ export interface GamepadInfo {
   index: number;
 }
 
+export interface MenuGamepadInput {
+  up: boolean;
+  down: boolean;
+  left: boolean;
+  right: boolean;
+  confirm: boolean;
+  cancel: boolean;
+  start: boolean;
+  select: boolean;
+  buttonA?: boolean;
+  buttonB?: boolean;
+  buttonX?: boolean;
+  buttonY?: boolean;
+  lb?: boolean;
+  rb?: boolean;
+  anyButton: boolean;
+}
+
 class GamepadManager {
   private activeGamepadIndex: number | null = null;
   private onConnectionChangeCallbacks: ((info: GamepadInfo | null) => void)[] = [];
@@ -188,6 +206,106 @@ class GamepadManager {
         shield,
       },
       selectPressed: selectTrigger,
+    };
+  }
+
+  /**
+   * Polls connected gamepads specifically for Menu / UI navigation.
+   * Returns directional and button states across connected controllers.
+   */
+  public pollMenuInput(): MenuGamepadInput | null {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
+    const pads = this.getConnectedPads();
+    if (pads.length === 0) return null;
+
+    let up = false;
+    let down = false;
+    let left = false;
+    let right = false;
+    let confirm = false;
+    let cancel = false;
+    let start = false;
+    let select = false;
+    let buttonA = false;
+    let buttonB = false;
+    let buttonX = false;
+    let buttonY = false;
+    let lb = false;
+    let rb = false;
+    let anyButton = false;
+
+    const deadzone = 0.55;
+
+    for (const pad of pads) {
+      const axisX = pad.axes[0] || 0;
+      const axisY = pad.axes[1] || 0;
+
+      const dpadUp = Boolean(pad.buttons[12]?.pressed);
+      const dpadDown = Boolean(pad.buttons[13]?.pressed);
+      const dpadLeft = Boolean(pad.buttons[14]?.pressed);
+      const dpadRight = Boolean(pad.buttons[15]?.pressed);
+
+      if (dpadUp || axisY < -deadzone) up = true;
+      if (dpadDown || axisY > deadzone) down = true;
+      if (dpadLeft || axisX < -deadzone) left = true;
+      if (dpadRight || axisX > deadzone) right = true;
+
+      // Button 0 (A/Cross)
+      if (pad.buttons[0]?.pressed) {
+        buttonA = true;
+        confirm = true;
+      }
+      // Button 2 (X/Square)
+      if (pad.buttons[2]?.pressed) {
+        buttonX = true;
+        confirm = true;
+      }
+      // Button 1 (B/Circle)
+      if (pad.buttons[1]?.pressed) {
+        buttonB = true;
+        cancel = true;
+      }
+      // Button 3 (Y/Triangle)
+      if (pad.buttons[3]?.pressed) {
+        buttonY = true;
+      }
+      // Button 4 (LB/L1)
+      if (pad.buttons[4]?.pressed) {
+        lb = true;
+      }
+      // Button 5 (RB/R1)
+      if (pad.buttons[5]?.pressed) {
+        rb = true;
+      }
+      // Button 9 (Start/Options)
+      if (pad.buttons[9]?.pressed) start = true;
+      // Button 8 (Select/Back)
+      if (pad.buttons[8]?.pressed) select = true;
+
+      for (let b = 0; b < pad.buttons.length; b++) {
+        if (pad.buttons[b]?.pressed) {
+          anyButton = true;
+          break;
+        }
+      }
+    }
+
+    return {
+      up,
+      down,
+      left,
+      right,
+      confirm,
+      cancel,
+      start,
+      select,
+      buttonA,
+      buttonB,
+      buttonX,
+      buttonY,
+      lb,
+      rb,
+      anyButton,
     };
   }
 }

@@ -4,10 +4,11 @@
  * Player Tank Speed, Fullscreen toggle, CRT Scanlines, and Audio.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GameSettings, MapSizePreset, WindowScalePreset } from '../types';
 import { MAP_SIZE_CONFIGS } from '../engine/maps';
 import { soundManager } from '../engine/SoundManager';
+import { gamepadManager } from '../engine/GamepadManager';
 import { toggleFullscreen, isFullscreen, onFullscreenChange } from '../utils/fullscreen';
 import {
   Settings,
@@ -35,6 +36,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
 }) => {
   const [currentFullscreen, setCurrentFullscreen] = useState<boolean>(isFullscreen());
+  // Focus index:
+  // 0, 1, 2: Map Size (Classic, Large, Giant)
+  // 3, 4, 5: Window Scale (Standard, Large, Max)
+  // 6, 7, 8: Display & Audio (Fullscreen, Scanlines, Sound)
+  // 9: CONFIRM button
+  const [focusIndex, setFocusIndex] = useState<number>(0);
+
+  const focusIndexRef = useRef(focusIndex);
+  focusIndexRef.current = focusIndex;
+
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  const onUpdateSettingsRef = useRef(onUpdateSettings);
+  onUpdateSettingsRef.current = onUpdateSettings;
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const unsub = onFullscreenChange((active) => {
@@ -46,8 +65,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSelectMapSize = (preset: MapSizePreset) => {
     soundManager.unlockAudio();
     soundManager.playHitSteel();
-    onUpdateSettings({
-      ...settings,
+    onUpdateSettingsRef.current({
+      ...settingsRef.current,
       mapSize: preset,
     });
   };
@@ -55,17 +74,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleToggleScanlines = () => {
     soundManager.unlockAudio();
     soundManager.playHitSteel();
-    onUpdateSettings({
-      ...settings,
-      showScanlines: !settings.showScanlines,
+    onUpdateSettingsRef.current({
+      ...settingsRef.current,
+      showScanlines: !settingsRef.current.showScanlines,
     });
   };
 
   const handleSelectWindowScale = (scale: WindowScalePreset) => {
     soundManager.unlockAudio();
     soundManager.playHitSteel();
-    onUpdateSettings({
-      ...settings,
+    onUpdateSettingsRef.current({
+      ...settingsRef.current,
       windowScale: scale,
     });
   };
@@ -73,8 +92,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleToggleSound = () => {
     soundManager.unlockAudio();
     const nextMuted = soundManager.toggleMute();
-    onUpdateSettings({
-      ...settings,
+    onUpdateSettingsRef.current({
+      ...settingsRef.current,
       soundEnabled: !nextMuted,
     });
   };
@@ -85,6 +104,244 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     await toggleFullscreen();
     setCurrentFullscreen(isFullscreen());
   };
+
+  const handleSelectMapSizeRef = useRef(handleSelectMapSize);
+  handleSelectMapSizeRef.current = handleSelectMapSize;
+
+  const handleToggleScanlinesRef = useRef(handleToggleScanlines);
+  handleToggleScanlinesRef.current = handleToggleScanlines;
+
+  const handleSelectWindowScaleRef = useRef(handleSelectWindowScale);
+  handleSelectWindowScaleRef.current = handleSelectWindowScale;
+
+  const handleToggleSoundRef = useRef(handleToggleSound);
+  handleToggleSoundRef.current = handleToggleSound;
+
+  const handleToggleFullscreenRef = useRef(handleToggleFullscreen);
+  handleToggleFullscreenRef.current = handleToggleFullscreen;
+
+  // Execute currently focused item
+  const activateFocusedItem = (idx: number) => {
+    switch (idx) {
+      case 0:
+        handleSelectMapSizeRef.current('classic');
+        break;
+      case 1:
+        handleSelectMapSizeRef.current('large');
+        break;
+      case 2:
+        handleSelectMapSizeRef.current('giant');
+        break;
+      case 3:
+        handleSelectWindowScaleRef.current('standard');
+        break;
+      case 4:
+        handleSelectWindowScaleRef.current('large');
+        break;
+      case 5:
+        handleSelectWindowScaleRef.current('max');
+        break;
+      case 6:
+        handleToggleFullscreenRef.current();
+        break;
+      case 7:
+        handleToggleScanlinesRef.current();
+        break;
+      case 8:
+        handleToggleSoundRef.current();
+        break;
+      case 9:
+        soundManager.playMenuSelect();
+        onCloseRef.current();
+        break;
+    }
+  };
+
+  const activateFocusedItemRef = useRef(activateFocusedItem);
+  activateFocusedItemRef.current = activateFocusedItem;
+
+  // Gamepad & Keyboard Navigation Loop
+  useEffect(() => {
+    let animId: number;
+    let prevUp = false;
+    let prevDown = false;
+    let prevLeft = false;
+    let prevRight = false;
+    let prevConfirm = false;
+    let prevCancel = false;
+    let prevStart = false;
+    let holdTimer = 0;
+    let heldDirection: 'up' | 'down' | 'left' | 'right' | null = null;
+
+    const INITIAL_HOLD_DELAY = 450;
+    const REPEAT_RATE = 250;
+
+    const moveFocus = (dir: 'up' | 'down' | 'left' | 'right') => {
+      soundManager.playMenuMove();
+      setFocusIndex((prev) => {
+        if (dir === 'left') {
+          if (prev >= 0 && prev <= 2) return prev > 0 ? prev - 1 : 2;
+          if (prev >= 3 && prev <= 5) return prev > 3 ? prev - 1 : 5;
+          if (prev >= 6 && prev <= 8) return prev > 6 ? prev - 1 : 8;
+          return prev;
+        }
+        if (dir === 'right') {
+          if (prev >= 0 && prev <= 2) return prev < 2 ? prev + 1 : 0;
+          if (prev >= 3 && prev <= 5) return prev < 5 ? prev + 1 : 3;
+          if (prev >= 6 && prev <= 8) return prev < 8 ? prev + 1 : 6;
+          return prev;
+        }
+        if (dir === 'up') {
+          if (prev >= 0 && prev <= 2) return 9; // wrap to confirm button
+          if (prev >= 3 && prev <= 5) return prev - 3;
+          if (prev >= 6 && prev <= 8) return prev - 3;
+          if (prev === 9) return 7; // up from confirm goes to middle of row 2
+        }
+        if (dir === 'down') {
+          if (prev >= 0 && prev <= 2) return prev + 3;
+          if (prev >= 3 && prev <= 5) return prev + 3;
+          if (prev >= 6 && prev <= 8) return 9; // down from row 2 goes to confirm
+          if (prev === 9) return 1; // wrap to middle of row 0
+        }
+        return prev;
+      });
+    };
+
+    let initialized = false;
+    let initialCooldownUntil = 0;
+
+    const poll = (time: number) => {
+      const pad = gamepadManager.pollMenuInput();
+      if (pad) {
+        if (pad.anyButton) {
+          soundManager.unlockAudio();
+        }
+
+        // On mount, absorb initial button hold (e.g. A or Start pressed to open settings)
+        if (!initialized) {
+          initialized = true;
+          initialCooldownUntil = time + 220;
+          prevConfirm = pad.confirm;
+          prevCancel = pad.cancel;
+          prevStart = pad.start;
+          prevUp = pad.up;
+          prevDown = pad.down;
+          prevLeft = pad.left;
+          prevRight = pad.right;
+          animId = requestAnimationFrame(poll);
+          return;
+        }
+
+        const isUp = pad.up;
+        const isDown = pad.down;
+        const isLeft = pad.left;
+        const isRight = pad.right;
+
+        // Fresh press: Left
+        if (isLeft && !prevLeft) {
+          heldDirection = 'left';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          moveFocus('left');
+        } else if (isRight && !prevRight) {
+          heldDirection = 'right';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          moveFocus('right');
+        } else if (isUp && !prevUp) {
+          heldDirection = 'up';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          moveFocus('up');
+        } else if (isDown && !prevDown) {
+          heldDirection = 'down';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          moveFocus('down');
+        } else if (heldDirection && ((heldDirection === 'left' && isLeft) || (heldDirection === 'right' && isRight) || (heldDirection === 'up' && isUp) || (heldDirection === 'down' && isDown))) {
+          if (time >= holdTimer) {
+            holdTimer = time + REPEAT_RATE;
+            moveFocus(heldDirection);
+          }
+        } else if (!isUp && !isDown && !isLeft && !isRight) {
+          heldDirection = null;
+          holdTimer = 0;
+        }
+
+        prevUp = isUp;
+        prevDown = isDown;
+        prevLeft = isLeft;
+        prevRight = isRight;
+
+        // Confirm: Button 0 (A) or Button 2 (X)
+        const confirmPressed = pad.confirm;
+        const confirmTrigger = confirmPressed && !prevConfirm;
+        prevConfirm = confirmPressed;
+
+        if (confirmTrigger && time >= initialCooldownUntil) {
+          activateFocusedItemRef.current(focusIndexRef.current);
+        }
+
+        // Start: Button 9 confirms and closes
+        const startPressed = pad.start;
+        const startTrigger = startPressed && !prevStart;
+        prevStart = startPressed;
+
+        if (startTrigger && time >= initialCooldownUntil) {
+          soundManager.playMenuSelect();
+          onCloseRef.current();
+        }
+
+        // Cancel: Button 1 (B) closes settings
+        const cancelPressed = pad.cancel;
+        const cancelTrigger = cancelPressed && !prevCancel;
+        prevCancel = cancelPressed;
+
+        if (cancelTrigger && time >= initialCooldownUntil) {
+          soundManager.playMenuMove();
+          onCloseRef.current();
+        }
+      } else {
+        prevUp = false;
+        prevDown = false;
+        prevLeft = false;
+        prevRight = false;
+        heldDirection = null;
+        prevConfirm = false;
+        prevCancel = false;
+        prevStart = false;
+      }
+
+      animId = requestAnimationFrame(poll);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) {
+        e.stopImmediatePropagation();
+      }
+
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        moveFocus('left');
+      } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        moveFocus('right');
+      } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        moveFocus('up');
+      } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        moveFocus('down');
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        activateFocusedItemRef.current(focusIndexRef.current);
+      } else if (e.key === 'Escape') {
+        soundManager.playMenuMove();
+        onCloseRef.current();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    animId = requestAnimationFrame(poll);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      cancelAnimationFrame(animId);
+    };
+  }, []);
 
   return (
     <div
@@ -126,23 +383,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {(['classic', 'large', 'giant'] as MapSizePreset[]).map((preset) => {
+              {(['classic', 'large', 'giant'] as MapSizePreset[]).map((preset, pIdx) => {
                 const isSelected = settings.mapSize === preset;
+                const isFocused = focusIndex === pIdx;
                 const config = MAP_SIZE_CONFIGS[preset];
                 return (
                   <button
                     key={preset}
                     id={`btn-map-size-${preset}`}
-                    onClick={() => handleSelectMapSize(preset)}
+                    onClick={() => {
+                      setFocusIndex(pIdx);
+                      handleSelectMapSize(preset);
+                    }}
                     className={`relative flex flex-col p-3 rounded border-2 text-left transition-all ${
+                      isFocused
+                        ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.03] shadow-[0_0_12px_rgba(248,184,0,0.6)] z-10'
+                        : ''
+                    } ${
                       isSelected
                         ? 'bg-amber-950/40 border-[#f8b800] text-amber-200 shadow-md shadow-amber-950/50'
                         : 'bg-zinc-900/80 border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800'
                     }`}
                   >
                     <div className="flex items-center justify-between w-full mb-1">
-                      <span className="font-bold text-xs uppercase tracking-wide">
-                        {preset}
+                      <span className="font-bold text-xs uppercase tracking-wide flex items-center gap-1.5">
+                        {isFocused && <span className="text-[#f8b800] animate-pulse">▶</span>}
+                        <span>{preset}</span>
                       </span>
                       {isSelected && (
                         <Check className="w-3.5 h-3.5 text-[#f8b800] stroke-[3]" />
@@ -199,21 +465,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ratio: 'Full Window',
                   desc: 'Maximizes window to fill screen without browser fullscreen',
                 },
-              ].map((w) => {
+              ].map((w, wIdx) => {
                 const isSelected = (settings.windowScale || 'large') === w.scale;
+                const isFocused = focusIndex === 3 + wIdx;
                 return (
                   <button
                     key={w.scale}
                     id={`btn-window-scale-${w.scale}`}
-                    onClick={() => handleSelectWindowScale(w.scale)}
+                    onClick={() => {
+                      setFocusIndex(3 + wIdx);
+                      handleSelectWindowScale(w.scale);
+                    }}
                     className={`p-3 rounded border-2 text-left transition-all ${
+                      isFocused
+                        ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.03] shadow-[0_0_12px_rgba(248,184,0,0.6)] z-10'
+                        : ''
+                    } ${
                       isSelected
                         ? 'bg-purple-950/40 border-purple-400 text-purple-200 shadow-md shadow-purple-950/50'
                         : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800'
                     }`}
                   >
                     <div className="flex items-center justify-between w-full mb-1">
-                      <span className="font-bold text-xs uppercase tracking-wide">{w.name}</span>
+                      <span className="font-bold text-xs uppercase tracking-wide flex items-center gap-1.5">
+                        {isFocused && <span className="text-[#f8b800] animate-pulse">▶</span>}
+                        <span>{w.name}</span>
+                      </span>
                       {isSelected && <Check className="w-3.5 h-3.5 text-purple-400 stroke-[3]" />}
                     </div>
                     <div className="text-[10px] font-sans font-semibold text-zinc-200 mb-0.5">
@@ -239,14 +516,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Fullscreen Toggle Button */}
               <button
                 id="btn-toggle-fullscreen-modal"
-                onClick={handleToggleFullscreen}
-                className={`p-2.5 rounded border-2 flex items-center justify-between transition-colors ${
+                onClick={() => {
+                  setFocusIndex(6);
+                  handleToggleFullscreen();
+                }}
+                className={`p-2.5 rounded border-2 flex items-center justify-between transition-all ${
+                  focusIndex === 6
+                    ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.03] shadow-[0_0_12px_rgba(248,184,0,0.6)] z-10'
+                    : ''
+                } ${
                   currentFullscreen
                     ? 'bg-emerald-950/50 border-emerald-500 text-emerald-300'
                     : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500'
                 }`}
               >
                 <div className="flex items-center gap-2 text-left">
+                  {focusIndex === 6 && <span className="text-[#f8b800] animate-pulse">▶</span>}
                   {currentFullscreen ? (
                     <Minimize2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
@@ -269,14 +554,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* CRT Scanlines Toggle */}
               <button
                 id="btn-toggle-scanlines-modal"
-                onClick={handleToggleScanlines}
-                className={`p-2.5 rounded border-2 flex items-center justify-between transition-colors ${
+                onClick={() => {
+                  setFocusIndex(7);
+                  handleToggleScanlines();
+                }}
+                className={`p-2.5 rounded border-2 flex items-center justify-between transition-all ${
+                  focusIndex === 7
+                    ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.03] shadow-[0_0_12px_rgba(248,184,0,0.6)] z-10'
+                    : ''
+                } ${
                   settings.showScanlines
                     ? 'bg-indigo-950/50 border-indigo-500 text-indigo-300'
                     : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500'
                 }`}
               >
                 <div className="flex items-center gap-2 text-left">
+                  {focusIndex === 7 && <span className="text-[#f8b800] animate-pulse">▶</span>}
                   <Tv className="w-4 h-4 text-indigo-400 shrink-0" />
                   <div>
                     <div className="text-[10px] font-bold">CRT LINES</div>
@@ -295,14 +588,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Audio Toggle */}
               <button
                 id="btn-toggle-audio-modal"
-                onClick={handleToggleSound}
-                className={`p-2.5 rounded border-2 flex items-center justify-between transition-colors ${
+                onClick={() => {
+                  setFocusIndex(8);
+                  handleToggleSound();
+                }}
+                className={`p-2.5 rounded border-2 flex items-center justify-between transition-all ${
+                  focusIndex === 8
+                    ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.03] shadow-[0_0_12px_rgba(248,184,0,0.6)] z-10'
+                    : ''
+                } ${
                   settings.soundEnabled
                     ? 'bg-amber-950/40 border-amber-500 text-amber-300'
                     : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500'
                 }`}
               >
                 <div className="flex items-center gap-2 text-left">
+                  {focusIndex === 8 && <span className="text-[#f8b800] animate-pulse">▶</span>}
                   {settings.soundEnabled ? (
                     <Volume2 className="w-4 h-4 text-amber-400 shrink-0" />
                   ) : (
@@ -325,15 +626,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* Footer actions */}
-        <div className="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between">
-          <div className="text-[9px] text-zinc-400 font-sans">
-            Settings apply immediately and are saved automatically.
+        {/* Footer actions & Controller Guide */}
+        <div className="mt-5 pt-3 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-[8px] sm:text-[9px] text-[#f8b800] font-mono tracking-wider flex items-center gap-2">
+            <span>[D-PAD / STICK] MOVE</span>
+            <span>•</span>
+            <span>[A] TOGGLE / SELECT</span>
+            <span>•</span>
+            <span>[B / START] EXIT</span>
           </div>
           <button
             id="btn-save-settings"
             onClick={onClose}
-            className="px-4 py-2 bg-[#f8b800] hover:bg-[#e0a000] text-black font-pixel text-xs rounded transition-colors shadow-lg"
+            className={`px-5 py-2 bg-[#f8b800] hover:bg-[#e0a000] text-black font-pixel text-xs rounded transition-all shadow-lg ${
+              focusIndex === 9
+                ? 'ring-4 ring-white ring-offset-2 ring-offset-black scale-105 font-extrabold shadow-[0_0_16px_rgba(248,184,0,0.9)]'
+                : ''
+            }`}
           >
             CONFIRM
           </button>

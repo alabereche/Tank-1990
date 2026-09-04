@@ -88,6 +88,22 @@ export default function App() {
     return unsub;
   }, []);
 
+  // Ensure tank engine sound is immediately silenced when leaving the active battlefield
+  useEffect(() => {
+    if (currentScreen !== GameState.PLAYING) {
+      soundManager.stopEngineSound();
+    }
+  }, [currentScreen]);
+
+  // Synchronize Menu Background Music with active screen: play in MENU, stop during combat/stage intro/editor
+  useEffect(() => {
+    if (currentScreen === GameState.MENU) {
+      soundManager.playMenuMusic();
+    } else {
+      soundManager.stopMenuMusic();
+    }
+  }, [currentScreen]);
+
   // Global keydown handler for Fullscreen
   useEffect(() => {
     const handleGlobalKey = (e: KeyboardEvent) => {
@@ -100,6 +116,23 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKey);
   }, []);
 
+  // Omni-Unlock Audio: instantly unlock AudioContext on any user interaction anywhere
+  useEffect(() => {
+    const unlock = () => {
+      soundManager.unlockAudio();
+    };
+    const events = ['click', 'pointerdown', 'keydown', 'touchstart'];
+    events.forEach((ev) => window.addEventListener(ev, unlock, { capture: true, passive: true }));
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, unlock, { capture: true }));
+    };
+  }, []);
+
+  // Synchronize Mute status with Settings
+  useEffect(() => {
+    soundManager.setMuted(!settings.soundEnabled);
+  }, [settings.soundEnabled]);
+
   const handleUpdateSettings = (newSettings: GameSettings) => {
     setSettings(newSettings);
     try {
@@ -108,19 +141,23 @@ export default function App() {
   };
 
   // Handlers for Transitions
-  const handleStartGame = () => {
+  const handleStartGame = (stageOverride?: number) => {
+    soundManager.stopMenuMusic();
     soundManager.unlockAudio();
-    setCurrentStage(1);
+    const stg = stageOverride ?? currentStage ?? 1;
+    setCurrentStage(stg);
     setCustomMap(undefined);
     setCurrentScreen(GameState.STAGE_START);
   };
 
   const handleOpenConstruction = () => {
+    soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setCurrentScreen(GameState.BUILDING);
   };
 
   const handlePlayCustomMap = (map: StageMap) => {
+    soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setCustomMap(map);
     setCurrentStage(1);
@@ -128,10 +165,12 @@ export default function App() {
   };
 
   const handleStageIntroComplete = () => {
+    soundManager.stopMenuMusic();
     setCurrentScreen(GameState.PLAYING);
   };
 
   const handleGameOver = useCallback((score: GameScore) => {
+    soundManager.stopMenuMusic();
     setFinalScoreData(score);
     if (score.highScore > highScore) {
       setHighScore(score.highScore);
@@ -140,6 +179,7 @@ export default function App() {
   }, [highScore]);
 
   const handleVictory = useCallback((score: GameScore) => {
+    soundManager.stopMenuMusic();
     setFinalScoreData(score);
     if (score.highScore > highScore) {
       setHighScore(score.highScore);
@@ -148,34 +188,39 @@ export default function App() {
   }, [highScore]);
 
   const handleNextStage = () => {
+    soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setCurrentStage((prev) => prev + 1);
     setCurrentScreen(GameState.STAGE_START);
   };
 
   const handleRetryStage = () => {
+    soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setCurrentScreen(GameState.STAGE_START);
   };
 
   const handleReturnToMenu = () => {
     soundManager.unlockAudio();
+    setFinalScoreData(null);
     setMultiplayerConfig(undefined);
     setIsMultiplayerLobbyOpen(false);
     setCurrentScreen(GameState.MENU);
   };
 
-  const handleStartLocal2Player = (mode: 'coop' | 'versus') => {
+  const handleStartLocal2Player = (mode: 'coop' | 'versus', stageOverride?: number) => {
+    soundManager.stopMenuMusic();
     soundManager.unlockAudio();
+    const stg = stageOverride ?? currentStage ?? 1;
     setMultiplayerConfig({
       roomCode: 'LOCAL',
       role: 'host',
       mode,
       mapSize: settings.mapSize,
-      stage: 1,
+      stage: stg,
     });
     setCustomMap(undefined);
-    setCurrentStage(1);
+    setCurrentStage(stg);
     setCurrentScreen(GameState.STAGE_START);
   };
 
@@ -189,6 +234,7 @@ export default function App() {
     slot?: number;
     team?: 'A' | 'B' | 'FFA';
   }) => {
+    soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setMultiplayerConfig(config);
     setCurrentStage(config.stage || 1);
@@ -249,10 +295,15 @@ export default function App() {
               onOpenConstruction={handleOpenConstruction}
               onOpenSettings={() => setIsSettingsOpen(true)}
               inCabinet={true}
+              disabled={isSettingsOpen}
             />
           </ArcadeCabinetFrame>
         ) : currentScreen === GameState.STAGE_START ? (
-          <StageIntro stage={currentStage} onComplete={handleStageIntroComplete} />
+          <StageIntro
+            stage={currentStage}
+            onSelectStage={(stg) => setCurrentStage(stg)}
+            onComplete={handleStageIntroComplete}
+          />
         ) : currentScreen === GameState.PLAYING || currentScreen === GameState.PAUSED ? (
           <GameCanvas
             currentStage={currentStage}
@@ -265,6 +316,7 @@ export default function App() {
             onOpenSettings={() => setIsSettingsOpen(true)}
             onReturnToMenu={handleReturnToMenu}
             onUpdateSettings={handleUpdateSettings}
+            isSettingsOpen={isSettingsOpen}
           />
         ) : currentScreen === GameState.BUILDING ? (
           <MapEditorToolbar

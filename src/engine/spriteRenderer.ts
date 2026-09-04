@@ -610,6 +610,11 @@ export class SpriteRenderer {
 
   /**
    * Renders an Explosion
+   * Features:
+   * - Multi-lobed stylized arcade fireball (#ffffff core, #f8b800 gold, #f85800 flame, #b81800 border)
+   * - Expanding glowing shockwave ring
+   * - Radiating shrapnel spark embers
+   * - Billowing ash and smoke puffs
    */
   public static renderExplosion(
     ctx: CanvasRenderingContext2D,
@@ -620,37 +625,163 @@ export class SpriteRenderer {
     isBig: boolean
   ) {
     const progress = frame / maxFrames;
-    const radius = (isBig ? 24 : 12) * (1 - Math.pow(progress - 0.5, 2) * 2);
-    if (radius <= 0) return;
+    if (progress >= 1 || progress < 0) return;
 
     ctx.save();
-    // Outer flame (orange)
-    ctx.fillStyle = '#f83800';
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
 
-    // Inner bright core (yellow)
-    ctx.fillStyle = '#f8b800';
-    ctx.beginPath();
-    ctx.arc(x, y, radius * 0.65, 0, Math.PI * 2);
-    ctx.fill();
+    if (isBig) {
+      // --- BIG EXPLOSION (Tank Destroyed / Base / Grenade) ---
+      const maxRadius = 28;
+      // Fireball expansion and contraction envelope
+      const expansion = progress < 0.35 
+        ? Math.sin((progress / 0.35) * (Math.PI / 2)) 
+        : Math.cos(((progress - 0.35) / 0.65) * (Math.PI / 2));
+      const r = Math.max(1, maxRadius * expansion);
 
-    // Hot center (white)
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(x, y, radius * 0.35, 0, Math.PI * 2);
-    ctx.fill();
+      // 1. Expanding Glowing Shockwave Ring (first 65% of frames)
+      if (progress < 0.65) {
+        const ringProgress = progress / 0.65;
+        const ringRadius = 6 + ringProgress * 32;
+        const ringAlpha = Math.max(0, 1 - ringProgress);
+        ctx.strokeStyle = `rgba(255, 200, 80, ${ringAlpha * 0.75})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(x, y, ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
-    // Black smoke puffs on big explosions
-    if (isBig && progress > 0.4) {
-      ctx.fillStyle = '#303030';
-      const puffRad = 8 * (progress - 0.4);
+      // 2. Multi-Lobed Jagged Fireball (Retro Arcade Style)
+      // Layer A: Deep Flame Red / Crimson Outline (#b81800)
+      ctx.fillStyle = '#b81800';
       ctx.beginPath();
-      ctx.arc(x - 10, y - 8, puffRad, 0, Math.PI * 2);
-      ctx.arc(x + 10, y - 6, puffRad, 0, Math.PI * 2);
-      ctx.arc(x, y + 10, puffRad, 0, Math.PI * 2);
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI) / 4;
+        const dist = r * (0.85 + (i % 2 === 0 ? 0.25 : -0.1));
+        const px = x + Math.cos(angle) * dist;
+        const py = y + Math.sin(angle) * dist;
+        ctx.arc(px, py, r * 0.55, 0, Math.PI * 2);
+      }
       ctx.fill();
+
+      // Layer B: Blazing Fiery Orange (#f85800)
+      ctx.fillStyle = '#f85800';
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI) / 4 + Math.PI / 8;
+        const dist = r * (0.65 + (i % 2 === 0 ? 0.2 : -0.08));
+        const px = x + Math.cos(angle) * dist;
+        const py = y + Math.sin(angle) * dist;
+        ctx.arc(px, py, r * 0.42, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // Layer C: Golden Solar Yellow (#f8b800)
+      ctx.fillStyle = '#f8b800';
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.60, 0, Math.PI * 2);
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI) / 3;
+        const px = x + Math.cos(angle) * (r * 0.4);
+        const py = y + Math.sin(angle) * (r * 0.4);
+        ctx.arc(px, py, r * 0.35, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // Layer D: Blinding White-Hot Incandescent Core (#ffffff) (first 40% of frames)
+      if (progress < 0.40) {
+        const coreAlpha = 1 - progress / 0.40;
+        ctx.fillStyle = `rgba(255, 255, 255, ${coreAlpha})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.38, 0, Math.PI * 2);
+        ctx.fill();
+        // 4-point cross flare
+        const flareSize = r * 0.55;
+        ctx.fillRect(x - flareSize, y - 1, flareSize * 2, 3);
+        ctx.fillRect(x - 1, y - flareSize, 3, flareSize * 2);
+      }
+
+      // 3. Flying Spark Embers / Shrapnel (radiating outward)
+      const sparkCount = 8;
+      for (let i = 0; i < sparkCount; i++) {
+        const angle = (i * Math.PI * 2) / sparkCount + 0.2;
+        const dist = 6 + progress * 36;
+        const sx = x + Math.cos(angle) * dist;
+        const sy = y + Math.sin(angle) * dist;
+        const sparkAlpha = Math.max(0, 1 - progress * 1.1);
+        ctx.fillStyle = i % 2 === 0 ? `rgba(255, 240, 120, ${sparkAlpha})` : `rgba(255, 120, 30, ${sparkAlpha})`;
+        ctx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
+      }
+
+      // 4. Billowing Ash & Smoke Puffs (cooling smoke in second half)
+      if (progress > 0.35) {
+        const smokeProgress = (progress - 0.35) / 0.65;
+        const smokeAlpha = (1 - smokeProgress) * 0.85;
+        ctx.fillStyle = `rgba(40, 40, 40, ${smokeAlpha})`;
+        const puffOffsets = [
+          [-12, -10, 11],
+          [12, -8, 12],
+          [0, 14, 10],
+          [-8, 8, 9],
+          [9, 10, 9],
+        ];
+        for (const [ox, oy, baseRad] of puffOffsets) {
+          const puffRad = baseRad * (0.6 + smokeProgress * 0.8);
+          const px = x + ox * (1 + smokeProgress * 0.5);
+          const py = y + oy * (1 + smokeProgress * 0.5) - smokeProgress * 6;
+          ctx.beginPath();
+          ctx.arc(px, py, puffRad, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else {
+      // --- SMALL EXPLOSION (Bullet hitting Wall / Brick / Steel) ---
+      const maxRadius = 14;
+      const expansion = progress < 0.4 
+        ? Math.sin((progress / 0.4) * (Math.PI / 2)) 
+        : Math.cos(((progress - 0.4) / 0.6) * (Math.PI / 2));
+      const r = Math.max(1, maxRadius * expansion);
+
+      // 1. Initial 4-point impact star flash
+      if (progress < 0.35) {
+        const flashAlpha = 1 - progress / 0.35;
+        ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+        ctx.fillRect(x - r * 1.1, y - 1, r * 2.2, 2);
+        ctx.fillRect(x - 1, y - r * 1.1, 2, r * 2.2);
+      }
+
+      // 2. Fiery blast petals
+      ctx.fillStyle = '#f83800';
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const angle = (i * Math.PI) / 2 + Math.PI / 4;
+        const px = x + Math.cos(angle) * (r * 0.6);
+        const py = y + Math.sin(angle) * (r * 0.6);
+        ctx.arc(px, py, r * 0.5, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 3. Bright golden center
+      ctx.fillStyle = '#f8b800';
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. White core
+      if (progress < 0.5) {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 5. Impact sparks flying out
+      const sparkDist = 4 + progress * 16;
+      const sparkAlpha = Math.max(0, 1 - progress);
+      ctx.fillStyle = `rgba(255, 220, 80, ${sparkAlpha})`;
+      ctx.fillRect(x - sparkDist, y, 2, 2);
+      ctx.fillRect(x + sparkDist, y, 2, 2);
+      ctx.fillRect(x, y - sparkDist, 2, 2);
+      ctx.fillRect(x, y + sparkDist, 2, 2);
     }
     ctx.restore();
   }

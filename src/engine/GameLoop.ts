@@ -31,6 +31,7 @@ import {
   ActiveSmokeScreen,
   ActiveBouncingGrenade,
   ActiveDeployableShield,
+  MapSizePreset,
 } from '../types';
 import { BLOCK_SIZE, cloneGrid, getStageMapForPresetAndStage } from './maps';
 import { soundManager } from './SoundManager';
@@ -127,6 +128,7 @@ export class GameEngine {
   private playerSpawns: Map<number, Position> = new Map();
   private playerInputs: Map<number, InputState> = new Map();
   private prevPlayerFire: Map<number, boolean> = new Map();
+  public hasCustomMap: boolean = false;
 
   private get p2Input(): InputState {
     return this.playerInputs.get(2) || {
@@ -219,6 +221,7 @@ export class GameEngine {
     if (!context) throw new Error('Cannot get 2d context');
     this.ctx = context;
     this.currentMap = map;
+    this.hasCustomMap = !!map && !map.name.startsWith('Stage ');
     this.onStateChange = onStateChange;
 
     this.setupDimensions(map);
@@ -479,8 +482,14 @@ export class GameEngine {
    * Sets up a new stage with a pool of 20 enemies
    */
   public startStage(stageNumber: number, customMap?: StageMap) {
+    soundManager.stopEngineSound();
     if (customMap) {
       this.currentMap = customMap;
+      this.hasCustomMap = !customMap.name.startsWith('Stage ');
+    } else {
+      const preset: MapSizePreset = this.gridSize === 42 ? 'giant' : this.gridSize === 34 ? 'large' : 'classic';
+      this.currentMap = getStageMapForPresetAndStage(stageNumber || 1, preset, this.multiMode);
+      this.hasCustomMap = false;
     }
     // FFA (8-Player) strictly enforces the expanded Large arena (34x34) to avoid overlapping
     if (this.multiMode === 'ffa' && this.currentMap && this.currentMap.grid.length < 34) {
@@ -616,6 +625,10 @@ export class GameEngine {
   }
 
   private beginRoundIntro(roundNumber: number) {
+    soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     this.scoreData.roundNumber = roundNumber;
     this.gameState = GameState.ROUND_INTRO;
     this.onStateChange(this.gameState, this.scoreData);
@@ -632,6 +645,10 @@ export class GameEngine {
 
   private endRound(winner: 1 | 2) {
     this.isRoundEnding = false;
+    soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     if (this.gameState === GameState.ROUND_END) {
       // Mutual destruction: revoke the point just awarded and replay the round
       if (this.scoreData.roundWinner === 1) {
@@ -647,6 +664,7 @@ export class GameEngine {
     else this.scoreData.roundWinsP2 = (this.scoreData.roundWinsP2 ?? 0) + 1;
     this.scoreData.roundWinner = winner;
     this.gameState = GameState.ROUND_END;
+    soundManager.stopEngineSound();
     soundManager.playPowerUpCollect();
     this.onStateChange(this.gameState, this.scoreData);
     if (this.isRemoteViewer) return;
@@ -659,6 +677,10 @@ export class GameEngine {
 
   public endRound2v2(winner: 'A' | 'B' | 'DRAW') {
     this.isRoundEnding = false;
+    soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     if (this.gameState === GameState.ROUND_END) return;
     if (winner === 'A') {
       this.scoreData.teamWinsA = (this.scoreData.teamWinsA ?? 0) + 1;
@@ -670,6 +692,7 @@ export class GameEngine {
       this.scoreData.teamWinner = 'DRAW';
     }
     this.gameState = GameState.ROUND_END;
+    soundManager.stopEngineSound();
     soundManager.playPowerUpCollect();
     this.onStateChange(this.gameState, this.scoreData);
     if (this.isRemoteViewer) return;
@@ -682,9 +705,14 @@ export class GameEngine {
 
   /** FFA: the kill target was reached - crown the champion and end the match. */
   private endFfaMatch(winnerSlot: number) {
+    soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     if (this.gameState === GameState.MATCH_END) return;
     this.scoreData.ffaWinner = winnerSlot;
     this.gameState = GameState.MATCH_END;
+    soundManager.stopEngineSound();
     soundManager.playStageStart();
     this.onStateChange(this.gameState, this.scoreData);
   }
@@ -695,6 +723,10 @@ export class GameEngine {
   }
 
   private resolveRoundAfterBanner() {
+    soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     if (this.multiMode === '2v2') {
       const wA = this.scoreData.teamWinsA ?? 0;
       const wB = this.scoreData.teamWinsB ?? 0;
@@ -702,6 +734,7 @@ export class GameEngine {
       if (wA >= target || wB >= target) {
         this.scoreData.matchWinner = wA >= target ? 1 : 2;
         this.gameState = GameState.MATCH_END;
+        soundManager.stopEngineSound();
         soundManager.playStageStart();
         this.onStateChange(this.gameState, this.scoreData);
         return;
@@ -716,6 +749,7 @@ export class GameEngine {
     if (w1 >= VERSUS_ROUNDS_TO_WIN || w2 >= VERSUS_ROUNDS_TO_WIN) {
       this.scoreData.matchWinner = w1 >= VERSUS_ROUNDS_TO_WIN ? 1 : 2;
       this.gameState = GameState.MATCH_END;
+      soundManager.stopEngineSound();
       soundManager.playStageStart();
       this.onStateChange(this.gameState, this.scoreData);
       return;
@@ -723,6 +757,13 @@ export class GameEngine {
     const nextRound = (this.scoreData.roundNumber ?? 1) + 1;
     // Eagle sides flip with round parity — decide BEFORE the arena re-init
     if (this.multiMode === 'versus') this.pendingVsDefender = this.versusDefenderForRound(nextRound);
+
+    // Rotate to next distinct stage map if playing preset duel
+    if (!this.hasCustomMap && (this.multiMode === 'versus' || this.multiMode === '2v2')) {
+      const preset: MapSizePreset = this.gridSize === 42 ? 'giant' : this.gridSize === 34 ? 'large' : 'classic';
+      this.currentMap = getStageMapForPresetAndStage(nextRound, preset, this.multiMode);
+    }
+
     this.resetRoundArena();
     this.beginRoundIntro(nextRound);
   }
@@ -1033,6 +1074,12 @@ export class GameEngine {
     }
     this.isPaused = !this.isPaused;
     this.gameState = this.isPaused ? GameState.PAUSED : GameState.PLAYING;
+    if (this.isPaused) {
+      soundManager.stopEngineSound();
+      for (const p of this.playerTanks.values()) {
+        if (p) p.moving = false;
+      }
+    }
     soundManager.playPause();
     this.onStateChange(this.gameState, this.scoreData);
     return this.isPaused;
@@ -1065,6 +1112,9 @@ export class GameEngine {
     this.isRunning = false;
     this.clearRoundTimer();
     soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     if (this.tickWorker) {
       this.tickWorker.postMessage('stop');
       this.tickWorker.terminate();
@@ -1083,6 +1133,7 @@ export class GameEngine {
       this.gameState !== GameState.ROUND_END &&
       this.gameState !== GameState.ROUND_INTRO
     ) {
+      soundManager.stopEngineSound();
       return;
     }
     this.tickCount++;
@@ -1101,6 +1152,8 @@ export class GameEngine {
     ) {
       this.tickCount++;
       this.update();
+    } else if (this.gameState !== GameState.PLAYING) {
+      soundManager.stopEngineSound();
     }
 
     this.render();
@@ -1110,6 +1163,13 @@ export class GameEngine {
 
   // --- Game State Update ---
   private update() {
+    if (this.gameState !== GameState.PLAYING) {
+      soundManager.stopEngineSound();
+      for (const p of this.playerTanks.values()) {
+        if (p) p.moving = false;
+      }
+    }
+
     // Guest thin-client: render interpolated host snapshots + own-tank prediction
     if (this.isRemoteViewer) {
       this.updateRemote();
@@ -1119,10 +1179,12 @@ export class GameEngine {
     // Round banners: end-phase keeps explosions/popups animating only;
     // intro-phase lets the spawn stars spin while the duel is frozen.
     if (this.gameState === GameState.ROUND_END) {
+      soundManager.stopEngineSound();
       this.updateEffects();
       return;
     }
     if (this.gameState === GameState.ROUND_INTRO) {
+      soundManager.stopEngineSound();
       this.updateSpawningTanks();
       return;
     }
@@ -1187,8 +1249,22 @@ export class GameEngine {
     this.updateEffects();
 
     // 10. Engine Sound
-    const isPlayerDriving = Array.from(this.playerTanks.values()).some((p) => p && p.moving);
-    soundManager.updateEngineSound(isPlayerDriving);
+    let isPlayerDriving = false;
+    let activeTerrain: 'normal' | 'mud' | 'ice' = 'normal';
+    for (const p of this.playerTanks.values()) {
+      if (p && p.moving) {
+        isPlayerDriving = true;
+        const centerC = Math.floor((p.x + 16) / BLOCK_SIZE);
+        const centerR = Math.floor((p.y + 16) / BLOCK_SIZE);
+        const tile = this.grid[centerR]?.[centerC];
+        if (tile) {
+          if (tile.type === TileType.MUD) activeTerrain = 'mud';
+          else if (tile.type === TileType.ICE) activeTerrain = 'ice';
+        }
+        break;
+      }
+    }
+    soundManager.updateEngineSound(isPlayerDriving, activeTerrain);
 
     // 11. Check Victory / Stage Cleared (Single Player and Co-Op only)
     if (this.multiMode !== 'versus' && this.multiMode !== '2v2' && this.multiMode !== 'ffa') {
@@ -1211,6 +1287,14 @@ export class GameEngine {
 
   // --- Guest Thin-Client: interpolated view + own-tank prediction ---
   private updateRemote() {
+    if (this.gameState !== GameState.PLAYING) {
+      soundManager.stopEngineSound();
+      for (const p of this.playerTanks.values()) {
+        if (p) p.moving = false;
+      }
+      return;
+    }
+
     const view = this.snapBuffer.sample();
     if (view) this.applyRemoteView(view);
 
@@ -1222,9 +1306,22 @@ export class GameEngine {
       this.reconcileLocalPlayer();
     }
 
-    this.updateEffects();
-    const driving = Array.from(this.playerTanks.values()).some((p) => p && p.moving);
-    soundManager.updateEngineSound(driving);
+    let driving = false;
+    let remoteTerrain: 'normal' | 'mud' | 'ice' = 'normal';
+    for (const p of this.playerTanks.values()) {
+      if (p && p.moving) {
+        driving = true;
+        const centerC = Math.floor((p.x + 16) / BLOCK_SIZE);
+        const centerR = Math.floor((p.y + 16) / BLOCK_SIZE);
+        const tile = this.grid[centerR]?.[centerC];
+        if (tile) {
+          if (tile.type === TileType.MUD) remoteTerrain = 'mud';
+          else if (tile.type === TileType.ICE) remoteTerrain = 'ice';
+        }
+        break;
+      }
+    }
+    soundManager.updateEngineSound(driving, remoteTerrain);
   }
 
   private applyRemoteView(view: NetSnapshot) {
@@ -2097,6 +2194,7 @@ export class GameEngine {
         if (bullet.isPlayer !== other.isPlayer) {
           if (this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, other.x - 3, other.y - 3, 6, 6)) {
             this.createExplosion((bullet.x + other.x) / 2, (bullet.y + other.y) / 2, false);
+            soundManager.playBulletClash();
             bulletsToRemove.add(bullet.id);
             bulletsToRemove.add(other.id);
             bulletCancelled = true;
@@ -2405,11 +2503,19 @@ export class GameEngine {
     }
 
     if (this.multiMode === 'versus') {
+      soundManager.stopEngineSound();
+      for (const p of this.playerTanks.values()) {
+        if (p) p.moving = false;
+      }
       this.endRound(slot === 1 ? 2 : 1);
       return;
     }
 
     if (this.multiMode === '2v2') {
+      soundManager.stopEngineSound();
+      for (const p of this.playerTanks.values()) {
+        if (p) p.moving = false;
+      }
       // Check if either team is completely eliminated
       const teamAAlive = [1, 3].some((s) => this.playerTanks.has(s));
       const teamBAlive = [2, 4].some((s) => this.playerTanks.has(s));
@@ -2441,6 +2547,10 @@ export class GameEngine {
         this.scoreData.playerStats[slot].lives = Math.max(0, this.scoreData.playerStats[slot].lives - 1);
       }
       if (champion !== null) {
+        soundManager.stopEngineSound();
+        for (const p of this.playerTanks.values()) {
+          if (p) p.moving = false;
+        }
         this.endFfaMatch(champion);
         return;
       }
@@ -2488,12 +2598,16 @@ export class GameEngine {
   // --- Base Eagle Destroyed ---
   public destroyBase(baseId: 'A' | 'B' = 'A') {
     if (this.isRoundEnding) return;
+    soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     if (baseId === 'A') {
       if (this.baseState === BaseState.DESTROYED) return;
       this.baseState = BaseState.DESTROYED;
       const bA = this.bases.get('A');
       if (bA) bA.state = BaseState.DESTROYED;
-      soundManager.playBigExplosion();
+      soundManager.playEagleExplosion();
       this.createExplosion(this.baseX + 16, this.baseY + 16, true);
       this.isRoundEnding = true;
       this.clearRoundTimer();
@@ -2520,7 +2634,7 @@ export class GameEngine {
       this.baseStateB = BaseState.DESTROYED;
       const bB = this.bases.get('B');
       if (bB) bB.state = BaseState.DESTROYED;
-      soundManager.playBigExplosion();
+      soundManager.playEagleExplosion();
       this.createExplosion(this.baseB_X + 16, this.baseB_Y + 16, true);
       this.isRoundEnding = true;
       this.clearRoundTimer();
@@ -2544,6 +2658,10 @@ export class GameEngine {
   // --- Game Over ---
   private handleGameOver() {
     this.gameState = GameState.GAME_OVER;
+    soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     soundManager.playGameOver();
     this.onStateChange(this.gameState, this.scoreData);
   }
@@ -2551,6 +2669,10 @@ export class GameEngine {
   // --- Victory ---
   private handleVictory() {
     this.gameState = GameState.VICTORY;
+    soundManager.stopEngineSound();
+    for (const p of this.playerTanks.values()) {
+      if (p) p.moving = false;
+    }
     soundManager.playPowerUpCollect();
     this.onStateChange(this.gameState, this.scoreData);
   }

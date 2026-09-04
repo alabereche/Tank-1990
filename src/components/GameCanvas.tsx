@@ -61,6 +61,7 @@ interface GameCanvasProps {
   onOpenSettings?: () => void;
   onReturnToMenu: () => void;
   onUpdateSettings?: (newSettings: GameSettings) => void;
+  isSettingsOpen?: boolean;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -74,9 +75,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   onOpenSettings,
   onReturnToMenu,
   onUpdateSettings,
+  isSettingsOpen = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
+
+  const isSettingsOpenRef = useRef(isSettingsOpen);
+  isSettingsOpenRef.current = isSettingsOpen;
+
+  // Auto-pause single-player / local battle when Settings modal is opened
+  useEffect(() => {
+    if (isSettingsOpen) {
+      if (engineRef.current && !multiplayerConfig) {
+        if (engineRef.current.getState() === GameState.PLAYING) {
+          engineRef.current.pause();
+        }
+      }
+      keysDown.current = {};
+    }
+  }, [isSettingsOpen, multiplayerConfig]);
 
   const [scoreData, setScoreData] = useState<GameScore>({
     score: 0,
@@ -113,6 +130,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   useEffect(() => {
     setShowScanlines(settings.showScanlines);
   }, [settings.showScanlines]);
+
+  // Ensure menu BGM is unconditionally silenced when entering battlefield
+  useEffect(() => {
+    soundManager.stopMenuMusic();
+  }, []);
 
   // Active window scale derived from settings or fallback
   const windowScale = settings.windowScale || 'large';
@@ -159,6 +181,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     (state: GameState, score: GameScore) => {
       setGameState(state);
       setScoreData({ ...score });
+
+      if (state !== GameState.PLAYING) {
+        soundManager.stopEngineSound();
+      }
 
       if (state === GameState.GAME_OVER) {
         setTimeout(() => {
@@ -215,6 +241,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     return () => {
       engine.stopLoop();
+      soundManager.stopEngineSound();
       unsubscribeGamepad();
     };
   }, [currentStage, customMap, handleStateChange, settings?.playerSpeed, multiplayerConfig]);
@@ -293,6 +320,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // Keyboard Event Handlers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isSettingsOpenRef.current) return;
       soundManager.unlockAudio();
 
       const key = e.key.toLowerCase();
@@ -389,6 +417,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     let animId: number;
     const inputLoop = () => {
       const engine = engineRef.current;
+
+      // If Settings Modal is open, completely freeze player inputs so tank doesn't move in background
+      if (isSettingsOpenRef.current) {
+        const idleInput: InputState = {
+          up: false,
+          down: false,
+          left: false,
+          right: false,
+          fire: false,
+          pause: false,
+          smoke: false,
+          grenade: false,
+          shield: false,
+        };
+        engine?.updateInput(idleInput);
+        engine?.setP2Input(idleInput);
+        keysDown.current = {};
+        animId = requestAnimationFrame(inputLoop);
+        return;
+      }
+
       const kd = keysDown.current;
 
       if (multiplayerConfig?.roomCode === 'LOCAL') {

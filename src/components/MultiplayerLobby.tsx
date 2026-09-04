@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { multiplayerClient } from '../network/MultiplayerClient';
 import { soundManager } from '../engine/SoundManager';
+import { gamepadManager } from '../engine/GamepadManager';
 import { MultiplayerMode, MultiplayerRole, MultiplayerPlayerInfo } from '../types';
 import {
   Users,
@@ -213,6 +214,416 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Controller / Gamepad Navigation Grid
+  const [currentRow, setCurrentRow] = useState<number>(1); // Defaults to Tabs row
+  const [currentCol, setCurrentCol] = useState<number>(0);
+
+  const getActiveRows = () => {
+    if (createdRoomCode) {
+      const rows = [
+        ['back'],
+        ['copy-code', 'copy-link'],
+      ];
+      if (multiplayerClient.getRole() === 'host') {
+        rows.push(['btn-start']);
+      }
+      return rows;
+    }
+
+    if (tab === 'create') {
+      const rows = [
+        ['back'],
+        ['tab-create', 'tab-join'],
+        ['mode-coop', 'mode-versus'],
+        ['mode-2v2', 'mode-ffa'],
+        ['size-classic', 'size-large', 'size-giant'],
+      ];
+      if (mode === 'coop') {
+        rows.push(['stage']);
+      }
+      rows.push(['btn-create']);
+      return rows;
+    }
+
+    // tab === 'join'
+    return [
+      ['back'],
+      ['tab-create', 'tab-join'],
+      ['join-input', 'join-paste'],
+      ['btn-join'],
+    ];
+  };
+
+  const activeRows = getActiveRows();
+  const safeRow = Math.min(currentRow, activeRows.length - 1);
+  const safeCol = Math.min(currentCol, (activeRows[safeRow]?.length || 1) - 1);
+  const focusedId = activeRows[safeRow]?.[safeCol] || '';
+
+  const focusedIdRef = useRef(focusedId);
+  focusedIdRef.current = focusedId;
+
+  const currentRowRef = useRef(safeRow);
+  currentRowRef.current = safeRow;
+
+  const currentColRef = useRef(safeCol);
+  currentColRef.current = safeCol;
+
+  const activeRowsRef = useRef(activeRows);
+  activeRowsRef.current = activeRows;
+
+  const createdRoomCodeRef = useRef(createdRoomCode);
+  createdRoomCodeRef.current = createdRoomCode;
+
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+
+  const mapSizeRef = useRef(mapSize);
+  mapSizeRef.current = mapSize;
+
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
+
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+
+  const handleCreateRoomRef = useRef(handleCreateRoom);
+  handleCreateRoomRef.current = handleCreateRoom;
+
+  const handleJoinRoomRef = useRef(handleJoinRoom);
+  handleJoinRoomRef.current = handleJoinRoom;
+
+  const handleStartGameRef = useRef(handleStartGame);
+  handleStartGameRef.current = handleStartGame;
+
+  const copyRoomCodeRef = useRef(copyRoomCode);
+  copyRoomCodeRef.current = copyRoomCode;
+
+  const copyInviteLinkRef = useRef(copyInviteLink);
+  copyInviteLinkRef.current = copyInviteLink;
+
+  const activateFocused = () => {
+    const id = focusedIdRef.current;
+    if (id === 'back') {
+      soundManager.playHitSteel();
+      multiplayerClient.disconnect();
+      if (createdRoomCodeRef.current) {
+        setCreatedRoomCode(null);
+        setPeerJoined(false);
+        setConnectedPlayers([]);
+      } else {
+        onBackRef.current();
+      }
+      return;
+    }
+    if (id === 'tab-create') {
+      soundManager.playHitSteel();
+      setTab('create');
+      setErrorMessage(null);
+      return;
+    }
+    if (id === 'tab-join') {
+      soundManager.playHitSteel();
+      setTab('join');
+      setErrorMessage(null);
+      return;
+    }
+    if (id === 'mode-coop') {
+      soundManager.playHitSteel();
+      setMode('coop');
+      return;
+    }
+    if (id === 'mode-versus') {
+      soundManager.playHitSteel();
+      setMode('versus');
+      return;
+    }
+    if (id === 'mode-2v2') {
+      soundManager.playHitSteel();
+      setMode('2v2');
+      return;
+    }
+    if (id === 'mode-ffa') {
+      soundManager.playHitSteel();
+      setMode('ffa');
+      if (mapSizeRef.current === 'classic') setMapSize('large');
+      return;
+    }
+    if (id === 'size-classic') {
+      if (modeRef.current !== 'ffa') {
+        soundManager.playHitSteel();
+        setMapSize('classic');
+      }
+      return;
+    }
+    if (id === 'size-large') {
+      soundManager.playHitSteel();
+      setMapSize('large');
+      return;
+    }
+    if (id === 'size-giant') {
+      soundManager.playHitSteel();
+      setMapSize('giant');
+      return;
+    }
+    if (id === 'btn-create') {
+      handleCreateRoomRef.current();
+      return;
+    }
+    if (id === 'join-input') {
+      const el = document.getElementById('lobby-room-code-input') as HTMLInputElement;
+      if (el) el.focus();
+      return;
+    }
+    if (id === 'join-paste') {
+      navigator.clipboard.readText().then((txt) => {
+        if (txt) setRoomCodeInput(txt.trim().toUpperCase());
+      }).catch(() => {});
+      return;
+    }
+    if (id === 'btn-join') {
+      handleJoinRoomRef.current();
+      return;
+    }
+    if (id === 'copy-code') {
+      copyRoomCodeRef.current();
+      return;
+    }
+    if (id === 'copy-link') {
+      copyInviteLinkRef.current();
+      return;
+    }
+    if (id === 'btn-start') {
+      handleStartGameRef.current();
+      return;
+    }
+  };
+
+  const activateFocusedRef = useRef(activateFocused);
+  activateFocusedRef.current = activateFocused;
+
+  // Gamepad & Keyboard Navigation Loop
+  useEffect(() => {
+    let animId: number;
+    let prevUp = false;
+    let prevDown = false;
+    let prevLeft = false;
+    let prevRight = false;
+    let prevConfirm = false;
+    let prevCancel = false;
+    let prevStart = false;
+    let holdTimer = 0;
+    let heldDirection: 'up' | 'down' | 'left' | 'right' | null = null;
+
+    const INITIAL_HOLD_DELAY = 450;
+    const REPEAT_RATE = 250;
+
+    const moveNav = (dir: 'up' | 'down' | 'left' | 'right') => {
+      const rows = activeRowsRef.current;
+      const curR = currentRowRef.current;
+      const curC = currentColRef.current;
+
+      if (dir === 'up') {
+        soundManager.playMenuMove();
+        const nextR = curR > 0 ? curR - 1 : rows.length - 1;
+        setCurrentRow(nextR);
+        setCurrentCol(Math.min(curC, (rows[nextR]?.length || 1) - 1));
+      } else if (dir === 'down') {
+        soundManager.playMenuMove();
+        const nextR = curR < rows.length - 1 ? curR + 1 : 0;
+        setCurrentRow(nextR);
+        setCurrentCol(Math.min(curC, (rows[nextR]?.length || 1) - 1));
+      } else if (dir === 'left') {
+        if (focusedIdRef.current === 'stage') {
+          soundManager.playHitSteel();
+          setStage((prev) => Math.max(1, prev - 1));
+        } else {
+          soundManager.playMenuMove();
+          const rowLen = rows[curR]?.length || 1;
+          const nextC = curC > 0 ? curC - 1 : rowLen - 1;
+          setCurrentCol(nextC);
+        }
+      } else if (dir === 'right') {
+        if (focusedIdRef.current === 'stage') {
+          soundManager.playHitSteel();
+          setStage((prev) => Math.min(35, prev + 1));
+        } else {
+          soundManager.playMenuMove();
+          const rowLen = rows[curR]?.length || 1;
+          const nextC = curC < rowLen - 1 ? curC + 1 : 0;
+          setCurrentCol(nextC);
+        }
+      }
+    };
+
+    let initialized = false;
+    let mountCooldownUntil = 0;
+
+    const poll = (time: number) => {
+      const pad = gamepadManager.pollMenuInput();
+      if (pad) {
+        if (pad.anyButton) {
+          soundManager.unlockAudio();
+        }
+
+        // On initial mount, absorb any held buttons
+        if (!initialized) {
+          initialized = true;
+          mountCooldownUntil = time + 250;
+          prevConfirm = pad.confirm;
+          prevCancel = pad.cancel;
+          prevStart = pad.start;
+          prevUp = pad.up;
+          prevDown = pad.down;
+          prevLeft = pad.left;
+          prevRight = pad.right;
+          animId = requestAnimationFrame(poll);
+          return;
+        }
+
+        const isUp = pad.up;
+        const isDown = pad.down;
+        const isLeft = pad.left;
+        const isRight = pad.right;
+
+        // Fresh press
+        if (isLeft && !prevLeft) {
+          heldDirection = 'left';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          moveNav('left');
+        } else if (isRight && !prevRight) {
+          heldDirection = 'right';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          moveNav('right');
+        } else if (isUp && !prevUp) {
+          heldDirection = 'up';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          moveNav('up');
+        } else if (isDown && !prevDown) {
+          heldDirection = 'down';
+          holdTimer = time + INITIAL_HOLD_DELAY;
+          moveNav('down');
+        } else if (heldDirection && ((heldDirection === 'left' && isLeft) || (heldDirection === 'right' && isRight) || (heldDirection === 'up' && isUp) || (heldDirection === 'down' && isDown))) {
+          if (time >= holdTimer) {
+            holdTimer = time + REPEAT_RATE;
+            moveNav(heldDirection);
+          }
+        } else if (!isUp && !isDown && !isLeft && !isRight) {
+          heldDirection = null;
+          holdTimer = 0;
+        }
+
+        prevUp = isUp;
+        prevDown = isDown;
+        prevLeft = isLeft;
+        prevRight = isRight;
+
+        // Confirm: Button 0 (A) or Button 2 (X)
+        const confirmPressed = pad.confirm;
+        const confirmTrigger = confirmPressed && !prevConfirm;
+        prevConfirm = confirmPressed;
+
+        if (confirmTrigger && time >= mountCooldownUntil) {
+          activateFocusedRef.current();
+        }
+
+        // Start: Button 9
+        const startPressed = pad.start;
+        const startTrigger = startPressed && !prevStart;
+        prevStart = startPressed;
+
+        if (startTrigger && time >= mountCooldownUntil) {
+          if (createdRoomCodeRef.current) {
+            handleStartGameRef.current();
+          } else if (tabRef.current === 'create') {
+            handleCreateRoomRef.current();
+          } else {
+            handleJoinRoomRef.current();
+          }
+        }
+
+        // Cancel: Button 1 (B)
+        const cancelPressed = pad.cancel;
+        const cancelTrigger = cancelPressed && !prevCancel;
+        prevCancel = cancelPressed;
+
+        if (cancelTrigger && time >= mountCooldownUntil) {
+          soundManager.playHitSteel();
+          if (createdRoomCodeRef.current) {
+            multiplayerClient.disconnect();
+            setCreatedRoomCode(null);
+            setPeerJoined(false);
+            setConnectedPlayers([]);
+          } else {
+            multiplayerClient.disconnect();
+            onBackRef.current();
+          }
+        }
+      } else {
+        prevUp = false;
+        prevDown = false;
+        prevLeft = false;
+        prevRight = false;
+        heldDirection = null;
+        prevConfirm = false;
+        prevCancel = false;
+        prevStart = false;
+      }
+
+      animId = requestAnimationFrame(poll);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        if (e.key === 'Escape') {
+          (e.target as HTMLElement).blur();
+        }
+        return;
+      }
+
+      e.stopPropagation();
+
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        moveNav('left');
+      } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        e.preventDefault();
+        moveNav('right');
+      } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        moveNav('up');
+      } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        moveNav('down');
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activateFocusedRef.current();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        soundManager.playHitSteel();
+        if (createdRoomCodeRef.current) {
+          multiplayerClient.disconnect();
+          setCreatedRoomCode(null);
+          setPeerJoined(false);
+          setConnectedPlayers([]);
+        } else {
+          multiplayerClient.disconnect();
+          onBackRef.current();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    animId = requestAnimationFrame(poll);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      cancelAnimationFrame(animId);
+    };
+  }, []);
+
   return (
     <div
       id="multiplayer-lobby-container"
@@ -227,10 +638,14 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
             multiplayerClient.disconnect();
             onBack();
           }}
-          className="flex items-center gap-1.5 text-[9px] sm:text-xs text-zinc-400 hover:text-amber-400 transition-colors py-1 px-2 bg-zinc-900 border border-zinc-700 rounded"
+          className={`flex items-center gap-1.5 text-[9px] sm:text-xs transition-all py-1 px-2.5 bg-zinc-900 border rounded ${
+            focusedId === 'back'
+              ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black text-[#f8b800] border-[#f8b800] scale-105 font-bold shadow-[0_0_10px_rgba(248,184,0,0.5)]'
+              : 'border-zinc-700 text-zinc-400 hover:text-amber-400'
+          }`}
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>TITLE</span>
+          <span>{createdRoomCode ? 'LEAVE ROOM' : 'TITLE'}</span>
         </button>
 
         <div className="flex items-center gap-2">
@@ -297,11 +712,16 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                 setErrorMessage(null);
               }}
               className={`py-2 text-xs text-center border-2 transition-all ${
+                focusedId === 'tab-create'
+                  ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
+                  : ''
+              } ${
                 tab === 'create'
                   ? 'bg-amber-500/20 border-[#f8b800] text-[#f8b800] font-bold shadow-md'
                   : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white'
               }`}
             >
+              {focusedId === 'tab-create' && <span className="text-[#f8b800] animate-pulse mr-1">▶</span>}
               CREATE ROOM
             </button>
             <button
@@ -312,11 +732,16 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                 setErrorMessage(null);
               }}
               className={`py-2 text-xs text-center border-2 transition-all ${
+                focusedId === 'tab-join'
+                  ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
+                  : ''
+              } ${
                 tab === 'join'
                   ? 'bg-amber-500/20 border-[#f8b800] text-[#f8b800] font-bold shadow-md'
                   : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white'
               }`}
             >
+              {focusedId === 'tab-join' && <span className="text-[#f8b800] animate-pulse mr-1">▶</span>}
               JOIN ROOM
             </button>
           </div>
@@ -337,12 +762,17 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                       setMode('coop');
                     }}
                     className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                      focusedId === 'mode-coop'
+                        ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
+                        : ''
+                    } ${
                       mode === 'coop'
                         ? 'bg-emerald-950/40 border-emerald-500 text-emerald-300'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs">
+                      {focusedId === 'mode-coop' && <span className="text-[#f8b800] animate-pulse">▶</span>}
                       <Users className="w-4 h-4 text-emerald-400" />
                       <span>2P CO-OP</span>
                     </div>
@@ -358,12 +788,17 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                       setMode('versus');
                     }}
                     className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                      focusedId === 'mode-versus'
+                        ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
+                        : ''
+                    } ${
                       mode === 'versus'
                         ? 'bg-red-950/40 border-red-500 text-red-300'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs">
+                      {focusedId === 'mode-versus' && <span className="text-[#f8b800] animate-pulse">▶</span>}
                       <Swords className="w-4 h-4 text-red-400" />
                       <span>1V1 VERSUS</span>
                     </div>
@@ -379,12 +814,17 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                       setMode('2v2');
                     }}
                     className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                      focusedId === 'mode-2v2'
+                        ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
+                        : ''
+                    } ${
                       mode === '2v2'
                         ? 'bg-blue-950/40 border-blue-500 text-blue-300'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs">
+                      {focusedId === 'mode-2v2' && <span className="text-[#f8b800] animate-pulse">▶</span>}
                       <Shield className="w-4 h-4 text-blue-400" />
                       <span>2V2 TEAMS</span>
                     </div>
@@ -403,12 +843,17 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                       }
                     }}
                     className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                      focusedId === 'mode-ffa'
+                        ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
+                        : ''
+                    } ${
                       mode === 'ffa'
                         ? 'bg-purple-950/40 border-purple-500 text-purple-300'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs">
+                      {focusedId === 'mode-ffa' && <span className="text-[#f8b800] animate-pulse">▶</span>}
                       <Crown className="w-4 h-4 text-purple-400" />
                       <span>8 FREE-FOR-ALL</span>
                     </div>
@@ -427,6 +872,8 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                 <div className="grid grid-cols-3 gap-2">
                   {(['classic', 'large', 'giant'] as const).map((sz) => {
                     const isClassicFfaDisabled = mode === 'ffa' && sz === 'classic';
+                    const szId = `size-${sz}`;
+                    const isFocused = focusedId === szId;
                     return (
                       <button
                         key={sz}
@@ -437,6 +884,10 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                           setMapSize(sz);
                         }}
                         className={`py-1.5 px-2 rounded border text-center uppercase text-[9px] transition-all ${
+                          isFocused
+                            ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-105 z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
+                            : ''
+                        } ${
                           isClassicFfaDisabled
                             ? 'opacity-30 cursor-not-allowed bg-zinc-900 border-zinc-800 text-zinc-600'
                             : mapSize === sz
@@ -445,6 +896,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                         }`}
                         title={isClassicFfaDisabled ? '8-Player FFA requires Large or Giant arena' : undefined}
                       >
+                        {isFocused && <span className="text-[#f8b800] animate-pulse mr-1">▶</span>}
                         {sz === 'classic'
                           ? (mode === 'ffa' ? '26x26 (LOCKED)' : '26x26 STD')
                           : sz === 'large'
@@ -458,9 +910,18 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
 
               {/* Stage Selector */}
               {mode === 'coop' && (
-                <div>
+                <div
+                  className={`transition-all rounded p-1.5 ${
+                    focusedId === 'stage'
+                      ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black bg-zinc-950/80'
+                      : ''
+                  }`}
+                >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-zinc-400 font-bold uppercase">MISSION STAGE</span>
+                    <span className="text-zinc-400 font-bold uppercase flex items-center gap-1">
+                      {focusedId === 'stage' && <span className="text-[#f8b800] animate-pulse">▶</span>}
+                      <span>MISSION STAGE</span>
+                    </span>
                     <span className="text-amber-400 font-bold font-mono">STAGE {stage}</span>
                   </div>
                   <input
@@ -471,6 +932,11 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                     onChange={(e) => setStage(parseInt(e.target.value, 10))}
                     className="w-full accent-amber-500 h-2 bg-zinc-800 rounded appearance-none cursor-pointer"
                   />
+                  {focusedId === 'stage' && (
+                    <div className="text-[8px] text-amber-400/80 font-mono mt-0.5 text-center">
+                      [← / →] ADJUST STAGE (1-35)
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -478,8 +944,13 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
               <button
                 id="btn-confirm-create-room"
                 onClick={handleCreateRoom}
-                className="mt-2 w-full py-2.5 bg-[#f8b800] hover:bg-amber-400 text-black font-bold rounded text-xs tracking-wider transition-transform active:translate-y-px shadow-lg"
+                className={`mt-2 w-full py-2.5 bg-[#f8b800] hover:bg-amber-400 text-black font-bold rounded text-xs tracking-wider transition-all active:translate-y-px shadow-lg ${
+                  focusedId === 'btn-create'
+                    ? 'ring-4 ring-white ring-offset-2 ring-offset-black scale-[1.02] shadow-[0_0_16px_rgba(248,184,0,0.9)] font-extrabold'
+                    : ''
+                }`}
               >
+                {focusedId === 'btn-create' && <span className="mr-1.5 animate-pulse">▶</span>}
                 GENERATE BATTLE ROOM
               </button>
             </div>
@@ -495,13 +966,18 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                 </label>
                 <div className="flex gap-2">
                   <input
+                    id="lobby-room-code-input"
                     type="text"
                     maxLength={8}
                     value={roomCodeInput}
                     onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
                     placeholder="e.g. CITY77"
                     autoFocus
-                    className="flex-1 bg-black border-2 border-zinc-700 focus:border-[#f8b800] px-3 py-2 text-center text-sm font-bold text-[#f8b800] tracking-widest uppercase rounded outline-none font-mono"
+                    className={`flex-1 bg-black border-2 px-3 py-2 text-center text-sm font-bold text-[#f8b800] tracking-widest uppercase rounded outline-none font-mono transition-all ${
+                      focusedId === 'join-input'
+                        ? 'border-[#f8b800] ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black'
+                        : 'border-zinc-700 focus:border-[#f8b800]'
+                    }`}
                   />
                   <button
                     type="button"
@@ -511,8 +987,13 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                         if (text) setRoomCodeInput(text.trim().toUpperCase());
                       } catch {}
                     }}
-                    className="px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded text-zinc-300 text-[9px]"
+                    className={`px-3 bg-zinc-800 hover:bg-zinc-700 border rounded text-zinc-300 text-[9px] transition-all ${
+                      focusedId === 'join-paste'
+                        ? 'border-[#f8b800] text-[#f8b800] ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-105'
+                        : 'border-zinc-600'
+                    }`}
                   >
+                    {focusedId === 'join-paste' && <span className="text-[#f8b800] animate-pulse mr-1">▶</span>}
                     PASTE
                   </button>
                 </div>
@@ -521,8 +1002,13 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
               <button
                 type="submit"
                 id="btn-confirm-join-room"
-                className="w-full py-2.5 bg-[#f8b800] hover:bg-amber-400 text-black font-bold rounded text-xs tracking-wider transition-transform active:translate-y-px shadow-lg"
+                className={`w-full py-2.5 bg-[#f8b800] hover:bg-amber-400 text-black font-bold rounded text-xs tracking-wider transition-all active:translate-y-px shadow-lg ${
+                  focusedId === 'btn-join'
+                    ? 'ring-4 ring-white ring-offset-2 ring-offset-black scale-[1.02] shadow-[0_0_16px_rgba(248,184,0,0.9)] font-extrabold'
+                    : ''
+                }`}
               >
+                {focusedId === 'btn-join' && <span className="mr-1.5 animate-pulse">▶</span>}
                 CONNECT & JOIN
               </button>
             </form>
@@ -544,16 +1030,26 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
               <button
                 type="button"
                 onClick={copyRoomCode}
-                className="flex items-center gap-1 text-[8px] sm:text-[9px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-600 px-2.5 py-1 rounded transition-colors"
+                className={`flex items-center gap-1 text-[8px] sm:text-[9px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border px-2.5 py-1 rounded transition-all ${
+                  focusedId === 'copy-code'
+                    ? 'border-[#f8b800] ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black text-[#f8b800] scale-105'
+                    : 'border-zinc-600'
+                }`}
               >
+                {focusedId === 'copy-code' && <span className="text-[#f8b800] animate-pulse mr-0.5">▶</span>}
                 {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                 <span>{copied ? 'COPIED!' : 'COPY CODE'}</span>
               </button>
               <button
                 type="button"
                 onClick={copyInviteLink}
-                className="flex items-center gap-1 text-[8px] sm:text-[9px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-600 px-2.5 py-1 rounded transition-colors"
+                className={`flex items-center gap-1 text-[8px] sm:text-[9px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border px-2.5 py-1 rounded transition-all ${
+                  focusedId === 'copy-link'
+                    ? 'border-[#f8b800] ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black text-[#f8b800] scale-105'
+                    : 'border-zinc-600'
+                }`}
               >
+                {focusedId === 'copy-link' && <span className="text-[#f8b800] animate-pulse mr-0.5">▶</span>}
                 <Zap className="w-3 h-3 text-amber-400" />
                 <span>COPY INVITE LINK</span>
               </button>
@@ -733,11 +1229,16 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
               disabled={!(connectedPlayers.length >= 2 || peerJoined)}
               onClick={handleStartGame}
               className={`w-full py-3 rounded text-xs font-bold tracking-widest uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
+                focusedId === 'btn-start'
+                  ? 'ring-4 ring-white ring-offset-2 ring-offset-black scale-[1.02] shadow-[0_0_16px_rgba(16,185,129,0.9)]'
+                  : ''
+              } ${
                 connectedPlayers.length >= 2 || peerJoined
                   ? 'bg-emerald-500 hover:bg-emerald-400 text-black cursor-pointer active:translate-y-px'
                   : 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
               }`}
             >
+              {focusedId === 'btn-start' && <span className="text-black font-extrabold mr-1 animate-pulse">▶</span>}
               <Play className="w-4 h-4 fill-current" />
               <span>{connectedPlayers.length >= 2 || peerJoined ? 'START MISSION' : 'WAITING FOR PLAYERS...'}</span>
             </button>
@@ -749,9 +1250,14 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
         </div>
       )}
 
-      {/* Footer Info */}
-      <div className="text-[8px] text-zinc-500 tracking-wider text-center pt-3 border-t border-zinc-800 w-full">
-        BATTLE CITY 1990 ONLINE ENGINE - ZERO DESYNC WEBSOCKET PROTOCOL
+      {/* Footer Info & Controller Guide */}
+      <div className="w-full pt-3 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-center">
+        <div className="text-[8px] sm:text-[9px] text-[#f8b800] font-mono tracking-wider">
+          [D-PAD / STICK] MOVE • [A] SELECT • [B] BACK / LEAVE • [START] LAUNCH
+        </div>
+        <div className="text-[7px] sm:text-[8px] text-zinc-500 tracking-wider">
+          BATTLE CITY 1990 ONLINE ENGINE
+        </div>
       </div>
     </div>
   );

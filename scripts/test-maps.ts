@@ -1,63 +1,5 @@
-/**
- * Battle City 1990 - Handcrafted Professional Stages & Generator
- * Supports Classic (26x26), Large (34x34), and Giant (42x42) battlefield arenas.
- * Features 10 completely distinct handcrafted stages, each with unique tactical layouts,
- * biome profiles, obstacle combinations, and combat signatures.
- */
+import { TileType } from '../src/types';
 
-import { StageMap, TileType, MapSizePreset } from '../types';
-
-export const BLOCK_SIZE = 16; // 16px per sub-tile
-export const DEFAULT_GRID_SIZE = 26;
-export const DEFAULT_CANVAS_SIZE = 416;
-
-// For backwards compatibility
-export const GRID_SIZE = 26;
-export const CANVAS_SIZE = 416;
-
-export interface MapSizeConfig {
-  size: number;
-  canvasSize: number;
-  name: string;
-  label: string;
-  desc: string;
-}
-
-export const MAP_SIZE_CONFIGS: Record<MapSizePreset, MapSizeConfig> = {
-  classic: {
-    size: 26,
-    canvasSize: 416,
-    name: 'Classic (26x26)',
-    label: 'Classic (26x26)',
-    desc: 'Original Battle City 1990 combat grid (416x416 px)',
-  },
-  large: {
-    size: 34,
-    canvasSize: 544,
-    name: 'Large (34x34)',
-    label: 'Large (34x34)',
-    desc: 'Expanded +70% battlefield with tactical corridors (544x544 px)',
-  },
-  giant: {
-    size: 42,
-    canvasSize: 672,
-    name: 'Giant (42x42)',
-    label: 'Giant (42x42)',
-    desc: 'Epic super-sized war arena with extra maneuvering space (672x672 px)',
-  },
-};
-
-export function getGridSizeForPreset(preset: MapSizePreset): number {
-  return MAP_SIZE_CONFIGS[preset]?.size ?? 26;
-}
-
-export function getCanvasSizeForPreset(preset: MapSizePreset): number {
-  return MAP_SIZE_CONFIGS[preset]?.canvasSize ?? 416;
-}
-
-/**
- * Creates an empty grid with the Base Eagle and standard protective brick bunker
- */
 export function createEmptyGrid(gridSize: number = 26): number[][] {
   const grid: number[][] = Array(gridSize)
     .fill(0)
@@ -90,25 +32,19 @@ export function createEmptyGrid(gridSize: number = 26): number[][] {
   return grid;
 }
 
-/**
- * Adds the North Base Eagle and symmetrical protective brick bunker for dual-base modes (1v1, 2v2)
- */
 export function addNorthBaseBunker(grid: number[][], gridSize: number): void {
   const baseCol = Math.floor(gridSize / 2) - 1;
 
-  // Set North Eagle Base (2x2 sub-tiles at row 0, 1)
   grid[0][baseCol] = TileType.BASE;
   grid[0][baseCol + 1] = TileType.BASE;
   grid[1][baseCol] = TileType.BASE;
   grid[1][baseCol + 1] = TileType.BASE;
 
-  // Symmetrical brick bunker in front of North Base (row 2)
   for (let c = baseCol - 1; c <= baseCol + 2; c++) {
     if (c >= 0 && c < gridSize && 2 < gridSize) {
       grid[2][c] = TileType.BRICK;
     }
   }
-  // Symmetrical brick bunker sides (row 0, 1)
   if (baseCol - 1 >= 0) {
     grid[0][baseCol - 1] = TileType.BRICK;
     grid[1][baseCol - 1] = TileType.BRICK;
@@ -120,13 +56,13 @@ export function addNorthBaseBunker(grid: number[][], gridSize: number): void {
 }
 
 /**
- * Shared building helper to maintain safe spawn and base zones across all 10 stages
+ * Shared building helper to maintain safe spawn and base zones
  */
 function createBuilder(gridSize: number) {
   const g = createEmptyGrid(gridSize);
   const mid = Math.floor(gridSize / 2);
 
-  // Protected zones: Base bunkers, P1 & P2 spawns, and enemy spawn pockets
+  // Critical protected zones: Base bunkers and player/enemy spawns
   const isProtected = (r: number, c: number): boolean => {
     // South Base zone (Eagle + Bunker ring)
     if (r >= gridSize - 3 && c >= mid - 2 && c <= mid + 2) return true;
@@ -182,10 +118,7 @@ function createBuilder(gridSize: number) {
   return { g, mid, placeCell, placeBlock, placeVLine, placeHLine, placeRect, isProtected };
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 1: Classic Citadel (القلعة الكلاسيكية)
-// NES Tribute + Outermost Ice Avenues + Ambush Foliage + Mud Choke Points
-// ---------------------------------------------------------------------------
+// Stage 1: Classic Citadel (NES Tribute + Tactical Ice Avenues + Mud Choke Points)
 export function createStage1(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
   const { mid, placeBlock, placeVLine, placeHLine } = b;
@@ -220,11 +153,11 @@ export function createStage1(gridSize: number = 26): number[][] {
 
   placeBlock(19 + offset, 12 + offset, TileType.STEEL);
 
-  // High-speed Ice corridors on the far edges for rapid flanking
+  // Tactical ICE flank corridors
   placeVLine(4, gridSize - 6, 0, TileType.ICE);
   placeVLine(4, gridSize - 6, gridSize - 2, TileType.ICE);
 
-  // Ambush Foliage flanking central columns
+  // Ambush Foliage
   placeVLine(7 + offset, 9 + offset, 4 + offset, TileType.TREES);
   placeVLine(7 + offset, 9 + offset, 20 + offset, TileType.TREES);
 
@@ -235,10 +168,7 @@ export function createStage1(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 2: Iron Fortress (الحصن الحديدي)
-// Heavy Industrial Bastion + Steel Cross + Water Hazard Moat + Ice Slipways
-// ---------------------------------------------------------------------------
+// Stage 2: Iron Fortress (Industrial Bastion with Steel Cross & Water Hazard Moat)
 export function createIronFortress(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
   const { mid, placeBlock, placeVLine, placeHLine } = b;
@@ -288,10 +218,7 @@ export function createIronFortress(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 3: Twin Rivers (معبر النهرين)
-// Double River Channels + Frozen Ice Bridge + Muddy Shallows + Sniping Groves
-// ---------------------------------------------------------------------------
+// Stage 3: Twin Rivers (Double River Crossing + Frozen Ice Bridge + Mud Shallows)
 export function createRiverCrossing(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
   const { mid, placeBlock } = b;
@@ -303,7 +230,7 @@ export function createRiverCrossing(gridSize: number = 26): number[][] {
   const bridgeRight = Math.floor(gridSize * 0.72);
 
   // River 1 & River 2
-  for (const r of [r1, r2]) {
+  for (let r of [r1, r2]) {
     for (let c = 0; c < gridSize; c++) {
       if ((c >= bridgeLeft && c <= bridgeLeft + 1) || (c >= bridgeRight && c <= bridgeRight + 1)) {
         b.placeCell(r, c, TileType.BRICK);
@@ -320,8 +247,10 @@ export function createRiverCrossing(gridSize: number = 26): number[][] {
     // Mud banks along the rivers
     for (let c = 2; c < gridSize - 2; c++) {
       if ((c < bridgeLeft - 1 || c > bridgeRight + 2) && (c < mid - 2 || c > mid + 1)) {
-        b.placeCell(r - 1, c, TileType.MUD);
-        b.placeCell(r + 2, c, TileType.MUD);
+        if (Math.random) {
+          b.placeCell(r - 1, c, TileType.MUD);
+          b.placeCell(r + 2, c, TileType.MUD);
+        }
       }
     }
   }
@@ -345,10 +274,7 @@ export function createRiverCrossing(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 4: Amazon Rainforest (غابة الأمازون الكثيفة)
-// Dense Jungle Warfare (>40% Trees) + Ancient Temple Ruins + Sunken Mud Trails
-// ---------------------------------------------------------------------------
+// Stage 4: Amazon Rainforest (Dense Jungle Warfare + Stealth Canopies + Ancient Temple)
 export function createAmazonRainforest(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
   const { mid, placeBlock, placeVLine, placeHLine, placeRect } = b;
@@ -361,6 +287,7 @@ export function createAmazonRainforest(gridSize: number = 26): number[][] {
   placeRect(gridSize - 6 - qSize, gridSize - 6, gridSize - 4 - qSize, gridSize - 4, TileType.TREES);
 
   // 2. Central Sunken Temple Ruins (Brick walls + Steel Totems)
+  // Temple outer brick perimeter
   placeHLine(mid - 4, mid - 4, mid + 3, TileType.BRICK);
   placeHLine(mid + 3, mid - 4, mid + 3, TileType.BRICK);
   placeVLine(mid - 4, mid + 3, mid - 4, TileType.BRICK);
@@ -386,13 +313,10 @@ export function createAmazonRainforest(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 5: Glacial Archipelago (الأرخبيل الجليدي)
-// Vast Arctic Ice Sheets (>35%) + Blue Water Lagoons + 4 Fortified Outposts
-// ---------------------------------------------------------------------------
+// Stage 5: Glacial Archipelago (Vast Ice Fields + Water Lagoons + 4 Fortified Outposts)
 export function createGlacialArchipelago(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
-  const { mid, placeBlock, placeRect } = b;
+  const { mid, placeBlock, placeRect, placeVLine, placeHLine } = b;
 
   // 1. Broad lateral and diagonal Ice fields (>35% coverage)
   placeRect(3, gridSize - 5, 0, 2, TileType.ICE);
@@ -434,10 +358,7 @@ export function createGlacialArchipelago(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 6: The Great Labyrinth (المتاهة الكبرى)
-// Geometric 90° Maze + Steel Pillars + Breakable Brick Shortcuts + Dead-end Mud
-// ---------------------------------------------------------------------------
+// Stage 6: The Great Labyrinth (Geometric 90° Maze with Steel Pillars & Breakable Shortcuts)
 export function createGreatLabyrinth(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
   const { mid, placeBlock, placeVLine, placeHLine } = b;
@@ -490,13 +411,10 @@ export function createGreatLabyrinth(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 7: Muddy Badlands (وادي الوحل والخنادق)
-// Quagmire Canyons (42% Speed) + Dry High-Ground Mesas + Steel Watchtowers
-// ---------------------------------------------------------------------------
+// Stage 7: Muddy Badlands (Quagmire Canyons + Dry Ridge Mesas + Steel Watchtowers)
 export function createMuddyBadlands(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
-  const { mid, placeBlock, placeVLine } = b;
+  const { mid, placeBlock, placeVLine, placeHLine, placeRect } = b;
 
   // 1. Three deep vertical Mud Canyons (crawling 42% speed)
   const c1 = Math.floor(gridSize * 0.22);
@@ -505,7 +423,7 @@ export function createMuddyBadlands(gridSize: number = 26): number[][] {
 
   placeVLine(3, gridSize - 5, c1, TileType.MUD);
   placeVLine(3, gridSize - 5, c3, TileType.MUD);
-  // Center mud canyon
+  // Center mud canyon (interrupted near base)
   placeVLine(4, gridSize - 6, c2, TileType.MUD);
 
   // 2. High-Ground Brick Mesas (Fortified high dry ridges)
@@ -532,10 +450,7 @@ export function createMuddyBadlands(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 8: Urban Gridlock (مدينة الحرب الحضرية)
-// City Street Grid + 3x3 Blocks + Asphalt Ice Avenues + Central Park Fountain
-// ---------------------------------------------------------------------------
+// Stage 8: Urban Gridlock (City Streets, 3x3 Blocks, Asphalt Ice Avenues & Park Fountain)
 export function createUrbanGridlock(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
   const { mid, placeBlock, placeRect, placeHLine, placeVLine } = b;
@@ -575,15 +490,13 @@ export function createUrbanGridlock(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 9: Bunker Complex (مجمع المخابئ العسكرية)
-// Underground Bastion + 4 Cardinal Steel Pillboxes + Water Security Moats
-// ---------------------------------------------------------------------------
+// Stage 9: Bunker Complex (Underground Bastion + 4 Cardinal Pillboxes + Water Security Moats)
 export function createBunkerComplex(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
-  const { mid, placeBlock, placeVLine, placeHLine } = b;
+  const { mid, placeBlock, placeVLine, placeHLine, placeRect } = b;
 
-  // 1. Central Diamond Bastion - 4 Cardinal Steel Pillboxes
+  // 1. Central Diamond Bastion
+  // 4 Cardinal Steel Pillboxes
   placeBlock(mid - 6, mid - 1, TileType.STEEL); // North Pillbox
   placeBlock(mid + 4, mid - 1, TileType.STEEL); // South Pillbox
   placeBlock(mid - 1, mid - 6, TileType.STEEL); // West Pillbox
@@ -616,13 +529,10 @@ export function createBunkerComplex(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// STAGE 10: Death Valley Crater / The Caldera (فوهة بركان الموت)
-// Concentric Volcanic Caldera + Ash Swamps + Elevated Central Steel Throne
-// ---------------------------------------------------------------------------
+// Stage 10: Death Valley Crater / The Caldera (Concentric Volcanic Rings + Central Steel Throne)
 export function createDeathValley(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
-  const { mid, placeBlock, placeVLine, placeHLine } = b;
+  const { mid, placeBlock, placeRect, placeVLine, placeHLine } = b;
 
   // 1. Outer Ring: Ash & Quagmire Mud Swamp (Perimeter border)
   placeHLine(3, 4, gridSize - 5, TileType.MUD);
@@ -670,359 +580,82 @@ export function createDeathValley(gridSize: number = 26): number[][] {
   return b.g;
 }
 
-// ---------------------------------------------------------------------------
-// FFA Tactical Maze (8-Player Arena)
-// ---------------------------------------------------------------------------
-export function createTacticalMaze(gridSize: number = 34): number[][] {
-  const g = Array.from({ length: gridSize }, () => Array(gridSize).fill(TileType.EMPTY));
-  const mid = Math.floor(gridSize / 2);
-
-  const placeBlock = (r: number, c: number, type: TileType) => {
-    if (r >= 0 && r + 1 < gridSize && c >= 0 && c + 1 < gridSize) {
-      g[r][c] = type;
-      g[r + 1][c] = type;
-      g[r][c + 1] = type;
-      g[r + 1][c + 1] = type;
-    }
-  };
-
-  const placeVLine = (startR: number, endR: number, c: number, type: TileType) => {
-    for (let r = startR; r <= endR; r++) {
-      if (r >= 0 && r < gridSize && c >= 0 && c + 1 < gridSize) {
-        g[r][c] = type;
-        g[r][c + 1] = type;
-      }
-    }
-  };
-
-  const placeHLine = (r: number, startC: number, endC: number, type: TileType) => {
-    for (let c = startC; c <= endC; c++) {
-      if (r >= 0 && r + 1 < gridSize && c >= 0 && c < gridSize) {
-        g[r][c] = type;
-        g[r + 1][c] = type;
-      }
-    }
-  };
-
-  // Center Skirmish Hub
-  placeBlock(mid - 4, mid - 4, TileType.STEEL);
-  placeBlock(mid - 4, mid + 2, TileType.STEEL);
-  placeBlock(mid + 2, mid - 4, TileType.STEEL);
-  placeBlock(mid + 2, mid + 2, TileType.STEEL);
-
-  // Central Ice Arena floor for slippery duels
-  for (let r = mid - 2; r <= mid + 1; r++) {
-    for (let c = mid - 2; c <= mid + 1; c++) {
-      g[r][c] = TileType.ICE;
-    }
-  }
-
-  // Foliage concealment
-  g[mid - 3][mid - 1] = TileType.TREES;
-  g[mid - 3][mid] = TileType.TREES;
-  g[mid + 2][mid - 1] = TileType.TREES;
-  g[mid + 2][mid] = TileType.TREES;
-  g[mid - 1][mid - 3] = TileType.TREES;
-  g[mid][mid - 3] = TileType.TREES;
-  g[mid - 1][mid + 2] = TileType.TREES;
-  g[mid][mid + 2] = TileType.TREES;
-
-  // Breakable brick gates guarding center entrances
-  placeHLine(mid - 4, mid - 1, mid, TileType.BRICK);
-  placeHLine(mid + 3, mid - 1, mid, TileType.BRICK);
-  placeVLine(mid - 1, mid, mid - 4, TileType.BRICK);
-  placeVLine(mid - 1, mid, mid + 3, TileType.BRICK);
-
-  // Inner Maze Ring & Interlocking Corridors
-  placeHLine(4, 6, mid - 5, TileType.BRICK);
-  placeVLine(6, mid - 5, 4, TileType.BRICK);
-  placeHLine(mid - 4, 6, mid - 5, TileType.BRICK);
-  placeBlock(mid - 7, mid - 7, TileType.STEEL);
-  placeVLine(6, mid - 6, mid - 7, TileType.BRICK);
-  placeBlock(8, 8, TileType.MUD);
-
-  placeHLine(4, mid + 4, gridSize - 7, TileType.BRICK);
-  placeVLine(6, mid - 5, gridSize - 6, TileType.BRICK);
-  placeHLine(mid - 4, mid + 4, gridSize - 7, TileType.BRICK);
-  placeBlock(mid - 7, mid + 5, TileType.STEEL);
-  placeVLine(6, mid - 6, mid + 5, TileType.BRICK);
-  placeBlock(8, gridSize - 10, TileType.MUD);
-
-  placeHLine(gridSize - 6, 6, mid - 5, TileType.BRICK);
-  placeVLine(mid + 4, gridSize - 7, 4, TileType.BRICK);
-  placeHLine(mid + 3, 6, mid - 5, TileType.BRICK);
-  placeBlock(mid + 5, mid - 7, TileType.STEEL);
-  placeVLine(mid + 5, gridSize - 7, mid - 7, TileType.BRICK);
-  placeBlock(gridSize - 10, 8, TileType.MUD);
-
-  placeHLine(gridSize - 6, mid + 4, gridSize - 7, TileType.BRICK);
-  placeVLine(mid + 4, gridSize - 7, gridSize - 6, TileType.BRICK);
-  placeHLine(mid + 3, mid + 4, gridSize - 7, TileType.BRICK);
-  placeBlock(mid + 5, mid + 5, TileType.STEEL);
-  placeVLine(mid + 5, gridSize - 7, mid + 5, TileType.BRICK);
-  placeBlock(gridSize - 10, gridSize - 10, TileType.MUD);
-
-  // Clear area around spawns
-  const clearArea = (startR: number, startC: number) => {
-    for (let r = startR; r < startR + 3; r++) {
-      for (let c = startC; c < startC + 3; c++) {
-        if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
-          g[r][c] = TileType.EMPTY;
-        }
-      }
-    }
-  };
-  clearArea(gridSize - 5, 1);
-  clearArea(1, gridSize - 5);
-  clearArea(gridSize - 5, gridSize - 5);
-  clearArea(1, 1);
-  clearArea(1, mid - 2);
-  clearArea(gridSize - 5, mid - 2);
-  clearArea(mid - 1, 1);
-  clearArea(mid - 1, gridSize - 5);
-
-  return g;
-}
-
-// ---------------------------------------------------------------------------
-// Stage Metadata: Rich Arabic & English info, icons, and tactical brief
-// ---------------------------------------------------------------------------
-export interface StageMetadata {
-  stage: number;
-  name: string;
-  nameAr: string;
-  subtitle: string;
-  subtitleAr: string;
-  icon: string;
-  theme: string;
-}
-
-export const STAGES_METADATA: StageMetadata[] = [
-  {
-    stage: 1,
-    name: 'Classic Citadel',
-    nameAr: 'القلعة الكلاسيكية',
-    subtitle: 'Original 1990 tribute with tactical flank ice avenues',
-    subtitleAr: 'تحية للميدان الأصلي مع ممرات جليد جانبية خاطفة',
-    icon: '🏰',
-    theme: 'citadel',
-  },
-  {
-    stage: 2,
-    name: 'Iron Fortress',
-    nameAr: 'الحصن الحديدي',
-    subtitle: 'Heavy steel cross bulkheads, lateral slipways & water moats',
-    subtitleAr: 'صليب فولاذي منيع مع خنادق مائية وممرات انزلاق دفاعية',
-    icon: '🛡️',
-    theme: 'fortress',
-  },
-  {
-    stage: 3,
-    name: 'Twin Rivers',
-    nameAr: 'معبر النهرين',
-    subtitle: 'Double river barrier, frozen ice bridge & muddy riverbanks',
-    subtitleAr: 'حاجز نهرين مائيين مع جسر جليدي وخنادق وحلية على الضفاف',
-    icon: '🌊',
-    theme: 'rivers',
-  },
-  {
-    stage: 4,
-    name: 'Amazon Rainforest',
-    nameAr: 'غابة الأمازون الكثيفة',
-    subtitle: 'Dense 40% jungle canopy, stealth ambushes & sunken temple',
-    subtitleAr: 'غطاء شجري كثيف 40% للكمائن الخفية ومعبد غارق في الوحل',
-    icon: '🌴',
-    theme: 'jungle',
-  },
-  {
-    stage: 5,
-    name: 'Glacial Archipelago',
-    nameAr: 'الأرخبيل الجليدي',
-    subtitle: 'High-speed drift ice sheets & 4 fortified island outposts',
-    subtitleAr: 'مسطحات جليدية للانزلاق السريع و4 جزر حصينة عبر المياه',
-    icon: '❄️',
-    theme: 'arctic',
-  },
-  {
-    stage: 6,
-    name: 'The Great Labyrinth',
-    nameAr: 'المتاهة الكبرى',
-    subtitle: 'Geometric 90° corridors, steel junction pillars & breakable shortcuts',
-    subtitleAr: 'ممرات هندسية 90 درجة مع أعمدة فولاذية وجدران قابلة للاختراق',
-    icon: '🌀',
-    theme: 'labyrinth',
-  },
-  {
-    stage: 7,
-    name: 'Muddy Badlands',
-    nameAr: 'وادي الوحل والخنادق',
-    subtitle: 'Three quagmire canyons (42% speed), brick mesas & steel watchtowers',
-    subtitleAr: 'ثلاثة خنادق وحلية عميقة تبطئ الحركة وهضاب مراقبة فولاذية',
-    icon: '🏜️',
-    theme: 'badlands',
-  },
-  {
-    stage: 8,
-    name: 'Urban Gridlock',
-    nameAr: 'مدينة الحرب الحضرية',
-    subtitle: 'Symmetrical street avenues, 3x3 city blocks & central park plaza',
-    subtitleAr: 'شوارع أسفلتية متقاطعة مع مجمعات سكنية وحديقة مركزية بنافورة',
-    icon: '🏙️',
-    theme: 'urban',
-  },
-  {
-    stage: 9,
-    name: 'Bunker Complex',
-    nameAr: 'مجمع المخابئ العسكرية',
-    subtitle: 'Underground diamond bastion, 4 cardinal pillboxes & security moats',
-    subtitleAr: 'حصن ألماسي تحت الأرض مع 4 دشم فولاذية وخنادق أمنية مائية',
-    icon: '⚓',
-    theme: 'bunker',
-  },
-  {
-    stage: 10,
-    name: 'Death Valley Crater',
-    nameAr: 'فوهة بركان الموت',
-    subtitle: 'Concentric volcanic caldera, ash swamps & central elevated Steel Throne',
-    subtitleAr: 'فوهة بركانية دائرية مع مستنقع رماد وحلي وعرش فولاذي مركزي',
-    icon: '🌋',
-    theme: 'crater',
-  },
+// Test runner for all 10 stages
+const generators = [
+  { stage: 1, name: 'Classic Citadel', fn: createStage1 },
+  { stage: 2, name: 'Iron Fortress', fn: createIronFortress },
+  { stage: 3, name: 'Twin Rivers', fn: createRiverCrossing },
+  { stage: 4, name: 'Amazon Rainforest', fn: createAmazonRainforest },
+  { stage: 5, name: 'Glacial Archipelago', fn: createGlacialArchipelago },
+  { stage: 6, name: 'The Great Labyrinth', fn: createGreatLabyrinth },
+  { stage: 7, name: 'Muddy Badlands', fn: createMuddyBadlands },
+  { stage: 8, name: 'Urban Gridlock', fn: createUrbanGridlock },
+  { stage: 9, name: 'Bunker Complex', fn: createBunkerComplex },
+  { stage: 10, name: 'Death Valley Crater', fn: createDeathValley },
 ];
 
-/**
- * Generates preset dictionary for Map Editor with all 10 stages
- */
-export function getPresetMaps(gridSize: number = 26): Record<string, StageMap> {
-  return {
-    stage1: {
-      name: 'Stage 1: Classic Citadel',
-      grid: createStage1(gridSize),
-    },
-    ironFortress: {
-      name: 'Stage 2: Iron Fortress',
-      grid: createIronFortress(gridSize),
-    },
-    riverCrossing: {
-      name: 'Stage 3: Twin Rivers',
-      grid: createRiverCrossing(gridSize),
-    },
-    amazonRainforest: {
-      name: 'Stage 4: Amazon Rainforest',
-      grid: createAmazonRainforest(gridSize),
-    },
-    glacialArchipelago: {
-      name: 'Stage 5: Glacial Archipelago',
-      grid: createGlacialArchipelago(gridSize),
-    },
-    greatLabyrinth: {
-      name: 'Stage 6: The Great Labyrinth',
-      grid: createGreatLabyrinth(gridSize),
-    },
-    muddyBadlands: {
-      name: 'Stage 7: Muddy Badlands',
-      grid: createMuddyBadlands(gridSize),
-    },
-    urbanGridlock: {
-      name: 'Stage 8: Urban Gridlock',
-      grid: createUrbanGridlock(gridSize),
-    },
-    bunkerComplex: {
-      name: 'Stage 9: Bunker Complex',
-      grid: createBunkerComplex(gridSize),
-    },
-    deathValley: {
-      name: 'Stage 10: Death Valley Crater',
-      grid: createDeathValley(gridSize),
-    },
-    tacticalMaze: {
-      name: 'Tactical Maze (FFA)',
-      grid: createTacticalMaze(gridSize),
-    },
-    cleanSlate: {
-      name: 'Clean Slate',
-      grid: createEmptyGrid(gridSize),
-    },
-  };
+const sizes = [26, 34, 42];
+
+let allPassed = true;
+
+for (const size of sizes) {
+  console.log(`\n=== Testing Grid Size ${size}x${size} ===`);
+  const mid = Math.floor(size / 2);
+  const baseR = size - 2;
+  const baseC = mid - 1;
+
+  for (const gen of generators) {
+    const grid = gen.fn(size);
+
+    // Verify grid shape
+    if (grid.length !== size || !grid.every(r => r.length === size)) {
+      console.error(`FAILED: ${gen.name} ${size}x${size} invalid grid dimensions!`);
+      allPassed = false;
+    }
+
+    // Verify Base Eagle intact
+    if (grid[baseR][baseC] !== TileType.BASE || grid[baseR][baseC+1] !== TileType.BASE ||
+        grid[baseR+1][baseC] !== TileType.BASE || grid[baseR+1][baseC+1] !== TileType.BASE) {
+      console.error(`FAILED: ${gen.name} ${size}x${size} Base Eagle broken!`);
+      allPassed = false;
+    }
+
+    // Verify P1 and P2 spawns are not blocked by solid blocks
+    const p1Col = mid - 4;
+    const p2Col = mid + 4;
+    for (let r = size - 3; r < size; r++) {
+      if (grid[r][p1Col] === TileType.STEEL || grid[r][p1Col] === TileType.WATER) {
+        console.error(`FAILED: ${gen.name} ${size}x${size} P1 spawn solid obstruction at row ${r}, col ${p1Col}!`);
+        allPassed = false;
+      }
+      if (grid[r][p2Col] === TileType.STEEL || grid[r][p2Col] === TileType.WATER) {
+        console.error(`FAILED: ${gen.name} ${size}x${size} P2 spawn solid obstruction at row ${r}, col ${p2Col}!`);
+        allPassed = false;
+      }
+    }
+
+    // Test dual-base addition
+    addNorthBaseBunker(grid, size);
+    if (grid[0][baseC] !== TileType.BASE || grid[1][baseC+1] !== TileType.BASE) {
+      console.error(`FAILED: ${gen.name} ${size}x${size} North Base broken!`);
+      allPassed = false;
+    }
+
+    // Count tile types
+    const counts: Record<number, number> = {};
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        counts[grid[r][c]] = (counts[grid[r][c]] || 0) + 1;
+      }
+    }
+
+    console.log(`✓ Stage ${gen.stage.toString().padStart(2)}: ${gen.name.padEnd(22)} [Brick:${counts[TileType.BRICK]||0}, Steel:${counts[TileType.STEEL]||0}, Water:${counts[TileType.WATER]||0}, Trees:${counts[TileType.TREES]||0}, Ice:${counts[TileType.ICE]||0}, Mud:${counts[TileType.MUD]||0}]`);
+  }
 }
 
-export const PRESET_MAPS: Record<string, StageMap> = getPresetMaps(26);
-
-/**
- * Returns a StageMap tailored to the specific stage number and map size preset
- */
-export function getStageMapForPresetAndStage(
-  stage: number,
-  preset: MapSizePreset = 'classic',
-  mode?: string
-): StageMap {
-  const gridSize = getGridSizeForPreset(preset);
-  if (mode === 'ffa') {
-    return {
-      name: `Tactical Maze Arena (${MAP_SIZE_CONFIGS[preset]?.name || 'Expanded'})`,
-      grid: createTacticalMaze(gridSize),
-    };
-  }
-
-  // 10 distinct handcrafted stages with modulo wrapping
-  const stageMod = ((stage - 1) % 10) + 1;
-  let grid: number[][];
-  let stageName: string;
-
-  switch (stageMod) {
-    case 1:
-      stageName = `Stage ${stage}: Classic Citadel`;
-      grid = createStage1(gridSize);
-      break;
-    case 2:
-      stageName = `Stage ${stage}: Iron Fortress`;
-      grid = createIronFortress(gridSize);
-      break;
-    case 3:
-      stageName = `Stage ${stage}: Twin Rivers`;
-      grid = createRiverCrossing(gridSize);
-      break;
-    case 4:
-      stageName = `Stage ${stage}: Amazon Rainforest`;
-      grid = createAmazonRainforest(gridSize);
-      break;
-    case 5:
-      stageName = `Stage ${stage}: Glacial Archipelago`;
-      grid = createGlacialArchipelago(gridSize);
-      break;
-    case 6:
-      stageName = `Stage ${stage}: The Great Labyrinth`;
-      grid = createGreatLabyrinth(gridSize);
-      break;
-    case 7:
-      stageName = `Stage ${stage}: Muddy Badlands`;
-      grid = createMuddyBadlands(gridSize);
-      break;
-    case 8:
-      stageName = `Stage ${stage}: Urban Gridlock`;
-      grid = createUrbanGridlock(gridSize);
-      break;
-    case 9:
-      stageName = `Stage ${stage}: Bunker Complex`;
-      grid = createBunkerComplex(gridSize);
-      break;
-    case 10:
-    default:
-      stageName = `Stage ${stage}: Death Valley Crater`;
-      grid = createDeathValley(gridSize);
-      break;
-  }
-
-  if (mode === 'versus' || mode === '2v2') {
-    addNorthBaseBunker(grid, gridSize);
-  }
-
-  return { name: stageName, grid };
-}
-
-/**
- * Deep clones a grid of any dimensions
- */
-export function cloneGrid(grid: number[][]): number[][] {
-  return grid.map((row) => [...row]);
+if (allPassed) {
+  console.log("\n>>> ALL 10 STAGES PASSED VALIDATION ACROSS 26x26, 34x34, and 42x42! <<<");
+} else {
+  console.error("\n>>> SOME STAGE CHECKS FAILED! <<<");
+  process.exit(1);
 }
