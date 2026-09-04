@@ -152,17 +152,18 @@ class GamepadManager {
     const left = dpadLeft || axisX < -deadzone;
     const right = dpadRight || axisX > deadzone;
 
-    // Fire: Buttons 0 (A/Cross), 1 (B/Circle), 2 (X/Square), 3 (Y/Triangle), 4 (L1), 5 (R1), 6 (L2), 7 (R2)
+    // Fire: Buttons 0 (A/Cross), 1 (B/Circle), 2 (X/Square), 7 (R2)
     const fire = Boolean(
       pad.buttons[0]?.pressed ||
       pad.buttons[1]?.pressed ||
       pad.buttons[2]?.pressed ||
-      pad.buttons[3]?.pressed ||
-      pad.buttons[4]?.pressed ||
-      pad.buttons[5]?.pressed ||
-      pad.buttons[6]?.pressed ||
       pad.buttons[7]?.pressed
     );
+
+    // Tactical weapons: L1 = Smoke, R1 = Grenade, L2 / Y = Shield
+    const smoke = Boolean(pad.buttons[4]?.pressed);
+    const grenade = Boolean(pad.buttons[5]?.pressed);
+    const shield = Boolean(pad.buttons[6]?.pressed || pad.buttons[3]?.pressed);
 
     // Button 9: Start (Pause) - edge trigger, tracked per pad
     const startCurrent = Boolean(pad.buttons[9]?.pressed);
@@ -182,6 +183,9 @@ class GamepadManager {
         right,
         fire,
         pause: pauseTrigger,
+        smoke,
+        grenade,
+        shield,
       },
       selectPressed: selectTrigger,
     };

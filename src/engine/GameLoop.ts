@@ -25,6 +25,12 @@ import {
   MultiplayerMode,
   MultiplayerRole,
   MudParticle,
+  TacticalItemType,
+  TacticalInventory,
+  TacticalPickup,
+  ActiveSmokeScreen,
+  ActiveBouncingGrenade,
+  ActiveDeployableShield,
 } from '../types';
 import { BLOCK_SIZE, cloneGrid, getStageMapForPresetAndStage } from './maps';
 import { soundManager } from './SoundManager';
@@ -105,6 +111,12 @@ export class GameEngine {
   private powerUps: PowerUp[] = [];
   private scorePopups: ScorePopup[] = [];
   private mudParticles: MudParticle[] = [];
+  private tacticalPickups: TacticalPickup[] = [];
+  private activeSmokeScreens: ActiveSmokeScreen[] = [];
+  private activeGrenades: ActiveBouncingGrenade[] = [];
+  private activeShields: ActiveDeployableShield[] = [];
+  private tacticalPopups: { id: string; x: number; y: number; text: string; timer: number }[] = [];
+  private prevTacticalInputs: Map<number, { smoke: boolean; grenade: boolean; shield: boolean }> = new Map();
 
   // Multiplayer Engine State
   public multiMode: MultiplayerMode = 'single';
@@ -502,6 +514,12 @@ export class GameEngine {
     this.powerUps = [];
     this.scorePopups = [];
     this.mudParticles = [];
+    this.tacticalPickups = [];
+    this.activeSmokeScreens = [];
+    this.activeGrenades = [];
+    this.activeShields = [];
+    this.tacticalPopups = [];
+    this.prevTacticalInputs.clear();
     this.freezeEnemiesTimer = 0;
     this.shovelTimer = 0;
     this.snapBuffer.clear();
@@ -719,6 +737,12 @@ export class GameEngine {
     this.powerUps = [];
     this.scorePopups = [];
     this.mudParticles = [];
+    this.tacticalPickups = [];
+    this.activeSmokeScreens = [];
+    this.activeGrenades = [];
+    this.activeShields = [];
+    this.tacticalPopups = [];
+    this.prevTacticalInputs.clear();
     this.freezeEnemiesTimer = 0;
     this.shovelTimer = 0;
     this.initGrid(this.currentMap.grid);
@@ -905,6 +929,7 @@ export class GameEngine {
       slideFrames: 0,
       shootCooldown: 0,
       bulletSpeed: 4.5,
+      tacticalInventory: { smoke: 1, grenade: 0, shield: 1 },
     };
   }
 
@@ -1154,6 +1179,9 @@ export class GameEngine {
 
     // 8. Update Power-Ups
     this.updatePowerUps();
+
+    // 8b. Update Tactical Pickups & Active Entities
+    this.updateTacticalEntities();
 
     // 9. Update Explosions & Score Popups
     this.updateEffects();
@@ -1464,6 +1492,9 @@ export class GameEngine {
             right: Boolean(this.currentInput.right || slotInput?.right),
             fire: Boolean(this.currentInput.fire || slotInput?.fire),
             pause: Boolean(this.currentInput.pause || slotInput?.pause),
+            smoke: Boolean(this.currentInput.smoke || slotInput?.smoke),
+            grenade: Boolean(this.currentInput.grenade || slotInput?.grenade),
+            shield: Boolean(this.currentInput.shield || slotInput?.shield),
           }
         : (slotInput || {
             up: false,
@@ -1472,6 +1503,9 @@ export class GameEngine {
             right: false,
             fire: false,
             pause: false,
+            smoke: false,
+            grenade: false,
+            shield: false,
           });
 
     const prevFire = this.prevPlayerFire.get(slot) || false;
@@ -1484,6 +1518,23 @@ export class GameEngine {
       }
     }
     this.prevPlayerFire.set(slot, fireRequested);
+
+    // Tactical Abilities Trigger (Edge-triggered per slot)
+    const prevTac = this.prevTacticalInputs.get(slot) || { smoke: false, grenade: false, shield: false };
+    if (input.smoke && !prevTac.smoke) {
+      this.triggerSmokeAction(tank);
+    }
+    if (input.grenade && !prevTac.grenade) {
+      this.triggerGrenadeAction(tank);
+    }
+    if (input.shield && !prevTac.shield) {
+      this.triggerShieldAction(tank);
+    }
+    this.prevTacticalInputs.set(slot, {
+      smoke: Boolean(input.smoke),
+      grenade: Boolean(input.grenade),
+      shield: Boolean(input.shield),
+    });
 
     let dir: Direction | null = null;
     if (input.up) dir = 'UP';
@@ -1895,11 +1946,12 @@ export class GameEngine {
       if (!enemy.aiChangeDirTimer || enemy.aiChangeDirTimer <= 0) {
         enemy.aiChangeDirTimer = Math.floor(Math.random() * 60 + 40);
 
-        // Smart steering: Bias towards Eagle Base or Player
+        // Smart steering: Bias towards Eagle Base or Player (blinded if player in smoke)
         const baseTargetX = this.baseX + 16;
         const baseTargetY = this.baseY;
-        const targetX = Math.random() < 0.6 ? baseTargetX : this.player?.x ?? baseTargetX;
-        const targetY = Math.random() < 0.6 ? baseTargetY : this.player?.y ?? baseTargetY;
+        const canTargetPlayer = this.player && !this.player.inSmoke;
+        const targetX = canTargetPlayer && Math.random() >= 0.6 ? this.player!.x : baseTargetX;
+        const targetY = canTargetPlayer && Math.random() >= 0.6 ? this.player!.y : baseTargetY;
 
         const dirs: Direction[] = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
         const weights = [1, 2, 1, 1]; // Down has natural bias
@@ -2134,6 +2186,29 @@ export class GameEngine {
         }
       }
 
+      // C2. Bullet vs Deployable Shields (3 hits, absorbs enemy bullets)
+      let shieldHit = false;
+      for (const shield of this.activeShields) {
+        if (this.rectIntersect(bullet.x - 3, bullet.y - 3, 6, 6, shield.x, shield.y, shield.width, shield.height)) {
+          const isFriendly = bullet.ownerId === shield.ownerId || (bullet.team && shield.team && bullet.team === shield.team && this.multiMode === '2v2');
+          if (isFriendly) {
+            // Friendly shot passes through the shield!
+            continue;
+          }
+          shieldHit = true;
+          shield.hp--;
+          soundManager.playShieldHit();
+          this.createExplosion(bullet.x, bullet.y, false);
+          bulletsToRemove.add(bullet.id);
+          if (shield.hp <= 0) {
+            soundManager.playExplosion();
+            this.createExplosion(shield.x + shield.width / 2, shield.y + shield.height / 2, false);
+          }
+          break;
+        }
+      }
+      if (shieldHit) continue;
+
       // D. Bullet vs Tiles (Sub-quadrant brick chipping)
       let hitObstacle = false;
       const subX = Math.floor(bullet.x / BLOCK_SIZE);
@@ -2199,6 +2274,10 @@ export class GameEngine {
 
           if (tile.damageMask === 0) {
             tile.type = TileType.EMPTY;
+            // 7.5% chance to spawn a tactical pickup when a brick is destroyed!
+            if (Math.random() < 0.075) {
+              this.spawnTacticalPickup(c * BLOCK_SIZE, r * BLOCK_SIZE);
+            }
           }
 
           this.createExplosion(bullet.x, bullet.y, false);
@@ -2621,6 +2700,501 @@ export class GameEngine {
     this.gridVersion++;
   }
 
+  // --- Tactical Items & Abilities Engine ---
+  public spawnTacticalPickup(x: number, y: number) {
+    // Weighted distribution: 55% GRENADE (so player can find and stockpile bombs), 25% SMOKE, 20% SHIELD
+    const rand = Math.random();
+    let type: TacticalItemType;
+    if (rand < 0.55) {
+      type = 'GRENADE';
+    } else if (rand < 0.80) {
+      type = 'SMOKE';
+    } else {
+      type = 'SHIELD';
+    }
+    this.tacticalPickups.push({
+      id: 'tac_' + Date.now() + '_' + Math.random(),
+      type,
+      x: Math.max(8, Math.min(this.canvasSize - 32, x)),
+      y: Math.max(8, Math.min(this.canvasSize - 32, y)),
+      flashFrame: 0,
+      duration: 720, // 12 seconds before despawning
+    });
+  }
+
+  public getTacticalInventory(slot: number = 1): TacticalInventory {
+    const t = this.playerTanks.get(slot);
+    return t?.tacticalInventory || { smoke: 0, grenade: 0, shield: 0 };
+  }
+
+  private updateTacticalEntities() {
+    this.updateTacticalPickups();
+    this.updateSmokeScreens();
+    this.updateGrenades();
+    this.updateDeployableShields();
+  }
+
+  private updateTacticalPickups() {
+    for (let i = this.tacticalPickups.length - 1; i >= 0; i--) {
+      const p = this.tacticalPickups[i];
+      p.duration--;
+      p.flashFrame++;
+
+      if (p.duration <= 0) {
+        this.tacticalPickups.splice(i, 1);
+        continue;
+      }
+
+      // Check player collection
+      for (const tank of this.playerTanks.values()) {
+        if (tank && this.rectIntersect(tank.x, tank.y, 32, 32, p.x, p.y, 24, 24)) {
+          if (!tank.tacticalInventory) {
+            tank.tacticalInventory = { smoke: 0, grenade: 0, shield: 0 };
+          }
+          if (p.type === 'SMOKE') {
+            tank.tacticalInventory.smoke = Math.min(9, tank.tacticalInventory.smoke + 1);
+            this.addTacticalPopup(p.x + 12, p.y + 12, '+SMOKE');
+          } else if (p.type === 'GRENADE') {
+            tank.tacticalInventory.grenade = Math.min(9, tank.tacticalInventory.grenade + 1);
+            this.addTacticalPopup(p.x + 12, p.y + 12, '+BOMB');
+          } else if (p.type === 'SHIELD') {
+            tank.tacticalInventory.shield = Math.min(5, tank.tacticalInventory.shield + 1);
+            this.addTacticalPopup(p.x + 12, p.y + 12, '+SHIELD');
+          }
+          soundManager.playPowerUpCollect();
+          this.tacticalPickups.splice(i, 1);
+          break;
+        }
+      }
+    }
+
+    // Update tactical text popups
+    for (let i = this.tacticalPopups.length - 1; i >= 0; i--) {
+      const pop = this.tacticalPopups[i];
+      pop.timer--;
+      pop.y -= 0.4;
+      if (pop.timer <= 0) {
+        this.tacticalPopups.splice(i, 1);
+      }
+    }
+  }
+
+  private addTacticalPopup(x: number, y: number, text: string) {
+    this.tacticalPopups.push({
+      id: 'tacpop_' + Math.random(),
+      x,
+      y,
+      text,
+      timer: 55,
+    });
+  }
+
+  private triggerSmokeAction(tank: Tank) {
+    if (!tank.tacticalInventory || tank.tacticalInventory.smoke <= 0) return;
+    tank.tacticalInventory.smoke--;
+    soundManager.playSmokeDeploy();
+
+    const particles: ActiveSmokeScreen['particles'] = [];
+    const colors = ['#282828', '#383838', '#4c4c4c', '#606060', '#747474', '#888888'];
+    for (let i = 0; i < 36; i++) {
+      const offsetX = (Math.random() - 0.5) * 88;
+      const offsetY = (Math.random() - 0.5) * 88;
+      particles.push({
+        x: tank.x + 16 + offsetX,
+        y: tank.y + 16 + offsetY,
+        vx: (Math.random() - 0.5) * 0.7,
+        vy: (Math.random() - 0.5) * 0.7,
+        size: Math.random() * 8 + 6,
+        alpha: Math.random() * 0.35 + 0.55,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+
+    this.activeSmokeScreens.push({
+      id: 'smoke_' + Date.now() + '_' + Math.random(),
+      x: tank.x + 16,
+      y: tank.y + 16,
+      radius: 56, // Square half-size (total size = 112x112px, 7x7 blocks)
+      duration: 480, // ~8 seconds
+      maxDuration: 480,
+      particles,
+    });
+  }
+
+  private triggerGrenadeAction(tank: Tank) {
+    if (!tank.tacticalInventory || tank.tacticalInventory.grenade <= 0) return;
+    tank.tacticalInventory.grenade--;
+
+    let dirX = 0;
+    let dirY = 0;
+    if (tank.direction === 'UP') dirY = -1;
+    else if (tank.direction === 'DOWN') dirY = 1;
+    else if (tank.direction === 'LEFT') dirX = -1;
+    else if (tank.direction === 'RIGHT') dirX = 1;
+
+    let startX = tank.x + 16 + dirX * 18;
+    let startY = tank.y + 16 + dirY * 18;
+    let initVx = dirX * 3.8;
+    let initVy = dirY * 3.8;
+
+    // Point-blank check: if spawn position is inside a solid obstacle, start closer or ricochet immediately
+    if (this.isSolidForGrenade(startX, startY)) {
+      startX = tank.x + 16 + dirX * 10;
+      startY = tank.y + 16 + dirY * 10;
+      if (this.isSolidForGrenade(startX, startY)) {
+        startX = tank.x + 16;
+        startY = tank.y + 16;
+        initVx = -dirX * 2.2;
+        initVy = -dirY * 2.2;
+        soundManager.playGrenadeBounce();
+      }
+    }
+
+    this.activeGrenades.push({
+      id: 'grenade_' + Date.now() + '_' + Math.random(),
+      ownerId: tank.id,
+      isPlayer: tank.isPlayer,
+      team: tank.team,
+      x: startX,
+      y: startY,
+      z: 14,
+      vx: initVx,
+      vy: initVy,
+      vz: 3.5,
+      bouncesLeft: 3,
+      life: 180,
+    });
+  }
+
+  private triggerShieldAction(tank: Tank) {
+    if (!tank.tacticalInventory || tank.tacticalInventory.shield <= 0) return;
+    tank.tacticalInventory.shield--;
+    soundManager.playShieldDeploy();
+
+    let sx = tank.x;
+    let sy = tank.y;
+    let sw = 32;
+    let sh = 10;
+
+    if (tank.direction === 'UP') {
+      sx = tank.x;
+      sy = Math.max(0, tank.y - 12);
+      sw = 32;
+      sh = 10;
+    } else if (tank.direction === 'DOWN') {
+      sx = tank.x;
+      sy = Math.min(this.canvasSize - 10, tank.y + 32 + 2);
+      sw = 32;
+      sh = 10;
+    } else if (tank.direction === 'LEFT') {
+      sx = Math.max(0, tank.x - 12);
+      sy = tank.y;
+      sw = 10;
+      sh = 32;
+    } else if (tank.direction === 'RIGHT') {
+      sx = Math.min(this.canvasSize - 10, tank.x + 32 + 2);
+      sy = tank.y;
+      sw = 10;
+      sh = 32;
+    }
+
+    this.activeShields.push({
+      id: 'shield_' + Date.now() + '_' + Math.random(),
+      ownerId: tank.id,
+      team: tank.team,
+      x: sx,
+      y: sy,
+      width: sw,
+      height: sh,
+      hp: 3,
+      maxHp: 3,
+      timer: 900, // 15 seconds
+      maxTimer: 900,
+      direction: tank.direction,
+    });
+  }
+
+  private updateSmokeScreens() {
+    // Reset all tanks' inSmoke state
+    for (const tank of this.playerTanks.values()) {
+      if (tank) tank.inSmoke = false;
+    }
+    for (const enemy of this.enemies) {
+      if (enemy) enemy.inSmoke = false;
+    }
+
+    for (let i = this.activeSmokeScreens.length - 1; i >= 0; i--) {
+      const s = this.activeSmokeScreens[i];
+      s.duration--;
+
+      // Update particles
+      for (const p of s.particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+        p.alpha -= 0.0012;
+      }
+
+      // Check which tanks are inside the square smoke screen
+      const half = s.radius;
+      const sx = s.x - half;
+      const sy = s.y - half;
+      const sSize = half * 2;
+
+      for (const tank of this.playerTanks.values()) {
+        if (tank && this.rectIntersect(tank.x, tank.y, 32, 32, sx, sy, sSize, sSize)) {
+          tank.inSmoke = true;
+        }
+      }
+      for (const enemy of this.enemies) {
+        if (enemy && this.rectIntersect(enemy.x, enemy.y, 32, 32, sx, sy, sSize, sSize)) {
+          enemy.inSmoke = true;
+        }
+      }
+
+      if (s.duration <= 0) {
+        this.activeSmokeScreens.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * Returns true if (px, py) collides with a solid barrier for thrown grenades:
+   * Red Bricks (if intact sub-quadrant), Steel walls, Eagle Base, Map boundaries, or Deployable Shields.
+   */
+  public isSolidForGrenade(px: number, py: number): boolean {
+    if (px <= 0 || px >= this.canvasSize || py <= 0 || py >= this.canvasSize) {
+      return true;
+    }
+
+    const c = Math.floor(px / BLOCK_SIZE);
+    const r = Math.floor(py / BLOCK_SIZE);
+    if (r < 0 || r >= this.gridSize || c < 0 || c >= this.gridSize) {
+      return true;
+    }
+
+    const tile = this.grid[r]?.[c];
+    if (tile) {
+      if (tile.type === TileType.STEEL || tile.type === TileType.BASE) {
+        return true;
+      }
+      if (tile.type === TileType.BRICK) {
+        if (!tile.damageMask || tile.damageMask === 0) return false;
+        if (tile.damageMask === 15) return true;
+        // Sub-quadrant bit check: 1=TL, 2=TR, 4=BL, 8=BR
+        const subX = Math.floor(((px % BLOCK_SIZE) + BLOCK_SIZE) % BLOCK_SIZE / 8);
+        const subY = Math.floor(((py % BLOCK_SIZE) + BLOCK_SIZE) % BLOCK_SIZE / 8);
+        const bit = (1 << subX) << (subY * 2);
+        return (tile.damageMask & bit) !== 0;
+      }
+    }
+
+    // Active deployable shields placed by players
+    for (const s of this.activeShields) {
+      if (px >= s.x && px <= s.x + s.width && py >= s.y && py <= s.y + s.height) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private updateGrenades() {
+    const radius = 4.5;
+
+    for (let i = this.activeGrenades.length - 1; i >= 0; i--) {
+      const g = this.activeGrenades[i];
+      g.life--;
+      g.z += g.vz;
+      g.vz -= 0.22; // Gravity
+
+      // --- 1. Horizontal Movement & Obstacle Ricochet (Bricks, Steel, Borders, Shields) ---
+      if (Math.abs(g.vx) > 0.001) {
+        const nextX = g.x + g.vx;
+        let collidesX = false;
+
+        if (g.vx > 0) {
+          const testX = nextX + radius;
+          if (
+            testX >= this.canvasSize ||
+            this.isSolidForGrenade(testX, g.y - radius * 0.7) ||
+            this.isSolidForGrenade(testX, g.y) ||
+            this.isSolidForGrenade(testX, g.y + radius * 0.7)
+          ) {
+            collidesX = true;
+          }
+        } else {
+          const testX = nextX - radius;
+          if (
+            testX <= 0 ||
+            this.isSolidForGrenade(testX, g.y - radius * 0.7) ||
+            this.isSolidForGrenade(testX, g.y) ||
+            this.isSolidForGrenade(testX, g.y + radius * 0.7)
+          ) {
+            collidesX = true;
+          }
+        }
+
+        if (collidesX) {
+          const dirBefore = Math.sign(g.vx);
+          // Realistic energy-damped rebound
+          g.vx = -g.vx * 0.65;
+          g.vy *= 0.88;
+          // Step back away from the wall to prevent penetration
+          g.x = Math.max(radius, Math.min(this.canvasSize - radius, g.x - dirBefore * 0.75));
+          soundManager.playGrenadeBounce();
+        } else {
+          g.x = Math.max(radius, Math.min(this.canvasSize - radius, nextX));
+        }
+      }
+
+      // --- 2. Vertical Movement & Obstacle Ricochet (Bricks, Steel, Borders, Shields) ---
+      if (Math.abs(g.vy) > 0.001) {
+        const nextY = g.y + g.vy;
+        let collidesY = false;
+
+        if (g.vy > 0) {
+          const testY = nextY + radius;
+          if (
+            testY >= this.canvasSize ||
+            this.isSolidForGrenade(g.x - radius * 0.7, testY) ||
+            this.isSolidForGrenade(g.x, testY) ||
+            this.isSolidForGrenade(g.x + radius * 0.7, testY)
+          ) {
+            collidesY = true;
+          }
+        } else {
+          const testY = nextY - radius;
+          if (
+            testY <= 0 ||
+            this.isSolidForGrenade(g.x - radius * 0.7, testY) ||
+            this.isSolidForGrenade(g.x, testY) ||
+            this.isSolidForGrenade(g.x + radius * 0.7, testY)
+          ) {
+            collidesY = true;
+          }
+        }
+
+        if (collidesY) {
+          const dirBefore = Math.sign(g.vy);
+          // Realistic energy-damped rebound
+          g.vy = -g.vy * 0.65;
+          g.vx *= 0.88;
+          // Step back away from the wall to prevent penetration
+          g.y = Math.max(radius, Math.min(this.canvasSize - radius, g.y - dirBefore * 0.75));
+          soundManager.playGrenadeBounce();
+        } else {
+          g.y = Math.max(radius, Math.min(this.canvasSize - radius, nextY));
+        }
+      }
+
+      // --- 3. Ground Collision & Arc Bounce ---
+      if (g.z <= 0) {
+        g.z = 0;
+        if (g.bouncesLeft > 0) {
+          g.bouncesLeft--;
+          g.vz = Math.abs(g.vz) * 0.62;
+          g.vx *= 0.68;
+          g.vy *= 0.68;
+          soundManager.playGrenadeBounce();
+        } else {
+          // Finished 3 bounces -> Detonate!
+          this.explodeGrenade(g);
+          this.activeGrenades.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Max lifetime safety or near-stopped
+      if (g.life <= 0 || (g.bouncesLeft === 0 && Math.abs(g.vx) < 0.2 && Math.abs(g.vy) < 0.2 && g.z <= 0)) {
+        this.explodeGrenade(g);
+        this.activeGrenades.splice(i, 1);
+      }
+    }
+  }
+
+  private explodeGrenade(g: ActiveBouncingGrenade) {
+    this.createExplosion(g.x, g.y, true);
+    soundManager.playBigExplosion();
+    const blastRadius = 44; // 44px AoE
+
+    // 1. Destroy Bricks in blast radius
+    const minSubX = Math.max(0, Math.floor((g.x - blastRadius) / BLOCK_SIZE));
+    const maxSubX = Math.min(this.gridSize - 1, Math.floor((g.x + blastRadius) / BLOCK_SIZE));
+    const minSubY = Math.max(0, Math.floor((g.y - blastRadius) / BLOCK_SIZE));
+    const maxSubY = Math.min(this.gridSize - 1, Math.floor((g.y + blastRadius) / BLOCK_SIZE));
+
+    for (let r = minSubY; r <= maxSubY; r++) {
+      for (let c = minSubX; c <= maxSubX; c++) {
+        const t = this.grid[r][c];
+        if (t && t.type === TileType.BRICK) {
+          const tileCenterX = c * BLOCK_SIZE + 8;
+          const tileCenterY = r * BLOCK_SIZE + 8;
+          const dist = Math.hypot(g.x - tileCenterX, g.y - tileCenterY);
+          if (dist <= blastRadius) {
+            t.damageMask = 0;
+            t.type = TileType.EMPTY;
+            this.gridVersion++;
+            // 7.5% chance to spawn a tactical pickup when a brick is destroyed!
+            if (Math.random() < 0.075) {
+              this.spawnTacticalPickup(c * BLOCK_SIZE, r * BLOCK_SIZE);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Damage Enemies in blast radius
+    for (let eIdx = this.enemies.length - 1; eIdx >= 0; eIdx--) {
+      const enemy = this.enemies[eIdx];
+      const dist = Math.hypot(g.x - (enemy.x + 16), g.y - (enemy.y + 16));
+      if (dist <= blastRadius) {
+        enemy.hp -= 2;
+        if (enemy.hp <= 0) {
+          const points = this.getEnemyPoints(enemy.type as EnemyType);
+          this.scoreData.score += points;
+          this.scoreData.destroyedEnemies[enemy.type as EnemyType]++;
+          this.addScorePopup(enemy.x + 16, enemy.y + 16, points);
+          if (this.scoreData.score > this.scoreData.highScore) {
+            this.scoreData.highScore = this.scoreData.score;
+            try {
+              localStorage.setItem('battle_city_high_score', this.scoreData.highScore.toString());
+            } catch {}
+          }
+          this.createExplosion(enemy.x + 16, enemy.y + 16, true);
+          soundManager.playBigExplosion();
+          this.enemies.splice(eIdx, 1);
+          this.onStateChange(this.gameState, this.scoreData);
+        } else {
+          this.createExplosion(enemy.x + 16, enemy.y + 16, false);
+        }
+      }
+    }
+
+    // 3. Damage other players in PvP/FFA
+    if (this.multiMode === 'versus' || this.multiMode === 'ffa' || this.multiMode === '2v2') {
+      for (const playerTank of this.playerTanks.values()) {
+        if (playerTank.id === g.ownerId) continue;
+        if (g.team && playerTank.team && g.team === playerTank.team && this.multiMode === '2v2') continue;
+        const dist = Math.hypot(g.x - (playerTank.x + 16), g.y - (playerTank.y + 16));
+        if (dist <= blastRadius && playerTank.shieldTimer <= 0) {
+          this.handlePlayerTankKilled(playerTank);
+        }
+      }
+    }
+  }
+
+  private updateDeployableShields() {
+    for (let i = this.activeShields.length - 1; i >= 0; i--) {
+      const shield = this.activeShields[i];
+      shield.timer--;
+      if (shield.timer <= 0 || shield.hp <= 0) {
+        this.activeShields.splice(i, 1);
+      }
+    }
+  }
+
   // --- Explosions & Popups ---
   private createExplosion(x: number, y: number, isBig: boolean) {
     this.explosions.push({
@@ -2743,6 +3317,11 @@ export class GameEngine {
       SpriteRenderer.renderSpawnAnimation(ctx, sp.x, sp.y, sp.progress);
     }
 
+    // 6b. Render Deployable Shield Barricades
+    for (const s of this.activeShields) {
+      SpriteRenderer.renderDeployableShield(ctx, s);
+    }
+
     // 7. Render Tanks (Enemies and All Active Player Tanks 1..8)
     for (const enemy of this.enemies) {
       if (enemy) {
@@ -2768,9 +3347,17 @@ export class GameEngine {
       }
     }
 
-    // 9. Render Power-Up Pickups
+    // 9. Render Power-Up Pickups & Tactical Pickups
     for (const pup of this.powerUps) {
       SpriteRenderer.renderPowerUp(ctx, pup.type, pup.x, pup.y, this.tickCount);
+    }
+    for (const tac of this.tacticalPickups) {
+      SpriteRenderer.renderTacticalPickup(ctx, tac.x, tac.y, tac.type, tac.flashFrame);
+    }
+
+    // 9b. Render Bouncing Grenades (with dynamic shadow and altitude)
+    for (const g of this.activeGrenades) {
+      SpriteRenderer.renderBouncingGrenade(ctx, g);
     }
 
     // 10. Top Layer: Trees / Foliage (Tanks and bullets drive UNDER trees!)
@@ -2782,14 +3369,22 @@ export class GameEngine {
       }
     }
 
+    // 10b. Render Smoke Screens (Billowing NES pixel clouds over battlefield)
+    for (const s of this.activeSmokeScreens) {
+      SpriteRenderer.renderSmokeScreen(ctx, s);
+    }
+
     // 11. Render Explosions
     for (const exp of this.explosions) {
       SpriteRenderer.renderExplosion(ctx, exp.x, exp.y, exp.frame, exp.maxFrames, exp.isBig);
     }
 
-    // 12. Score Popups
+    // 12. Score Popups & Tactical Popups
     for (const pop of this.scorePopups) {
       SpriteRenderer.renderScorePopup(ctx, pop.x, pop.y, pop.points);
+    }
+    for (const pop of this.tacticalPopups) {
+      SpriteRenderer.renderTacticalPopup(ctx, pop.x, pop.y, pop.text);
     }
 
     // 13. Render Taunt Speech Bubble

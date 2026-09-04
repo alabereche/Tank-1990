@@ -5,10 +5,11 @@
  */
 
 import React from 'react';
-import { GameScore, MultiplayerMode } from '../types';
+import { GameScore, MultiplayerMode, TacticalInventory } from '../types';
 import { Volume2, VolumeX, Gamepad2, Keyboard } from 'lucide-react';
 import { soundManager } from '../engine/SoundManager';
 import { GamepadInfo } from '../engine/GamepadManager';
+import { SmokeSvg, GrenadeSvg, ShieldSvg } from './TacticalIcons';
 
 interface HudProps {
   scoreData: GameScore;
@@ -21,6 +22,8 @@ interface HudProps {
   isMaxScale?: boolean;
   versus?: boolean;
   mode?: MultiplayerMode;
+  tacticalInventory?: TacticalInventory;
+  tacticalInventoryP2?: TacticalInventory;
 }
 
 export const Hud: React.FC<HudProps> = ({
@@ -31,9 +34,11 @@ export const Hud: React.FC<HudProps> = ({
   onOpenConstruction,
   onPauseToggle,
   isPaused,
-  isMaxScale,
-  versus,
-  mode,
+  isMaxScale = false,
+  versus = false,
+  mode = 'single',
+  tacticalInventory,
+  tacticalInventoryP2,
 }) => {
   // 20 enemy icons total: remaining enemies in pool + active enemies on field
   const totalRemainingCount = scoreData.enemiesRemaining.length;
@@ -194,6 +199,82 @@ export const Hud: React.FC<HudProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Tactical Weapons Counter - P1 */}
+        {tacticalInventory && (
+          <div className="w-full bg-[#3c3c3c] p-1.5 rounded border border-[#2a2a2a] shadow-inner mb-2 flex flex-col gap-1.5">
+            <div className="text-[8px] text-[#f8b800] font-bold text-center tracking-wider border-b border-[#4d4d4d] pb-0.5 font-pixel flex items-center justify-center gap-1">
+              {tacticalInventoryP2 && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#f8b800] inline-block" />
+              )}
+              <span>{tacticalInventoryP2 ? 'I P TACTICAL' : 'TACTICAL'}</span>
+            </div>
+            <div className="flex items-center justify-between px-0.5 text-[9px]" title="Smoke Screen [Q / L1]">
+              <div className="flex items-center gap-1.5">
+                <SmokeSvg className="w-4 h-4 shrink-0 drop-shadow" />
+                <span className="px-1 py-px bg-[#262626] border border-[#555] rounded text-[6px] text-zinc-300 font-mono font-bold leading-none">Q</span>
+              </div>
+              <span className={`font-mono font-bold ${tacticalInventory.smoke > 0 ? 'text-white' : 'text-zinc-500'}`}>
+                {tacticalInventory.smoke}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-0.5 text-[9px]" title="Bouncing Bomb [E / R1]">
+              <div className="flex items-center gap-1.5">
+                <GrenadeSvg className="w-4 h-4 shrink-0 drop-shadow" />
+                <span className="px-1 py-px bg-[#262626] border border-[#555] rounded text-[6px] text-zinc-300 font-mono font-bold leading-none">E</span>
+              </div>
+              <span className={`font-mono font-bold ${tacticalInventory.grenade > 0 ? 'text-white' : 'text-zinc-500'}`}>
+                {tacticalInventory.grenade}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-0.5 text-[9px]" title="Deployable Shield [R / L2]">
+              <div className="flex items-center gap-1.5">
+                <ShieldSvg className="w-4 h-4 shrink-0 drop-shadow" />
+                <span className="px-1 py-px bg-[#262626] border border-[#555] rounded text-[6px] text-zinc-300 font-mono font-bold leading-none">R</span>
+              </div>
+              <span className={`font-mono font-bold ${tacticalInventory.shield > 0 ? 'text-white' : 'text-zinc-500'}`}>
+                {tacticalInventory.shield}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Tactical Weapons Counter - P2 (Versus / Coop / 2v2) */}
+        {tacticalInventoryP2 && (
+          <div className="w-full bg-[#3c3c3c] p-1.5 rounded border border-[#2a2a2a] shadow-inner mb-2 flex flex-col gap-1.5">
+            <div className="text-[8px] text-[#00e000] font-bold text-center tracking-wider border-b border-[#4d4d4d] pb-0.5 font-pixel flex items-center justify-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00e000] inline-block" />
+              <span>II P TACTICAL</span>
+            </div>
+            <div className="flex items-center justify-between px-0.5 text-[9px]" title="P2 Smoke Screen [U / Num 7 / L1]">
+              <div className="flex items-center gap-1.5">
+                <SmokeSvg className="w-4 h-4 shrink-0 drop-shadow" />
+                <span className="px-1 py-px bg-[#262626] border border-[#555] rounded text-[6px] text-zinc-300 font-mono font-bold leading-none">U</span>
+              </div>
+              <span className={`font-mono font-bold ${tacticalInventoryP2.smoke > 0 ? 'text-white' : 'text-zinc-500'}`}>
+                {tacticalInventoryP2.smoke}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-0.5 text-[9px]" title="P2 Bouncing Bomb [I / Num 8 / R1]">
+              <div className="flex items-center gap-1.5">
+                <GrenadeSvg className="w-4 h-4 shrink-0 drop-shadow" />
+                <span className="px-1 py-px bg-[#262626] border border-[#555] rounded text-[6px] text-zinc-300 font-mono font-bold leading-none">I</span>
+              </div>
+              <span className={`font-mono font-bold ${tacticalInventoryP2.grenade > 0 ? 'text-white' : 'text-zinc-500'}`}>
+                {tacticalInventoryP2.grenade}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-0.5 text-[9px]" title="P2 Deployable Shield [O / Num 9 / L2]">
+              <div className="flex items-center gap-1.5">
+                <ShieldSvg className="w-4 h-4 shrink-0 drop-shadow" />
+                <span className="px-1 py-px bg-[#262626] border border-[#555] rounded text-[6px] text-zinc-300 font-mono font-bold leading-none">O</span>
+              </div>
+              <span className={`font-mono font-bold ${tacticalInventoryP2.shield > 0 ? 'text-white' : 'text-zinc-500'}`}>
+                {tacticalInventoryP2.shield}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom: Controls, Sound, Gamepad status */}

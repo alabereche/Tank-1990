@@ -17,6 +17,7 @@ interface TitleScreenProps {
   onOpenMultiplayer: () => void;
   onOpenConstruction: () => void;
   onOpenSettings: () => void;
+  inCabinet?: boolean;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -27,6 +28,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenMultiplayer,
   onOpenConstruction,
   onOpenSettings,
+  inCabinet = false,
 }) => {
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
@@ -79,57 +81,60 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   return (
     <div
       id="title-screen-container"
-      className="flex flex-col items-center justify-between w-full max-w-lg mx-auto min-h-[540px] bg-black border-4 border-[#484848] p-6 text-white font-pixel select-none shadow-2xl relative"
+      className={
+        inCabinet
+          ? "flex flex-col items-center justify-between w-full h-full p-2 sm:p-3.5 text-white font-pixel select-none relative overflow-hidden"
+          : "flex flex-col items-center justify-between w-full max-w-lg mx-auto min-h-[540px] bg-black border-4 border-[#484848] p-6 text-white font-pixel select-none shadow-2xl relative"
+      }
     >
       {/* High Score & Fullscreen Header */}
-      <div className="w-full flex items-center justify-between text-xs sm:text-sm tracking-wider pb-4 border-b border-zinc-800">
-        <div className="flex items-center gap-2">
-          <span className="text-red-500">I-</span>
-          <span className="text-white tracking-widest">00</span>
+      <div className={`w-full flex items-center justify-between tracking-wider ${inCabinet ? 'text-[10px] sm:text-xs pb-1' : 'text-xs sm:text-sm pb-4 border-b border-zinc-800'}`}>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <span className="text-red-500 font-bold drop-shadow">I-</span>
+          <span className="text-white tracking-widest drop-shadow">00</span>
         </div>
-        <div className="flex items-center gap-1.5 text-[#f8b800]">
-          <Trophy className="w-4 h-4 text-amber-400" />
+        <div className="flex items-center gap-1.5 text-[#f8b800] drop-shadow">
+          <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
           <span>HI- {highScore.toString().padStart(5, '0')}</span>
         </div>
         <button
           id="btn-title-fullscreen"
           onClick={handleToggleFullscreen}
-          className="p-1.5 bg-zinc-900 border border-zinc-700 hover:border-zinc-500 rounded text-zinc-300 hover:text-white transition-colors flex items-center gap-1 text-[9px]"
+          className="p-1 sm:p-1.5 bg-zinc-900/60 border border-zinc-700/60 hover:border-amber-400/80 rounded text-zinc-300 hover:text-white transition-colors flex items-center gap-1 text-[8px] sm:text-[9px]"
           title="Toggle Fullscreen (F)"
         >
           {fullscreenActive ? (
-            <Minimize2 className="w-3.5 h-3.5 text-emerald-400" />
+            <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
           ) : (
-            <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+            <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
           )}
         </button>
       </div>
 
       {/* Retro Pixel Logo Banner */}
-      <div className="flex flex-col items-center my-4">
+      <div className={`flex flex-col items-center ${inCabinet ? 'my-1 sm:my-2' : 'my-4'}`}>
         <div className="relative text-center">
-          {/* Shadow layer */}
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-widest text-red-700 select-none drop-shadow-[0_6px_0_#400000]">
+          <h1 className={`font-extrabold tracking-widest text-red-600 select-none ${inCabinet ? 'text-2xl sm:text-3xl md:text-4xl drop-shadow-[0_4px_0_#400000]' : 'text-4xl sm:text-5xl drop-shadow-[0_6px_0_#400000]'}`}>
             BATTLE
           </h1>
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-wider text-[#f8b800] mt-1 drop-shadow-[0_5px_0_#704000]">
+          <h2 className={`font-extrabold tracking-wider text-[#f8b800] mt-0.5 select-none ${inCabinet ? 'text-xl sm:text-2xl md:text-3xl drop-shadow-[0_3px_0_#704000]' : 'text-3xl sm:text-4xl drop-shadow-[0_5px_0_#704000]'}`}>
             CITY 1990
           </h2>
-          <div className="text-[9px] text-zinc-400 tracking-widest mt-2 uppercase">
+          <div className="text-[8px] sm:text-[9px] text-zinc-400 tracking-widest mt-1 uppercase drop-shadow">
             NES 8-Bit Tank Combat
           </div>
           {mapSizeLabel && (
-            <div className="inline-block mt-2 px-2.5 py-0.5 bg-zinc-900 border border-amber-500/40 rounded-full text-[9px] text-amber-300 font-sans">
+            <div className="inline-block mt-1.5 px-2 py-0.5 bg-zinc-900/70 border border-amber-500/40 rounded-full text-[8px] text-amber-300 font-sans shadow-sm">
               MAP: {mapSizeLabel}
             </div>
           )}
         </div>
 
-        {/* Decorative Pixel Eagle Base & Tank */}
-        <div className="flex items-center justify-center gap-6 mt-5">
+        {/* Decorative Pixel Tanks */}
+        <div className={`flex items-center justify-center gap-4 ${inCabinet ? 'mt-2 sm:mt-2.5' : 'mt-5'}`}>
           {/* Player Tank Sprite */}
-          <div className="w-8 h-8 relative">
-            <svg viewBox="0 0 16 16" className="w-8 h-8 fill-[#f8b800]">
+          <div className="w-6 h-6 sm:w-7 sm:h-7 relative">
+            <svg viewBox="0 0 16 16" className="w-full h-full fill-[#f8b800] drop-shadow-[0_2px_4px_rgba(248,184,0,0.5)]">
               <rect x="1" y="2" width="3" height="12" />
               <rect x="12" y="2" width="3" height="12" />
               <rect x="4" y="4" width="8" height="8" />
@@ -138,11 +143,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </svg>
           </div>
 
-          <span className="text-xs text-zinc-500">VS</span>
+          <span className="text-[10px] text-zinc-500 font-bold drop-shadow">VS</span>
 
           {/* Enemy Tank Sprite */}
-          <div className="w-8 h-8 relative">
-            <svg viewBox="0 0 16 16" className="w-8 h-8 fill-[#58b8d8]">
+          <div className="w-6 h-6 sm:w-7 sm:h-7 relative">
+            <svg viewBox="0 0 16 16" className="w-full h-full fill-[#58b8d8] drop-shadow-[0_2px_4px_rgba(88,184,216,0.5)]">
               <rect x="1" y="2" width="3" height="12" />
               <rect x="12" y="2" width="3" height="12" />
               <rect x="4" y="4" width="8" height="8" />
@@ -154,7 +159,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       </div>
 
       {/* Menu Options with Tank Cursor */}
-      <div className="flex flex-col gap-3 w-72 my-3 text-xs tracking-wider">
+      <div className={`flex flex-col w-60 sm:w-68 max-w-full text-[10px] sm:text-xs tracking-wider ${inCabinet ? 'gap-1.5 sm:gap-2 my-1' : 'gap-3 my-3'}`}>
         {menuOptions.map((opt, idx) => {
           const isSelected = selectedIdx === idx;
           return (
@@ -171,12 +176,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 setSelectedIdx(idx);
                 soundManager.playHitSteel();
               }}
-              className="flex items-center gap-3 py-1.5 px-2 text-left hover:text-amber-300 transition-colors group"
+              className="flex items-center gap-2 sm:gap-2.5 py-1 px-1.5 text-left hover:text-amber-300 transition-colors group"
             >
               {/* Tank Cursor */}
-              <div className="w-5 h-5 flex items-center justify-center shrink-0">
+              <div className="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center shrink-0">
                 {isSelected ? (
-                  <svg viewBox="0 0 16 16" className="w-5 h-5 fill-[#f8b800] animate-pulse">
+                  <svg viewBox="0 0 16 16" className="w-4 h-4 sm:w-5 sm:h-5 fill-[#f8b800] animate-pulse drop-shadow-[0_0_6px_rgba(248,184,0,0.8)]">
                     <rect x="2" y="1" width="12" height="3" />
                     <rect x="2" y="12" width="12" height="3" />
                     <rect x="4" y="4" width="8" height="8" />
@@ -187,7 +192,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 )}
               </div>
 
-              <span className={isSelected ? 'text-[#f8b800] underline decoration-2' : 'text-white'}>
+              <span className={isSelected ? 'text-[#f8b800] underline decoration-2 drop-shadow-[0_0_8px_rgba(248,184,0,0.5)]' : 'text-white drop-shadow'}>
                 {opt.label}
               </span>
             </button>
@@ -196,39 +201,39 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       </div>
 
       {/* Controls & Settings Quick Buttons */}
-      <div className="flex items-center gap-2.5 mt-3">
+      <div className={`flex items-center gap-2 ${inCabinet ? 'mt-1' : 'mt-3'}`}>
         <button
           id="btn-how-to-play"
           onClick={() => setShowHelpModal(true)}
-          className="flex items-center gap-1.5 text-[9px] text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-700 px-3 py-1.5 rounded transition-colors"
+          className="flex items-center gap-1 text-[8px] sm:text-[9px] text-zinc-300 hover:text-white bg-zinc-900/70 border border-zinc-700/60 hover:border-amber-400 px-2 sm:px-2.5 py-1 rounded transition-all"
         >
-          <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+          <HelpCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
           <span>GUIDE</span>
         </button>
         <button
           id="btn-title-settings"
           onClick={onOpenSettings}
-          className="flex items-center gap-1.5 text-[9px] text-zinc-400 hover:text-amber-400 bg-zinc-900 border border-zinc-700 px-3 py-1.5 rounded transition-colors"
+          className="flex items-center gap-1 text-[8px] sm:text-[9px] text-zinc-300 hover:text-amber-400 bg-zinc-900/70 border border-zinc-700/60 hover:border-amber-400 px-2 sm:px-2.5 py-1 rounded transition-all"
         >
-          <Settings className="w-3.5 h-3.5 text-amber-400" />
+          <Settings className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
           <span>SETTINGS</span>
         </button>
         <button
           id="btn-title-fullscreen-bot"
           onClick={handleToggleFullscreen}
-          className="flex items-center gap-1.5 text-[9px] text-zinc-400 hover:text-emerald-400 bg-zinc-900 border border-zinc-700 px-3 py-1.5 rounded transition-colors"
+          className="flex items-center gap-1 text-[8px] sm:text-[9px] text-zinc-300 hover:text-emerald-400 bg-zinc-900/70 border border-zinc-700/60 hover:border-emerald-400 px-2 sm:px-2.5 py-1 rounded transition-all"
         >
           {fullscreenActive ? (
-            <Minimize2 className="w-3.5 h-3.5 text-emerald-400" />
+            <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
           ) : (
-            <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+            <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
           )}
-          <span>{fullscreenActive ? 'WINDOW' : 'FULLSCREEN'}</span>
+          <span>{fullscreenActive ? 'WIN' : 'FULL'}</span>
         </button>
       </div>
 
       {/* Footer Copyright */}
-      <div className="text-[8px] text-zinc-500 tracking-wider text-center pt-4 border-t border-zinc-900 w-full">
+      <div className={`text-[7px] sm:text-[8px] text-zinc-400 tracking-wider text-center w-full ${inCabinet ? 'pt-1' : 'pt-4 border-t border-zinc-900'}`}>
         (C) 1980 1985 NAMCO LTD. / 1990 RETRO EDITION
       </div>
 

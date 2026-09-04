@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { InputState } from '../types';
+import { SmokeSvg, GrenadeSvg, ShieldSvg } from './TacticalIcons';
 
 interface TouchControlsProps {
   onInput: (input: Partial<InputState>) => void;
@@ -59,6 +60,16 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ onInput, isTouchAc
     setFireActive(false);
     onInput({ fire: false });
   }, [onInput]);
+
+  const handleTactical = useCallback(
+    (type: 'smoke' | 'grenade' | 'shield') => {
+      onInput({ [type]: true });
+      setTimeout(() => {
+        onInput({ [type]: false });
+      }, 80);
+    },
+    [onInput]
+  );
 
   // Always show on mobile / small screens or when touch is detected
   return (
@@ -158,6 +169,40 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ onInput, isTouchAc
 
         {/* Center hub */}
         <div className="absolute w-10 h-10 bg-zinc-950 rounded-full border border-zinc-700 z-0 pointer-events-none" />
+      </div>
+
+      {/* Tactical Abilities Touch Buttons */}
+      <div className="flex flex-col gap-2 items-center">
+        <button
+          type="button"
+          onTouchStart={(e) => { e.preventDefault(); handleTactical('smoke'); }}
+          onMouseDown={() => handleTactical('smoke')}
+          className="w-10 h-10 rounded-lg bg-blue-950 border-2 border-blue-400 text-blue-200 text-[9px] font-pixel flex flex-col items-center justify-center active:scale-95 shadow-md"
+          title="Smoke Screen"
+        >
+          <SmokeSvg className="w-4 h-4 shrink-0" />
+          <span className="text-[6px] text-zinc-300">SMK</span>
+        </button>
+        <button
+          type="button"
+          onTouchStart={(e) => { e.preventDefault(); handleTactical('grenade'); }}
+          onMouseDown={() => handleTactical('grenade')}
+          className="w-10 h-10 rounded-lg bg-amber-950 border-2 border-amber-400 text-amber-200 text-[9px] font-pixel flex flex-col items-center justify-center active:scale-95 shadow-md"
+          title="Bouncing Bomb"
+        >
+          <GrenadeSvg className="w-4 h-4 shrink-0" />
+          <span className="text-[6px] text-zinc-300">BMB</span>
+        </button>
+        <button
+          type="button"
+          onTouchStart={(e) => { e.preventDefault(); handleTactical('shield'); }}
+          onMouseDown={() => handleTactical('shield')}
+          className="w-10 h-10 rounded-lg bg-emerald-950 border-2 border-emerald-400 text-emerald-200 text-[9px] font-pixel flex flex-col items-center justify-center active:scale-95 shadow-md"
+          title="Deployable Shield"
+        >
+          <ShieldSvg className="w-4 h-4 shrink-0" />
+          <span className="text-[6px] text-zinc-300">SHD</span>
+        </button>
       </div>
 
       {/* Arcade Fire Action Button */}

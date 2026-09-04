@@ -13,6 +13,7 @@ import { StageIntro } from './components/StageIntro';
 import { GameOverModal } from './components/GameOverModal';
 import { SettingsModal } from './components/SettingsModal';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
+import { ArcadeCabinetFrame } from './components/ArcadeCabinetFrame';
 import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './engine/maps';
 import { soundManager } from './engine/SoundManager';
 import { gamepadManager, GamepadInfo } from './engine/GamepadManager';
@@ -216,7 +217,11 @@ export default function App() {
   return (
     <div
       className={`min-h-screen bg-black text-white flex flex-col items-center justify-center selection:bg-amber-500 selection:text-black ${
-        settings.windowScale === 'max' ? 'p-0.5 sm:p-1.5' : 'p-2 sm:p-4'
+        currentScreen === GameState.MENU
+          ? 'p-0 overflow-hidden w-full h-screen'
+          : settings.windowScale === 'max'
+          ? 'p-0.5 sm:p-1.5'
+          : 'p-2 sm:p-4'
       }`}
     >
       {/* Gamepad Connected Flash Notification */}
@@ -227,22 +232,25 @@ export default function App() {
       )}
 
       {/* Screen Router */}
-      <main className="w-full flex items-center justify-center">
+      <main className={`w-full flex items-center justify-center ${currentScreen === GameState.MENU ? 'h-full' : ''}`}>
         {isMultiplayerLobbyOpen ? (
           <MultiplayerLobby
             onLaunchGame={handleStartMultiplayerGame}
             onBack={() => setIsMultiplayerLobbyOpen(false)}
           />
         ) : currentScreen === GameState.MENU ? (
-          <TitleScreen
-            highScore={highScore}
-            mapSizeLabel={MAP_SIZE_CONFIGS[settings.mapSize]?.label}
-            onStart1Player={handleStartGame}
-            onStartLocal2Player={handleStartLocal2Player}
-            onOpenMultiplayer={() => setIsMultiplayerLobbyOpen(true)}
-            onOpenConstruction={handleOpenConstruction}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-          />
+          <ArcadeCabinetFrame>
+            <TitleScreen
+              highScore={highScore}
+              mapSizeLabel={MAP_SIZE_CONFIGS[settings.mapSize]?.label}
+              onStart1Player={handleStartGame}
+              onStartLocal2Player={handleStartLocal2Player}
+              onOpenMultiplayer={() => setIsMultiplayerLobbyOpen(true)}
+              onOpenConstruction={handleOpenConstruction}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              inCabinet={true}
+            />
+          </ArcadeCabinetFrame>
         ) : currentScreen === GameState.STAGE_START ? (
           <StageIntro stage={currentStage} onComplete={handleStageIntroComplete} />
         ) : currentScreen === GameState.PLAYING || currentScreen === GameState.PAUSED ? (

@@ -4,7 +4,17 @@
  * shields, bullets, and power-up pickups with zero external image assets.
  */
 
-import { BaseState, Direction, EnemyType, PowerUpType, Tank } from '../types';
+import {
+  BaseState,
+  Direction,
+  EnemyType,
+  PowerUpType,
+  Tank,
+  TacticalItemType,
+  ActiveSmokeScreen,
+  ActiveBouncingGrenade,
+  ActiveDeployableShield,
+} from '../types';
 import { BLOCK_SIZE } from './maps';
 
 export class SpriteRenderer {
@@ -754,6 +764,347 @@ export class SpriteRenderer {
     ctx.font = '10px "Press Start 2P", monospace, system-ui';
     ctx.fillStyle = '#ffffff';
     ctx.fillText(`${points}`, x - 10, y + 4);
+    ctx.restore();
+  }
+
+  /**
+   * Renders Tactical Text popups (+SMOKE, +BOMB, +SHIELD)
+   */
+  public static renderTacticalPopup(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    text: string
+  ) {
+    ctx.save();
+    ctx.font = '8px "Press Start 2P", monospace, system-ui';
+    ctx.fillStyle = '#00f8b8';
+    ctx.shadowColor = '#000000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(text, x - 18, y);
+    ctx.restore();
+  }
+
+  /**
+   * Renders a Tactical Item Pickup on the battlefield
+   */
+  public static renderTacticalPickup(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    type: TacticalItemType,
+    flashFrame: number
+  ) {
+    ctx.save();
+    const isFlashing = Math.floor(flashFrame / 8) % 2 === 0;
+
+    // Glowing outer aura
+    ctx.fillStyle = isFlashing ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 200, 255, 0.2)';
+    ctx.fillRect(x - 2, y - 2, 28, 28);
+
+    // Dark badge base
+    ctx.fillStyle = '#101010';
+    ctx.fillRect(x, y, 24, 24);
+
+    // Beveled border
+    ctx.fillStyle = isFlashing ? '#ffffff' : type === 'SMOKE' ? '#70a0ff' : type === 'GRENADE' ? '#ff9020' : '#00e8ff';
+    ctx.strokeRect(x + 0.5, y + 0.5, 23, 23);
+
+    const cx = x + 12;
+    const cy = y + 12;
+
+    if (type === 'SMOKE') {
+      // Smoke Canister
+      ctx.fillStyle = '#c0c0c0'; // Silver can
+      ctx.fillRect(cx - 4, cy - 5, 8, 12);
+      ctx.fillStyle = '#3070b0'; // Blue identification stripe
+      ctx.fillRect(cx - 4, cy - 1, 8, 3);
+      ctx.fillStyle = '#505050'; // Valve neck
+      ctx.fillRect(cx - 2, cy - 8, 4, 3);
+      // Small smoke puffs
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#a0d0ff';
+      ctx.fillRect(cx + 2, cy - 10, 3, 3);
+      ctx.fillRect(cx + 5, cy - 12, 2, 2);
+    } else if (type === 'GRENADE') {
+      // Pineapple Bouncing Grenade
+      ctx.fillStyle = '#285818'; // Olive grenade body
+      ctx.beginPath();
+      ctx.arc(cx, cy + 1, 6, 0, Math.PI * 2);
+      ctx.fill();
+      // Segmentation grid
+      ctx.fillStyle = '#183808';
+      ctx.fillRect(cx - 4, cy - 1, 8, 1);
+      ctx.fillRect(cx - 1, cy - 4, 1, 8);
+      // Fuse neck
+      ctx.fillStyle = '#a08020';
+      ctx.fillRect(cx - 2, cy - 7, 4, 3);
+      // Sparking fuse tip
+      ctx.fillStyle = isFlashing ? '#ffff00' : '#ff3000';
+      ctx.fillRect(cx + 1, cy - 9, 3, 3);
+    } else if (type === 'SHIELD') {
+      // Deployable Tactical Shield Crest
+      ctx.fillStyle = '#0080d0';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + 8);
+      ctx.lineTo(cx - 7, cy + 2);
+      ctx.lineTo(cx - 7, cy - 6);
+      ctx.lineTo(cx + 7, cy - 6);
+      ctx.lineTo(cx + 7, cy + 2);
+      ctx.closePath();
+      ctx.fill();
+      // Inner glowing crest
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#00e8ff';
+      ctx.fillRect(cx - 1, cy - 4, 2, 8);
+      ctx.fillRect(cx - 4, cy - 2, 8, 2);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders an Active Smoke Screen (Square Billowing NES Pixel Smoke Cloud)
+   * Completely square, large footprint (112x112px), uniform density across the area
+   * without any center target/tell, fully obscuring any tanks or terrain beneath.
+   */
+  public static renderSmokeScreen(
+    ctx: CanvasRenderingContext2D,
+    smoke: ActiveSmokeScreen
+  ) {
+    ctx.save();
+    const globalFade = smoke.duration < 90 ? smoke.duration / 90 : 1;
+
+    const half = smoke.radius; // 56px (total 112x112px square)
+    const cx = Math.floor(smoke.x);
+    const cy = Math.floor(smoke.y);
+    const left = cx - half;
+    const top = cy - half;
+    const size = half * 2; // 112px
+
+    // 1. Base Dense Charcoal Square Body (Stepped pixel corners for authentic arcade silhouette)
+    const cornerStep = 8;
+    ctx.globalAlpha = 0.90 * globalFade;
+    ctx.fillStyle = '#1c1c1c';
+
+    // Horizontal cross band
+    ctx.fillRect(left, top + cornerStep, size, size - cornerStep * 2);
+    // Vertical cross band
+    ctx.fillRect(left + cornerStep, top, size - cornerStep * 2, size);
+    // 4 Corner pixel bevels (4x4)
+    ctx.fillRect(left + 4, top + 4, 4, 4);
+    ctx.fillRect(left + size - 8, top + 4, 4, 4);
+    ctx.fillRect(left + 4, top + size - 8, 4, 4);
+    ctx.fillRect(left + size - 8, top + size - 8, 4, 4);
+
+    // 2. Uniform Billowing Pixel Blocks (8x8 pixel blocks)
+    // Distributed evenly across the whole square footprint — NO center focal point!
+    const animTick = Math.floor(Date.now() / 150);
+    const numBlocks = Math.floor(size / 8); // 14 blocks
+
+    for (let r = 0; r < numBlocks; r++) {
+      for (let c = 0; c < numBlocks; c++) {
+        // Skip outer-most corner cuts to retain stepped pixel silhouette
+        if (
+          (r === 0 && (c === 0 || c === numBlocks - 1)) ||
+          (r === numBlocks - 1 && (c === 0 || c === numBlocks - 1))
+        ) {
+          continue;
+        }
+
+        const bx = left + c * 8;
+        const by = top + r * 8;
+
+        // Deterministic pseudo-random variation based on grid pos + time
+        const hash = (r * 23 + c * 41 + animTick * 11) % 100;
+
+        let blockColor = '#303030';
+        let blockAlpha = 0.65;
+
+        if (hash < 20) {
+          blockColor = '#242424';
+          blockAlpha = 0.85;
+        } else if (hash < 45) {
+          blockColor = '#3c3c3c';
+          blockAlpha = 0.75;
+        } else if (hash < 70) {
+          blockColor = '#545454';
+          blockAlpha = 0.70;
+        } else if (hash < 88) {
+          blockColor = '#6c6c6c';
+          blockAlpha = 0.65;
+        } else {
+          blockColor = '#808080';
+          blockAlpha = 0.60;
+        }
+
+        ctx.globalAlpha = blockAlpha * globalFade;
+        ctx.fillStyle = blockColor;
+        ctx.fillRect(bx, by, 8, 8);
+
+        // Retro NES checkered dither pattern on alternating blocks
+        if ((r + c) % 2 === 0) {
+          ctx.fillStyle = '#202020';
+          ctx.globalAlpha = 0.35 * globalFade;
+          ctx.fillRect(bx, by, 4, 4);
+          ctx.fillRect(bx + 4, by + 4, 4, 4);
+        }
+      }
+    }
+
+    // 3. Billowing Square Edge Teeth (Active fluctuating pixel perimeter)
+    const edgeTime = Date.now() * 0.0035;
+    ctx.fillStyle = '#505050';
+    for (let i = 1; i < numBlocks - 1; i++) {
+      if (Math.sin(edgeTime + i * 1.4) > 0.25) {
+        ctx.globalAlpha = 0.75 * globalFade;
+        ctx.fillRect(left + i * 8, top - 3, 8, 3); // Top edge puff
+      }
+      if (Math.cos(edgeTime + i * 1.6) > 0.25) {
+        ctx.globalAlpha = 0.75 * globalFade;
+        ctx.fillRect(left + i * 8, top + size, 8, 3); // Bottom edge puff
+      }
+      if (Math.sin(edgeTime + i * 1.8) > 0.25) {
+        ctx.globalAlpha = 0.75 * globalFade;
+        ctx.fillRect(left - 3, top + i * 8, 3, 8); // Left edge puff
+      }
+      if (Math.cos(edgeTime + i * 1.2) > 0.25) {
+        ctx.globalAlpha = 0.75 * globalFade;
+        ctx.fillRect(left + size, top + i * 8, 3, 8); // Right edge puff
+      }
+    }
+
+    // 4. Square Drifting Particles (Billowing pixel chunks)
+    for (const p of smoke.particles) {
+      ctx.globalAlpha = p.alpha * globalFade;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(
+        Math.floor(p.x - p.size / 2),
+        Math.floor(p.y - p.size / 2),
+        Math.floor(p.size),
+        Math.floor(p.size)
+      );
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders a Bouncing Grenade with altitude, shadow, and sparking fuse
+   */
+  public static renderBouncingGrenade(
+    ctx: CanvasRenderingContext2D,
+    grenade: ActiveBouncingGrenade
+  ) {
+    ctx.save();
+
+    // 1. Ground shadow (scales inversely with height z)
+    const shadowScale = Math.max(0.3, 1 - grenade.z * 0.025);
+    const shadowAlpha = Math.max(0.15, 0.5 - grenade.z * 0.02);
+    ctx.fillStyle = `rgba(0, 0, 0, ${shadowAlpha})`;
+    ctx.beginPath();
+    ctx.ellipse(grenade.x, grenade.y, 6 * shadowScale, 3 * shadowScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Grenade elevated by altitude z
+    const gx = grenade.x;
+    const gy = grenade.y - Math.max(0, grenade.z);
+
+    // Grenade body (8x8 pixel circle)
+    ctx.fillStyle = '#204810'; // Dark olive
+    ctx.beginPath();
+    ctx.arc(gx, gy, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Highlight
+    ctx.fillStyle = '#488828';
+    ctx.fillRect(gx - 2, gy - 3, 2, 2);
+
+    // Brass fuse pin
+    ctx.fillStyle = '#d0a020';
+    ctx.fillRect(gx - 1, gy - 7, 2, 3);
+
+    // Sparkling fuse tip
+    const spark = Math.floor(Date.now() / 60) % 2 === 0;
+    ctx.fillStyle = spark ? '#ffff00' : '#ff2000';
+    ctx.fillRect(gx - 2, gy - 9, 3, 3);
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders a Deployable Shield Barricade (3 HP, 15s timer, directional)
+   */
+  public static renderDeployableShield(
+    ctx: CanvasRenderingContext2D,
+    shield: ActiveDeployableShield
+  ) {
+    ctx.save();
+
+    // 3-second expiration warning blink
+    if (shield.timer < 180 && Math.floor(shield.timer / 8) % 2 === 0) {
+      ctx.globalAlpha = 0.4;
+    }
+
+    const x = shield.x;
+    const y = shield.y;
+    const w = shield.width;
+    const h = shield.height;
+
+    // Glowing aura
+    ctx.fillStyle = shield.hp === 3 ? 'rgba(0, 220, 255, 0.25)' : shield.hp === 2 ? 'rgba(255, 200, 0, 0.25)' : 'rgba(255, 50, 0, 0.3)';
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+
+    // Metallic chassis base
+    ctx.fillStyle = '#182430';
+    ctx.fillRect(x, y, w, h);
+
+    // Reinforced steel corner brackets
+    ctx.fillStyle = '#8090a0';
+    ctx.fillRect(x, y, 4, 4);
+    ctx.fillRect(x + w - 4, y, 4, 4);
+    ctx.fillRect(x, y + h - 4, 4, 4);
+    ctx.fillRect(x + w - 4, y + h - 4, 4, 4);
+
+    // Energy field core
+    ctx.fillStyle = shield.hp === 3 ? '#00e8ff' : shield.hp === 2 ? '#ffc020' : '#ff3820';
+    if (w > h) {
+      // Horizontal barrier
+      ctx.fillRect(x + 4, y + 2, w - 8, h - 4);
+      // Scanlines
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + 6, y + Math.floor(h / 2) - 1, w - 12, 2);
+    } else {
+      // Vertical barrier
+      ctx.fillRect(x + 2, y + 4, w - 4, h - 8);
+      // Scanlines
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + Math.floor(w / 2) - 1, y + 6, 2, h - 12);
+    }
+
+    // Damage cracks if hp < 3
+    if (shield.hp <= 2) {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(x + Math.floor(w / 3), y + Math.floor(h / 3), 3, 2);
+      ctx.fillRect(x + Math.floor(w / 3) + 2, y + Math.floor(h / 3) + 2, 2, 3);
+    }
+    if (shield.hp === 1) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + Math.floor((w * 2) / 3), y + Math.floor(h / 2), 4, 2);
+      ctx.fillRect(x + Math.floor((w * 2) / 3) + 2, y + Math.floor(h / 2) - 3, 2, 4);
+    }
+
+    // 3 Status pips (HP indicator)
+    const pipColor = shield.hp >= 3 ? '#00ff60' : shield.hp === 2 ? '#ffb000' : '#ff2020';
+    ctx.fillStyle = pipColor;
+    if (w > h) {
+      for (let i = 0; i < shield.hp; i++) {
+        ctx.fillRect(x + Math.floor(w / 2) - 8 + i * 6, y + h - 3, 4, 2);
+      }
+    } else {
+      for (let i = 0; i < shield.hp; i++) {
+        ctx.fillRect(x + w - 3, y + Math.floor(h / 2) - 8 + i * 6, 2, 4);
+      }
+    }
+
     ctx.restore();
   }
 }

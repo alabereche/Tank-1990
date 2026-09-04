@@ -34,6 +34,71 @@ export interface MudParticle {
   maxLife: number;
 }
 
+export type TacticalItemType = 'SMOKE' | 'GRENADE' | 'SHIELD';
+
+export interface TacticalInventory {
+  smoke: number;
+  grenade: number;
+  shield: number;
+}
+
+export interface TacticalPickup {
+  id: string;
+  type: TacticalItemType;
+  x: number;
+  y: number;
+  flashFrame: number;
+  duration: number;
+}
+
+export interface ActiveSmokeScreen {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  duration: number;
+  maxDuration: number;
+  particles: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    size: number;
+    alpha: number;
+    color: string;
+  }[];
+}
+
+export interface ActiveBouncingGrenade {
+  id: string;
+  ownerId: string;
+  isPlayer: boolean;
+  team?: 'A' | 'B' | 'FFA';
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  bouncesLeft: number;
+  life: number;
+}
+
+export interface ActiveDeployableShield {
+  id: string;
+  ownerId: string;
+  team?: 'A' | 'B' | 'FFA';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  hp: number;
+  maxHp: number;
+  timer: number;
+  maxTimer: number;
+  direction: Direction;
+}
+
 export type EnemyType = 'BASIC' | 'FAST' | 'POWER' | 'ARMOR';
 
 export interface Position {
@@ -66,6 +131,8 @@ export interface Tank {
   bulletSpeed: number;
   aiChangeDirTimer?: number;
   aiShootTimer?: number;
+  tacticalInventory?: TacticalInventory;
+  inSmoke?: boolean;
 }
 
 export interface Bullet {
@@ -194,6 +261,9 @@ export interface InputState {
   left: boolean;
   fire: boolean;
   pause: boolean;
+  smoke?: boolean;
+  grenade?: boolean;
+  shield?: boolean;
 }
 
 export type MultiplayerMode = 'single' | 'coop' | 'versus' | '2v2' | 'ffa';

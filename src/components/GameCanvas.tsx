@@ -17,6 +17,7 @@ import {
   WindowScalePreset,
   MultiplayerMode,
   MultiplayerRole,
+  TacticalInventory,
 } from '../types';
 import { multiplayerClient } from '../network/MultiplayerClient';
 import { gamepadManager, GamepadInfo } from '../engine/GamepadManager';
@@ -97,6 +98,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [fullscreenActive, setFullscreenActive] = useState<boolean>(isFullscreen());
   const [multiplayerPing, setMultiplayerPing] = useState<number>(0);
   const [partnerDisconnected, setPartnerDisconnected] = useState<boolean>(false);
+  const [tacticalInv, setTacticalInv] = useState<TacticalInventory>({ smoke: 1, grenade: 0, shield: 1 });
+  const [tacticalInvP2, setTacticalInvP2] = useState<TacticalInventory | undefined>(undefined);
 
   // Listen for Fullscreen changes
   useEffect(() => {
@@ -374,10 +377,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     right: inputs.some((i) => Boolean(i?.right)),
     fire: inputs.some((i) => Boolean(i?.fire)),
     pause: inputs.some((i) => Boolean(i?.pause)),
+    smoke: inputs.some((i) => Boolean(i?.smoke)),
+    grenade: inputs.some((i) => Boolean(i?.grenade)),
+    shield: inputs.some((i) => Boolean(i?.shield)),
   });
 
   const inputSig = (i: InputState) =>
-    `${i.up ? 1 : 0}${i.down ? 1 : 0}${i.left ? 1 : 0}${i.right ? 1 : 0}${i.fire ? 1 : 0}`;
+    `${i.up ? 1 : 0}${i.down ? 1 : 0}${i.left ? 1 : 0}${i.right ? 1 : 0}${i.fire ? 1 : 0}${i.smoke ? 1 : 0}${i.grenade ? 1 : 0}${i.shield ? 1 : 0}`;
 
   useEffect(() => {
     let animId: number;
@@ -393,6 +399,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           left: Boolean(kd['a']),
           right: Boolean(kd['d']),
           fire: Boolean(kd[' '] || kd['j'] || kd['z']),
+          smoke: Boolean(kd['q']),
+          grenade: Boolean(kd['e']),
+          shield: Boolean(kd['r'] || kd['c']),
         };
         const kbP2 = {
           up: Boolean(kd['arrowup']),
@@ -400,6 +409,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           left: Boolean(kd['arrowleft']),
           right: Boolean(kd['arrowright']),
           fire: Boolean(kd['enter'] || kd['k'] || kd['numpad0']),
+          smoke: Boolean(kd['numpad7'] || kd['u']),
+          grenade: Boolean(kd['numpad8'] || kd['i']),
+          shield: Boolean(kd['numpad9'] || kd['o']),
         };
         const pad1 = gamepadManager.pollInputForOrdinal(0)?.input;
         const pad2 = gamepadManager.pollInputForOrdinal(1)?.input;
@@ -423,6 +435,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           left: Boolean(kd['arrowleft'] || kd['a']),
           right: Boolean(kd['arrowright'] || kd['d']),
           fire: Boolean(kd[' '] || kd['j'] || kd['z'] || kd['control']),
+          smoke: Boolean(kd['q']),
+          grenade: Boolean(kd['e']),
+          shield: Boolean(kd['r'] || kd['c']),
         };
         // Poll the pad exactly ONCE per frame - readPad() consumes button
         // edges (Start), so a second call would drop them.
@@ -476,7 +491,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               }
             }
           }
-          const finalP2 = p2 || { up: false, down: false, left: false, right: false, fire: false, pause: false };
+          const finalP2 = p2 || { up: false, down: false, left: false, right: false, fire: false, pause: false, smoke: false, grenade: false, shield: false };
           engine?.setP2Input(finalP2);
           dbgRef.current.p2Sig = inputSig(finalP2);
 
@@ -486,6 +501,42 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (pad?.pause && padTrusted.current) engine?.togglePause();
         }
       }
+
+      // Sync tactical inventory for HUD display
+      if (engine) {
+        const slot = multiplayerConfig?.slot || (multiplayerConfig?.role === 'guest' ? 2 : 1);
+        const inv = engine.getTacticalInventory(slot);
+        if (inv) {
+          setTacticalInv((prev) => {
+            if (prev.smoke !== inv.smoke || prev.grenade !== inv.grenade || prev.shield !== inv.shield) {
+              return { ...inv };
+            }
+            return prev;
+          });
+        }
+
+        // Track Player 2 tactical inventory in 2-Player modes (Local 2P, Versus, Coop, 2v2)
+        const isTwoPlayerMode =
+          multiplayerConfig?.roomCode === 'LOCAL' ||
+          engine.multiMode === 'versus' ||
+          engine.multiMode === 'coop' ||
+          engine.multiMode === '2v2';
+
+        if (isTwoPlayerMode) {
+          const inv2 = engine.getTacticalInventory(2);
+          if (inv2) {
+            setTacticalInvP2((prev) => {
+              if (!prev || prev.smoke !== inv2.smoke || prev.grenade !== inv2.grenade || prev.shield !== inv2.shield) {
+                return { ...inv2 };
+              }
+              return prev;
+            });
+          }
+        } else {
+          setTacticalInvP2(undefined);
+        }
+      }
+
       animId = requestAnimationFrame(inputLoop);
     };
     animId = requestAnimationFrame(inputLoop);
@@ -756,6 +807,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             isMaxScale={windowScale === 'max'}
             versus={multiplayerConfig?.mode === 'versus'}
             mode={multiplayerConfig?.mode}
+            tacticalInventory={tacticalInv}
+            tacticalInventoryP2={tacticalInvP2}
           />
         </div>
       </div>
@@ -812,13 +865,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {multiplayerConfig?.roomCode === 'LOCAL' ? (
             <>
-              <span className="text-[#f8b800]">P1: [WASD] + [SPACE/J]</span>
-              <span className="text-[#55f855]">P2: [ARROWS] + [ENTER/K]</span>
+              <span className="text-[#f8b800]">P1: [WASD+SPACE] TAC: [Q/E/R]</span>
+              <span className="text-[#55f855]">P2: [ARROWS+ENTER] TAC: [U/I/O]</span>
             </>
           ) : (
             <>
               <span>MOVE: [WASD / ARROWS]</span>
               <span>FIRE: [SPACE / J]</span>
+              <span className="text-[#80c8ff] font-bold">[Q] SMK</span>
+              <span className="text-[#ffaa40] font-bold">[E] BMB</span>
+              <span className="text-[#40ffcc] font-bold">[R] SHD</span>
             </>
           )}
           <span>PAUSE: [P]</span>
