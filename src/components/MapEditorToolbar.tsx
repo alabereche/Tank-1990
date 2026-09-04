@@ -37,6 +37,67 @@ interface MapEditorProps {
   onCancel: () => void;
 }
 
+/**
+ * Authentic NES 8-bit Pixel Art Icon for Tile Palette materials
+ */
+const PixelTileIcon: React.FC<{ type: TileType | 'ERASE'; size?: number }> = ({ type, size = 28 }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, size, size);
+
+    ctx.save();
+    // Render at native 16x16 and scale up crisply with integer pixel ratio
+    const scale = size / 16;
+    ctx.scale(scale, scale);
+
+    if (type === TileType.BRICK) {
+      SpriteRenderer.renderBrick(ctx, 0, 0, 15);
+    } else if (type === TileType.STEEL) {
+      SpriteRenderer.renderSteel(ctx, 0, 0);
+    } else if (type === TileType.WATER) {
+      SpriteRenderer.renderWater(ctx, 0, 0, 0);
+    } else if (type === TileType.TREES) {
+      SpriteRenderer.renderTrees(ctx, 0, 0);
+    } else if (type === TileType.ICE) {
+      SpriteRenderer.renderIce(ctx, 0, 0);
+    } else if (type === 'ERASE' || type === TileType.EMPTY) {
+      // 16x16 dark grid with pixel eraser cross
+      ctx.fillStyle = '#101010';
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = '#222222';
+      ctx.fillRect(0, 0, 8, 8);
+      ctx.fillRect(8, 8, 8, 8);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(3, 3);
+      ctx.lineTo(13, 13);
+      ctx.moveTo(13, 3);
+      ctx.lineTo(3, 13);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }, [type, size]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      className="pixelated block rounded-[2px] shadow-sm border border-black/80 pointer-events-none"
+      style={{ width: `${size}px`, height: `${size}px` }}
+    />
+  );
+};
+
 export const MapEditorToolbar: React.FC<MapEditorProps> = ({
   initialMap,
   onStartBattle,
@@ -282,234 +343,242 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
   };
 
   return (
-    <div id="construction-mode-container" className="flex flex-col items-center w-full max-w-4xl mx-auto font-pixel">
-      {/* Editor Header */}
-      <div className="w-full flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-[#383838] border-2 border-[#505050] text-xs text-white shadow-lg mb-2">
-        <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-amber-400" />
-          <span className="text-amber-400 font-bold">CONSTRUCTION MODE</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={mapName}
-            onChange={(e) => setMapName(e.target.value)}
-            className="bg-black text-amber-300 px-2 py-1 border border-zinc-600 rounded text-[10px] w-36 sm:w-48 font-pixel focus:outline-none focus:border-amber-400"
-            placeholder="Map Name"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            id="editor-export-btn"
-            onClick={handleOpenExport}
-            className="flex items-center gap-1 bg-[#505050] hover:bg-[#606060] text-zinc-200 px-2 py-1 rounded border border-zinc-600 text-[9px]"
-            title="Import or Export JSON"
-          >
-            <Download className="w-3 h-3" />
-            <span>JSON</span>
-          </button>
-          <button
-            id="editor-cancel-btn"
-            onClick={onCancel}
-            className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2 py-1 rounded border border-zinc-600 text-[9px]"
-          >
-            <X className="w-3 h-3" />
-            <span>CANCEL</span>
-          </button>
-          <button
-            id="editor-start-battle-btn"
-            onClick={handleTestDrive}
-            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded border border-green-700 text-[10px] shadow-md animate-pulse"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>START BATTLE</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Workspace: Toolbar + Canvas + Presets */}
-      <div className="w-full flex flex-col md:flex-row gap-4 items-start justify-center">
-        {/* Left Toolbar: Tile Palette & Brush Size */}
-        <div className="w-full md:w-48 flex md:flex-col gap-2 bg-[#303030] p-3 border-2 border-[#505050] rounded shadow-md text-[10px]">
-          <div className="text-[9px] text-zinc-400 uppercase tracking-wider mb-1 hidden md:block">
-            Tile Palette
+    <div id="construction-mode-container" className="flex flex-col items-center w-full max-w-4xl mx-auto font-pixel p-2 sm:p-4">
+      {/* Master Harmonious Arcade Frame */}
+      <div className="w-full bg-[#242424] border-4 border-[#484848] rounded-xl shadow-2xl p-3 sm:p-4 flex flex-col gap-3.5">
+        {/* Editor Header */}
+        <div className="w-full flex flex-wrap items-center justify-between gap-3 px-3 py-2 bg-[#181818] border-2 border-[#383838] rounded-lg text-xs text-white shadow-inner">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-amber-400" />
+            <span className="text-amber-400 font-bold tracking-wide">CONSTRUCTION MODE</span>
           </div>
 
-          {/* Palette buttons */}
-          <div className="grid grid-cols-3 md:grid-cols-2 gap-2 w-full">
-            {/* Brick */}
-            <button
-              id="tool-brick"
-              onClick={() => setSelectedTool(TileType.BRICK)}
-              className={`p-2 rounded border flex flex-col items-center gap-1 transition-all ${
-                selectedTool === TileType.BRICK
-                  ? 'bg-amber-700/60 border-amber-400 text-white shadow-md'
-                  : 'bg-[#404040] border-[#555] text-zinc-300 hover:bg-[#4a4a4a]'
-              }`}
-            >
-              <div className="w-6 h-6 bg-[#b84418] border border-[#682008]" />
-              <span className="text-[8px]">BRICK</span>
-            </button>
-
-            {/* Steel */}
-            <button
-              id="tool-steel"
-              onClick={() => setSelectedTool(TileType.STEEL)}
-              className={`p-2 rounded border flex flex-col items-center gap-1 transition-all ${
-                selectedTool === TileType.STEEL
-                  ? 'bg-zinc-600 border-zinc-200 text-white shadow-md'
-                  : 'bg-[#404040] border-[#555] text-zinc-300 hover:bg-[#4a4a4a]'
-              }`}
-            >
-              <div className="w-6 h-6 bg-[#b4b4b4] border border-[#ffffff]" />
-              <span className="text-[8px]">STEEL</span>
-            </button>
-
-            {/* Water */}
-            <button
-              id="tool-water"
-              onClick={() => setSelectedTool(TileType.WATER)}
-              className={`p-2 rounded border flex flex-col items-center gap-1 transition-all ${
-                selectedTool === TileType.WATER
-                  ? 'bg-blue-700/60 border-blue-400 text-white shadow-md'
-                  : 'bg-[#404040] border-[#555] text-zinc-300 hover:bg-[#4a4a4a]'
-              }`}
-            >
-              <div className="w-6 h-6 bg-[#2038ec] border border-[#64b0ff]" />
-              <span className="text-[8px]">WATER</span>
-            </button>
-
-            {/* Trees */}
-            <button
-              id="tool-trees"
-              onClick={() => setSelectedTool(TileType.TREES)}
-              className={`p-2 rounded border flex flex-col items-center gap-1 transition-all ${
-                selectedTool === TileType.TREES
-                  ? 'bg-green-700/60 border-green-400 text-white shadow-md'
-                  : 'bg-[#404040] border-[#555] text-zinc-300 hover:bg-[#4a4a4a]'
-              }`}
-            >
-              <div className="w-6 h-6 bg-[#007800] border border-[#58d858]" />
-              <span className="text-[8px]">TREES</span>
-            </button>
-
-            {/* Ice */}
-            <button
-              id="tool-ice"
-              onClick={() => setSelectedTool(TileType.ICE)}
-              className={`p-2 rounded border flex flex-col items-center gap-1 transition-all ${
-                selectedTool === TileType.ICE
-                  ? 'bg-cyan-800/60 border-cyan-300 text-white shadow-md'
-                  : 'bg-[#404040] border-[#555] text-zinc-300 hover:bg-[#4a4a4a]'
-              }`}
-            >
-              <div className="w-6 h-6 bg-[#d0e0ec] border border-[#ffffff]" />
-              <span className="text-[8px]">ICE</span>
-            </button>
-
-            {/* Eraser */}
-            <button
-              id="tool-eraser"
-              onClick={() => setSelectedTool(TileType.EMPTY)}
-              className={`p-2 rounded border flex flex-col items-center gap-1 transition-all ${
-                selectedTool === TileType.EMPTY
-                  ? 'bg-red-900/60 border-red-400 text-white shadow-md'
-                  : 'bg-[#404040] border-[#555] text-zinc-300 hover:bg-[#4a4a4a]'
-              }`}
-            >
-              <Eraser className="w-6 h-6 text-red-400" />
-              <span className="text-[8px]">ERASE</span>
-            </button>
+          <div className="flex-1 min-w-[200px] max-w-sm flex items-center">
+            <input
+              type="text"
+              value={mapName}
+              onChange={(e) => setMapName(e.target.value)}
+              className="w-full bg-black text-amber-300 px-2.5 py-1.5 border border-zinc-700 rounded text-[10px] font-pixel focus:outline-none focus:border-amber-400"
+              placeholder="Map Name"
+            />
           </div>
 
-          {/* Brush Size */}
-          <div className="mt-3 pt-2 border-t border-[#444] flex flex-col gap-1.5 w-full">
-            <span className="text-[8px] text-zinc-400 uppercase">Brush Size</span>
-            <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              id="editor-export-btn"
+              onClick={handleOpenExport}
+              className="flex items-center gap-1 bg-[#333333] hover:bg-[#444444] text-zinc-200 px-2.5 py-1.5 rounded border border-zinc-600 text-[9px] transition-colors"
+              title="Import or Export JSON"
+            >
+              <Download className="w-3 h-3" />
+              <span>JSON</span>
+            </button>
+            <button
+              id="editor-cancel-btn"
+              onClick={onCancel}
+              className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1.5 rounded border border-zinc-600 text-[9px] transition-colors"
+            >
+              <X className="w-3 h-3" />
+              <span>CANCEL</span>
+            </button>
+            <button
+              id="editor-start-battle-btn"
+              onClick={handleTestDrive}
+              className="flex items-center gap-1.5 bg-green-600 hover:bg-green-500 text-white px-3.5 py-1.5 rounded border border-green-700 text-[10px] shadow-md transition-colors"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>START BATTLE</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Main Workspace: Toolbar + Canvas */}
+        <div className="w-full flex flex-col md:flex-row gap-3.5 items-start justify-center">
+          {/* Left Toolbar: Tile Palette & Brush Size */}
+          <div className="w-full md:w-52 flex flex-col gap-3 bg-[#181818] p-3 border-2 border-[#383838] rounded-lg shadow-inner text-[10px]">
+            <div className="text-[9px] text-amber-400 font-bold uppercase tracking-wider">
+              Tile Palette
+            </div>
+
+            {/* Palette buttons */}
+            <div className="grid grid-cols-3 md:grid-cols-2 gap-2 w-full">
+              {/* Brick */}
               <button
-                id="brush-1x1"
-                onClick={() => setBrushSize(1)}
-                className={`flex-1 py-1 rounded border text-[8px] ${
-                  brushSize === 1
-                    ? 'bg-amber-600 border-yellow-300 text-white'
-                    : 'bg-[#404040] border-[#555] text-zinc-300'
+                id="tool-brick"
+                onClick={() => setSelectedTool(TileType.BRICK)}
+                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all ${
+                  selectedTool === TileType.BRICK
+                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
                 }`}
               >
-                16px Sub
+                <PixelTileIcon type={TileType.BRICK} size={28} />
+                <span className="text-[8px] font-bold tracking-wider">BRICK</span>
+              </button>
+
+              {/* Steel */}
+              <button
+                id="tool-steel"
+                onClick={() => setSelectedTool(TileType.STEEL)}
+                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all ${
+                  selectedTool === TileType.STEEL
+                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                }`}
+              >
+                <PixelTileIcon type={TileType.STEEL} size={28} />
+                <span className="text-[8px] font-bold tracking-wider">STEEL</span>
+              </button>
+
+              {/* Water */}
+              <button
+                id="tool-water"
+                onClick={() => setSelectedTool(TileType.WATER)}
+                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all ${
+                  selectedTool === TileType.WATER
+                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                }`}
+              >
+                <PixelTileIcon type={TileType.WATER} size={28} />
+                <span className="text-[8px] font-bold tracking-wider">WATER</span>
+              </button>
+
+              {/* Trees */}
+              <button
+                id="tool-trees"
+                onClick={() => setSelectedTool(TileType.TREES)}
+                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all ${
+                  selectedTool === TileType.TREES
+                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                }`}
+              >
+                <PixelTileIcon type={TileType.TREES} size={28} />
+                <span className="text-[8px] font-bold tracking-wider">TREES</span>
+              </button>
+
+              {/* Ice */}
+              <button
+                id="tool-ice"
+                onClick={() => setSelectedTool(TileType.ICE)}
+                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all ${
+                  selectedTool === TileType.ICE
+                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                }`}
+              >
+                <PixelTileIcon type={TileType.ICE} size={28} />
+                <span className="text-[8px] font-bold tracking-wider">ICE</span>
+              </button>
+
+              {/* Eraser */}
+              <button
+                id="tool-eraser"
+                onClick={() => setSelectedTool(TileType.EMPTY)}
+                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all ${
+                  selectedTool === TileType.EMPTY
+                    ? 'bg-red-950/60 border-red-400 text-red-300 shadow-[0_0_8px_rgba(239,68,68,0.25)]'
+                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                }`}
+              >
+                <PixelTileIcon type="ERASE" size={28} />
+                <span className="text-[8px] font-bold tracking-wider">ERASE</span>
+              </button>
+            </div>
+
+            {/* Brush Size */}
+            <div className="pt-2.5 border-t border-[#303030] flex flex-col gap-1.5 w-full">
+              <span className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider">Brush Size</span>
+              <div className="flex gap-2">
+                <button
+                  id="brush-1x1"
+                  onClick={() => setBrushSize(1)}
+                  className={`flex-1 py-1.5 rounded border text-[8px] font-bold transition-all ${
+                    brushSize === 1
+                      ? 'bg-amber-600 border-amber-300 text-white shadow-sm'
+                      : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e]'
+                  }`}
+                >
+                  16px Sub
+                </button>
+                <button
+                  id="brush-2x2"
+                  onClick={() => setBrushSize(2)}
+                  className={`flex-1 py-1.5 rounded border text-[8px] font-bold transition-all ${
+                    brushSize === 2
+                      ? 'bg-amber-600 border-amber-300 text-white shadow-sm'
+                      : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e]'
+                  }`}
+                >
+                  32px Block
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="pt-2.5 border-t border-[#303030] flex flex-col gap-1.5 w-full">
+              <span className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider">Presets</span>
+              <button
+                id="preset-stage1"
+                onClick={() => loadPreset('stage1')}
+                className="w-full text-left px-2.5 py-1.5 rounded bg-[#252525] hover:bg-[#303030] text-zinc-200 text-[8px] border border-[#303030] hover:border-[#444] transition-colors"
+              >
+                Stage 1 Default
               </button>
               <button
-                id="brush-2x2"
-                onClick={() => setBrushSize(2)}
-                className={`flex-1 py-1 rounded border text-[8px] ${
-                  brushSize === 2
-                    ? 'bg-amber-600 border-yellow-300 text-white'
-                    : 'bg-[#404040] border-[#555] text-zinc-300'
-                }`}
+                id="preset-iron"
+                onClick={() => loadPreset('ironFortress')}
+                className="w-full text-left px-2.5 py-1.5 rounded bg-[#252525] hover:bg-[#303030] text-zinc-200 text-[8px] border border-[#303030] hover:border-[#444] transition-colors"
               >
-                32px Block
+                Iron Fortress
+              </button>
+              <button
+                id="preset-river"
+                onClick={() => loadPreset('riverCrossing')}
+                className="w-full text-left px-2.5 py-1.5 rounded bg-[#252525] hover:bg-[#303030] text-zinc-200 text-[8px] border border-[#303030] hover:border-[#444] transition-colors"
+              >
+                River Crossing
+              </button>
+              <button
+                id="preset-clean"
+                onClick={() => loadPreset('cleanSlate')}
+                className="w-full text-left px-2.5 py-1.5 rounded bg-[#252525] hover:bg-[#303030] text-zinc-200 text-[8px] border border-[#303030] hover:border-[#444] transition-colors"
+              >
+                Clean Slate
               </button>
             </div>
           </div>
 
-          {/* Quick Presets */}
-          <div className="mt-3 pt-2 border-t border-[#444] flex flex-col gap-1 w-full">
-            <span className="text-[8px] text-zinc-400 uppercase">Presets</span>
-            <button
-              id="preset-stage1"
-              onClick={() => loadPreset('stage1')}
-              className="w-full text-left px-2 py-1 rounded bg-[#404040] hover:bg-[#505050] text-zinc-200 text-[8px]"
-            >
-              Stage 1 Default
-            </button>
-            <button
-              id="preset-iron"
-              onClick={() => loadPreset('ironFortress')}
-              className="w-full text-left px-2 py-1 rounded bg-[#404040] hover:bg-[#505050] text-zinc-200 text-[8px]"
-            >
-              Iron Fortress
-            </button>
-            <button
-              id="preset-river"
-              onClick={() => loadPreset('riverCrossing')}
-              className="w-full text-left px-2 py-1 rounded bg-[#404040] hover:bg-[#505050] text-zinc-200 text-[8px]"
-            >
-              River Crossing
-            </button>
-            <button
-              id="preset-clean"
-              onClick={() => loadPreset('cleanSlate')}
-              className="w-full text-left px-2 py-1 rounded bg-[#404040] hover:bg-[#505050] text-zinc-200 text-[8px]"
-            >
-              Clean Slate
-            </button>
-          </div>
-        </div>
+          {/* Center: Editor Canvas with Drag/Draw */}
+          <div className="flex-1 bg-[#181818] p-3 border-2 border-[#383838] rounded-lg shadow-inner flex flex-col items-center">
+            <div className="bg-black p-1 rounded border-2 border-black shadow-2xl">
+              <canvas
+                ref={canvasRef}
+                id="editor-canvas"
+                width={currentCanvasSize}
+                height={currentCanvasSize}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onTouchStart={(e) => {
+                  setIsDrawing(true);
+                  applyBrush(e);
+                }}
+                onTouchMove={applyBrush}
+                onTouchEnd={() => setIsDrawing(false)}
+                className="pixelated cursor-crosshair block aspect-square w-[300px] h-[300px] xs:w-[360px] xs:h-[360px] sm:w-[416px] sm:h-[416px] md:w-[480px] md:h-[480px] border border-zinc-900 shadow-inner"
+              />
+            </div>
 
-        {/* Center: Editor Canvas with Drag/Draw */}
-        <div className="relative bg-[#202020] p-2 border-4 border-[#505050] rounded shadow-2xl flex flex-col items-center">
-          <canvas
-            ref={canvasRef}
-            id="editor-canvas"
-            width={currentCanvasSize}
-            height={currentCanvasSize}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onTouchStart={(e) => {
-              setIsDrawing(true);
-              applyBrush(e);
-            }}
-            onTouchMove={applyBrush}
-            onTouchEnd={() => setIsDrawing(false)}
-            className="pixelated cursor-crosshair block aspect-square w-[300px] h-[300px] xs:w-[360px] xs:h-[360px] sm:w-[416px] sm:h-[416px] md:w-[480px] md:h-[480px] border border-black shadow-inner"
-          />
-
-          <div className="w-full flex items-center justify-between text-[8px] text-zinc-400 mt-2 px-1">
-            <span>DRAW: CLICK & DRAG</span>
-            <span className="text-yellow-400">BASE EAGLE PROTECTED</span>
+            <div className="w-full flex items-center justify-between text-[8px] text-zinc-400 mt-2.5 px-1 font-pixel">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                DRAW: CLICK & DRAG
+              </span>
+              <span className="text-amber-400 font-bold">BASE EAGLE PROTECTED</span>
+            </div>
           </div>
         </div>
       </div>

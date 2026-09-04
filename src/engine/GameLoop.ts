@@ -148,6 +148,7 @@ export class GameEngine {
   // 1v1 alternating eagle: which slot defends the single eagle this round
   public vsDefenderSlot: 1 | 2 = 1;
   private pendingVsDefender: 1 | 2 | null = null;
+  public isRoundEnding: boolean = false;
 
   public get isRemoteViewer(): boolean {
     return this.localRole === 'guest';
@@ -401,6 +402,7 @@ export class GameEngine {
     this.baseState = BaseState.ALIVE;
     this.baseStateB = BaseState.ALIVE;
     this.shovelTimer = 0;
+    this.isRoundEnding = false;
     if (this.bases.get('A')) this.bases.get('A')!.state = BaseState.ALIVE;
     if (this.bases.get('B')) this.bases.get('B')!.state = BaseState.ALIVE;
 
@@ -608,6 +610,7 @@ export class GameEngine {
   }
 
   private endRound(winner: 1 | 2) {
+    this.isRoundEnding = false;
     if (this.gameState === GameState.ROUND_END) {
       // Mutual destruction: revoke the point just awarded and replay the round
       if (this.scoreData.roundWinner === 1) {
@@ -634,6 +637,7 @@ export class GameEngine {
   }
 
   public endRound2v2(winner: 'A' | 'B' | 'DRAW') {
+    this.isRoundEnding = false;
     if (this.gameState === GameState.ROUND_END) return;
     if (winner === 'A') {
       this.scoreData.teamWinsA = (this.scoreData.teamWinsA ?? 0) + 1;
@@ -732,10 +736,11 @@ export class GameEngine {
   /** Strips an eagle + its bunker ring (11..14 band) from the grid. */
   private clearBaseArea(side: 'north' | 'south') {
     const bCol = this.baseC;
+    const sR = this.baseR;
     const rows: [number, number][] = side === 'south'
-      ? [[23, bCol - 1], [23, bCol], [23, bCol + 1], [23, bCol + 2],
-         [24, bCol - 1], [24, bCol], [24, bCol + 1], [24, bCol + 2],
-         [25, bCol - 1], [25, bCol], [25, bCol + 1], [25, bCol + 2]]
+      ? [[sR - 1, bCol - 1], [sR - 1, bCol], [sR - 1, bCol + 1], [sR - 1, bCol + 2],
+         [sR, bCol - 1],     [sR, bCol],     [sR, bCol + 1],     [sR, bCol + 2],
+         [sR + 1, bCol - 1], [sR + 1, bCol], [sR + 1, bCol + 1], [sR + 1, bCol + 2]]
       : [[0, bCol - 1], [0, bCol], [0, bCol + 1], [0, bCol + 2],
          [1, bCol - 1], [1, bCol], [1, bCol + 1], [1, bCol + 2],
          [2, bCol - 1], [2, bCol], [2, bCol + 1], [2, bCol + 2]];
@@ -2210,6 +2215,11 @@ export class GameEngine {
     const slot = tank.playerIndex || 1;
     this.playerTanks.delete(slot);
 
+    // If the base explosion is already resolving or round already ended, don't trigger secondary endRound
+    if (this.isRoundEnding || this.gameState === GameState.ROUND_END) {
+      return;
+    }
+
     if (this.multiMode === 'versus') {
       this.endRound(slot === 1 ? 2 : 1);
       return;
@@ -2293,6 +2303,7 @@ export class GameEngine {
 
   // --- Base Eagle Destroyed ---
   public destroyBase(baseId: 'A' | 'B' = 'A') {
+    if (this.isRoundEnding) return;
     if (baseId === 'A') {
       if (this.baseState === BaseState.DESTROYED) return;
       this.baseState = BaseState.DESTROYED;
@@ -2300,19 +2311,24 @@ export class GameEngine {
       if (bA) bA.state = BaseState.DESTROYED;
       soundManager.playBigExplosion();
       this.createExplosion(this.baseX + 16, this.baseY + 16, true);
+      this.isRoundEnding = true;
+      this.clearRoundTimer();
       if (this.multiMode === 'versus') {
-        setTimeout(() => {
+        this.roundTransitionTimer = setTimeout(() => {
+          this.roundTransitionTimer = null;
           this.endRound(2);
         }, 1200);
         return;
       }
       if (this.multiMode === '2v2') {
-        setTimeout(() => {
+        this.roundTransitionTimer = setTimeout(() => {
+          this.roundTransitionTimer = null;
           this.endRound2v2('B');
         }, 1200);
         return;
       }
-      setTimeout(() => {
+      this.roundTransitionTimer = setTimeout(() => {
+        this.roundTransitionTimer = null;
         this.handleGameOver();
       }, 1200);
     } else if (baseId === 'B') {
@@ -2322,14 +2338,18 @@ export class GameEngine {
       if (bB) bB.state = BaseState.DESTROYED;
       soundManager.playBigExplosion();
       this.createExplosion(this.baseB_X + 16, this.baseB_Y + 16, true);
+      this.isRoundEnding = true;
+      this.clearRoundTimer();
       if (this.multiMode === 'versus') {
-        setTimeout(() => {
+        this.roundTransitionTimer = setTimeout(() => {
+          this.roundTransitionTimer = null;
           this.endRound(1);
         }, 1200);
         return;
       }
       if (this.multiMode === '2v2') {
-        setTimeout(() => {
+        this.roundTransitionTimer = setTimeout(() => {
+          this.roundTransitionTimer = null;
           this.endRound2v2('A');
         }, 1200);
         return;
@@ -2423,8 +2443,17 @@ export class GameEngine {
       this.freezeEnemiesTimer = 600;
     } else if (type === 'SHOVEL') {
       // Turn base bunker walls into steel for 20 seconds (1200 frames)
-      const targetTeam = target.team === 'B' || target.playerIndex === 2 ? 'B' : 'A';
-      this.applyShovelBunker(targetTeam);
+      if (this.multiMode === 'versus') {
+        // In 1v1, fortify the active eagle only if collected by the defender
+        if (target.playerIndex === this.vsDefenderSlot) {
+          this.applyShovelBunker(this.vsDefenderSlot === 2 ? 'B' : 'A');
+        }
+      } else if (this.multiMode === '2v2') {
+        const targetTeam = target.team === 'B' || target.playerIndex === 2 ? 'B' : 'A';
+        this.applyShovelBunker(targetTeam);
+      } else {
+        this.applyShovelBunker('A');
+      }
     } else if (type === 'HELMET') {
       // 15 seconds invulnerability
       target.shieldTimer = 900;
@@ -2778,6 +2807,7 @@ export class GameEngine {
       baseState: this.baseState,
       baseStateB: this.baseStateB,
       bases: Array.from(this.bases.values()),
+      vsDefenderSlot: this.vsDefenderSlot,
       gameState: this.gameState,
       gv: this.gridVersion,
       gs: this.gridSize,
@@ -2809,6 +2839,15 @@ export class GameEngine {
       if (data.scoreData) {
         this.scoreData = { ...this.scoreData, ...data.scoreData };
         this.onStateChange(this.gameState, this.scoreData);
+      }
+      if (data.vsDefenderSlot !== undefined) {
+        this.vsDefenderSlot = data.vsDefenderSlot;
+      }
+      if (Array.isArray(data.bases)) {
+        this.bases.clear();
+        for (const b of data.bases) {
+          this.bases.set(b.team, b);
+        }
       }
       if (data.baseState !== undefined) {
         this.baseState = data.baseState;
@@ -2911,6 +2950,15 @@ export class GameEngine {
     if (data.scoreData) {
       this.scoreData = { ...this.scoreData, ...data.scoreData };
       this.onStateChange(this.gameState, this.scoreData);
+    }
+    if (data.vsDefenderSlot !== undefined) {
+      this.vsDefenderSlot = data.vsDefenderSlot;
+    }
+    if (Array.isArray(data.bases)) {
+      this.bases.clear();
+      for (const b of data.bases) {
+        this.bases.set(b.team, b);
+      }
     }
     if (data.baseState !== undefined) {
       this.baseState = data.baseState;

@@ -105,6 +105,64 @@ async function main() {
   const snapshot = engine.getNetworkSnapshot();
   assert('Snapshot carries baseState', snapshot.baseState !== undefined);
   assert('Snapshot carries bases list (active only)', Array.isArray(snapshot.bases) && snapshot.bases.length === 1);
+  assert('Snapshot carries vsDefenderSlot (round 3 -> slot 1)', snapshot.vsDefenderSlot === 1);
+
+  // Test applyNetworkSnapshot on guest engine for Round 2 (vsDefenderSlot = 2)
+  const guestEngine = new GameEngine(fakeCanvas, dualBaseMap(), () => {});
+  guestEngine.setMultiplayerMode('versus', 'guest');
+  assert('Guest initial vsDefenderSlot is 1', guestEngine.vsDefenderSlot === 1);
+  guestEngine.applyNetworkSnapshot({
+    vsDefenderSlot: 2,
+    bases: [{ id: 'base_b', team: 'B', x: 192, y: 0, r: 0, c: 12, state: BaseState.ALIVE, palette: 'crimson' }],
+  });
+  assert('Guest synced vsDefenderSlot is 2', guestEngine.vsDefenderSlot === 2);
+  assert('Guest synced bases has Base B', guestEngine.bases.has('B') && !guestEngine.bases.has('A'));
+
+  console.log('--- 4b. Dynamic clearBaseArea on Large 34x34 map ---');
+  const largeMap = { name: 'large', grid: Array.from({ length: 34 }, () => Array(34).fill(0)) };
+  addNorthBaseBunker(largeMap.grid, 34);
+  const largeC = 16;
+  const largeR = 32;
+  largeMap.grid[largeR][largeC] = TileType.BASE;
+  largeMap.grid[largeR][largeC + 1] = TileType.BASE;
+  const engineLarge = new GameEngine(fakeCanvas, largeMap, () => {});
+  engineLarge.setMultiplayerMode('versus', 'host');
+  engineLarge.startStage(1, largeMap);
+  // Transition to Round 2: defender flips to P2 (North), south base at row 32 must be stripped clean
+  engineLarge.pendingVsDefender = 2;
+  engineLarge.initGrid(largeMap.grid);
+  assert('Large map defender is P2', engineLarge.vsDefenderSlot === 2);
+  assert('Large map South base is cleared at row 32', engineLarge.grid[largeR][largeC].type === TileType.EMPTY);
+
+  console.log('--- 4c. Shovel power-up logic in 1v1 ---');
+  // Round 1: Defender is P1 (South). If attacker P2 picks up shovel, active base should NOT fortify empty north!
+  const engineShovel = new GameEngine(fakeCanvas, dualBaseMap(), () => {});
+  engineShovel.setMultiplayerMode('versus', 'host');
+  engineShovel.startStage(1, dualBaseMap());
+  const p2Mock = { playerIndex: 2, team: 'B', tier: 0, speed: 2 };
+  const p1Mock = { playerIndex: 1, team: 'A', tier: 0, speed: 2 };
+  // Attacker P2 collects shovel -> no bunker change on empty North
+  engineShovel.collectPowerUp('SHOVEL', p2Mock);
+  assert('Attacker P2 shovel does not create steel in North', engineShovel.grid[2][12].type === TileType.EMPTY);
+  // Defender P1 collects shovel -> fortifies South bunker
+  engineShovel.collectPowerUp('SHOVEL', p1Mock);
+  assert('Defender P1 shovel fortifies South base bunker', engineShovel.grid[23][12].type === TileType.STEEL);
+
+  console.log('--- 4d. Eagle destruction race condition prevention ---');
+  const engineRace = new GameEngine(fakeCanvas, dualBaseMap(), () => {});
+  engineRace.roundIntroMs = 20;
+  engineRace.roundEndMs = 20;
+  engineRace.setMultiplayerMode('versus', 'host');
+  engineRace.startStage(1, dualBaseMap());
+  await sleep(40);
+  // Destroy base A (P2 attacker wins)
+  engineRace.destroyBase('A');
+  assert('Engine isRoundEnding is true', engineRace.isRoundEnding === true);
+  // During the explosion, P2 tank is killed
+  engineRace.handlePlayerTankKilled(engineRace.playerTanks.get(2));
+  // Player kill must NOT overturn base victory
+  await sleep(1350);
+  assert('Attacker P2 win is preserved despite dying during explosion', engineRace.scoreData.roundWinsP2 === 1 && (engineRace.scoreData.roundWinsP1 ?? 0) === 0);
 
   console.log('--- 5. 2v2 keeps DUAL bases (both sides, untouched) ---');
   const engine2v2 = new GameEngine(fakeCanvas, dualBaseMap(), () => {});

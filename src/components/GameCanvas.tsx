@@ -359,6 +359,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const touchInput = useRef<Partial<InputState>>({});
   const lastSentInput = useRef('');
+  const lastSentRelayInput = useRef('');
   const netP2Input = useRef<Partial<InputState>>({});
   const padTrusted = useRef(false);
   const dbgRef = useRef({ inSig: '00000', sent: '-', p2Sig: '00000', pads: 0 });
@@ -443,14 +444,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             lastSentInput.current = sig;
             multiplayerClient.sendInput({ ...merged, pause: false }, mySlot);
           }
+
+          // Same-machine dual-pad relay: if 2 pads are connected on this PC and guest window is focused,
+          // relay Pad 0 to Host for Slot 1 (P1) so Player 1 isn't frozen by Chromium focus isolation!
+          const connectedPads = gamepadManager.getConnectedPads();
+          if (connectedPads.length >= 2) {
+            const pad0Raw = gamepadManager.pollInputForOrdinal(0)?.input;
+            if (pad0Raw) {
+              const fullPad0 = mergeInput(pad0Raw);
+              const sig0 = inputSig(fullPad0);
+              if (sig0 !== lastSentRelayInput.current) {
+                lastSentRelayInput.current = sig0;
+                multiplayerClient.sendInput({ ...fullPad0, pause: false }, 1);
+              }
+            }
+          }
         } else {
           // Host drives P1 locally (keyboard, gamepad, touch)
           engine?.updateInput(merged);
 
-          // P2 is driven exclusively by the guest's network packet (no local gamepad interference)
-          const p2 = netP2Input.current ? (netP2Input.current as InputState) : { up: false, down: false, left: false, right: false, fire: false, pause: false };
-          engine?.setP2Input(p2);
-          dbgRef.current.p2Sig = inputSig(p2);
+          // P2 input: driven by guest packet over network.
+          // If testing on the same PC with 2 pads plugged into the host, allow Pad 1 to drive P2 locally when guest is idle!
+          let p2 = netP2Input.current ? (netP2Input.current as InputState) : null;
+          const isNetP2Active = Boolean(p2 && (p2.up || p2.down || p2.left || p2.right || p2.fire));
+          if (!isNetP2Active) {
+            const connectedPads = gamepadManager.getConnectedPads();
+            if (connectedPads.length >= 2) {
+              const pad1Raw = gamepadManager.pollInputForOrdinal(1)?.input;
+              if (pad1Raw && (pad1Raw.up || pad1Raw.down || pad1Raw.left || pad1Raw.right || pad1Raw.fire)) {
+                p2 = mergeInput(pad1Raw);
+              }
+            }
+          }
+          const finalP2 = p2 || { up: false, down: false, left: false, right: false, fire: false, pause: false };
+          engine?.setP2Input(finalP2);
+          dbgRef.current.p2Sig = inputSig(finalP2);
 
           // Host pause controls
           const padActive = Boolean(pad && (pad.up || pad.down || pad.left || pad.right || pad.fire));

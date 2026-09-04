@@ -27,6 +27,7 @@ export interface NetSnapshot {
   baseState?: unknown;
   baseStateB?: unknown;
   bases?: unknown[];
+  vsDefenderSlot?: 1 | 2;
   gameState?: unknown;
   gv?: number;
   grid?: number[];
