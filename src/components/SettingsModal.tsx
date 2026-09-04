@@ -635,17 +635,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <span>•</span>
             <span>[B / START] EXIT</span>
           </div>
-          <button
-            id="btn-save-settings"
-            onClick={onClose}
-            className={`px-5 py-2 bg-[#f8b800] hover:bg-[#e0a000] text-black font-pixel text-xs rounded transition-all shadow-lg ${
-              focusIndex === 9
-                ? 'ring-4 ring-white ring-offset-2 ring-offset-black scale-105 font-extrabold shadow-[0_0_16px_rgba(248,184,0,0.9)]'
-                : ''
-            }`}
-          >
-            CONFIRM
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              id="btn-quit-desktop"
+              type="button"
+              onClick={() => {
+                soundManager.playMenuSelect();
+                if (window.electronAPI?.quit) {
+                  window.electronAPI.quit();
+                } else {
+                  window.close();
+                }
+              }}
+              className="px-3 py-2 bg-red-950/70 hover:bg-red-900 border border-red-700 hover:border-red-500 text-red-300 hover:text-white font-pixel text-[10px] rounded transition-all cursor-pointer shadow-md"
+            >
+              QUIT GAME
+            </button>
+            <button
+              id="btn-save-settings"
+              onClick={onClose}
+              className={`px-5 py-2 bg-[#f8b800] hover:bg-[#e0a000] text-black font-pixel text-xs rounded transition-all shadow-lg cursor-pointer ${
+                focusIndex === 9
+                  ? 'ring-4 ring-white ring-offset-2 ring-offset-black scale-105 font-extrabold shadow-[0_0_16px_rgba(248,184,0,0.9)]'
+                  : ''
+              }`}
+            >
+              CONFIRM
+            </button>
+          </div>
         </div>
       </div>
     </div>

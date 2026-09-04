@@ -759,7 +759,7 @@ export class GameEngine {
     if (this.multiMode === 'versus') this.pendingVsDefender = this.versusDefenderForRound(nextRound);
 
     // Rotate to next distinct stage map if playing preset duel
-    if (!this.hasCustomMap && (this.multiMode === 'versus' || this.multiMode === '2v2')) {
+    if (!this.hasCustomMap && this.multiMode === 'versus') {
       const preset: MapSizePreset = this.gridSize === 42 ? 'giant' : this.gridSize === 34 ? 'large' : 'classic';
       this.currentMap = getStageMapForPresetAndStage(nextRound, preset, this.multiMode);
     }

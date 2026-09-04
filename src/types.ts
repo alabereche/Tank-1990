@@ -285,3 +285,13 @@ export interface MultiplayerState {
   ping: number;
 }
 
+declare global {
+  interface Window {
+    electronAPI?: {
+      quit: () => void;
+      toggleFullscreen: () => void;
+      isElectron: boolean;
+    };
+  }
+}
+

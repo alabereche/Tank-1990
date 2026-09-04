@@ -37,6 +37,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [showLocal2PModal, setShowLocal2PModal] = useState<boolean>(false);
   const [local2PMode, setLocal2PMode] = useState<'coop' | 'versus'>('coop');
   const [fullscreenActive, setFullscreenActive] = useState<boolean>(false);
+  const [showExitModal, setShowExitModal] = useState<boolean>(false);
+  const [exitConfirmIdx, setExitConfirmIdx] = useState<number>(0); // 0: YES, 1: NO
 
   useEffect(() => {
     const unsub = onFullscreenChange((active) => {
@@ -48,7 +50,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const handleToggleFullscreen = () => {
     soundManager.unlockAudio();
     soundManager.playPowerUpCollect();
-    toggleFullscreen();
+    if (window.electronAPI?.toggleFullscreen) {
+      window.electronAPI.toggleFullscreen();
+    } else {
+      toggleFullscreen();
+    }
+  };
+
+  const handleConfirmExit = () => {
+    soundManager.playMenuSelect();
+    if (window.electronAPI?.quit) {
+      window.electronAPI.quit();
+    } else {
+      window.close();
+    }
   };
 
   const menuOptions = [
@@ -59,6 +74,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
     { label: 'FULLSCREEN', action: handleToggleFullscreen },
+    { label: 'EXIT GAME', action: () => { setExitConfirmIdx(0); setShowExitModal(true); } },
   ];
 
   // Stable references so polling and keyboard loops never re-create and never reset their state
@@ -73,6 +89,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const showLocal2PModalRef = useRef(showLocal2PModal);
   showLocal2PModalRef.current = showLocal2PModal;
+
+  const showExitModalRef = useRef(showExitModal);
+  showExitModalRef.current = showExitModal;
+
+  const exitConfirmIdxRef = useRef(exitConfirmIdx);
+  exitConfirmIdxRef.current = exitConfirmIdx;
 
   const local2PModeRef = useRef(local2PMode);
   local2PModeRef.current = local2PMode;
@@ -91,6 +113,24 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       if (Date.now() - mountTime < 350) return;
       if (disabledRef.current) return;
       soundManager.unlockAudio();
+
+      if (showExitModalRef.current) {
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowRight' || e.key === 'd' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          setExitConfirmIdx((prev) => (prev === 0 ? 1 : 0));
+          soundManager.playMenuMove();
+        } else if (e.key === 'Enter' || e.key === ' ') {
+          if (exitConfirmIdxRef.current === 0) {
+            handleConfirmExit();
+          } else {
+            setShowExitModal(false);
+            soundManager.playMenuMove();
+          }
+        } else if (e.key === 'Escape') {
+          setShowExitModal(false);
+          soundManager.playMenuMove();
+        }
+        return;
+      }
 
       if (showLocal2PModalRef.current) {
         if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowRight' || e.key === 'd') {
@@ -132,6 +172,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         handleToggleFullscreen();
       } else if (e.key.toLowerCase() === 'h') {
         setShowHelpModal((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        setExitConfirmIdx(0);
+        setShowExitModal(true);
+        soundManager.playMenuMove();
       }
     };
 
@@ -257,6 +301,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           if (showHelpModalRef.current) {
             const el = document.getElementById('field-manual-scroll-area');
             if (el) el.scrollTop -= 70;
+          } else if (showExitModalRef.current) {
+            setExitConfirmIdx((prev) => (prev === 0 ? 1 : 0));
+            soundManager.playMenuMove();
           } else if (!showLocal2PModalRef.current) {
             setSelectedIdx((prev) => (prev > 0 ? prev - 1 : menuOptionsRef.current.length - 1));
             soundManager.playMenuMove();
@@ -268,6 +315,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           if (showHelpModalRef.current) {
             const el = document.getElementById('field-manual-scroll-area');
             if (el) el.scrollTop += 70;
+          } else if (showExitModalRef.current) {
+            setExitConfirmIdx((prev) => (prev === 0 ? 1 : 0));
+            soundManager.playMenuMove();
           } else if (!showLocal2PModalRef.current) {
             setSelectedIdx((prev) => (prev < menuOptionsRef.current.length - 1 ? prev + 1 : 0));
             soundManager.playMenuMove();
@@ -279,7 +329,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             if (showHelpModalRef.current) {
               const el = document.getElementById('field-manual-scroll-area');
               if (el) el.scrollTop -= 70;
-            } else if (!showLocal2PModalRef.current) {
+            } else if (!showLocal2PModalRef.current && !showExitModalRef.current) {
               setSelectedIdx((prev) => (prev > 0 ? prev - 1 : menuOptionsRef.current.length - 1));
               soundManager.playMenuMove();
             }
@@ -290,8 +340,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             holdTimer = time + REPEAT_RATE;
             if (showHelpModalRef.current) {
               const el = document.getElementById('field-manual-scroll-area');
-              if (el) el.scrollTop -= 70;
-            } else if (!showLocal2PModalRef.current) {
+              if (el) el.scrollTop += 70;
+            } else if (!showLocal2PModalRef.current && !showExitModalRef.current) {
               setSelectedIdx((prev) => (prev < menuOptionsRef.current.length - 1 ? prev + 1 : 0));
               soundManager.playMenuMove();
             }
@@ -303,8 +353,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           }
         }
 
-        // --- Handle Horizontal Navigation (Left / Right for Local 2P Modal) ---
-        if (showLocal2PModalRef.current) {
+        // --- Handle Horizontal Navigation (Left / Right for Modals) ---
+        if (showExitModalRef.current) {
+          const freshHorizontal = (isLeft && !prevLeft) || (isRight && !prevRight);
+          if (freshHorizontal) {
+            setExitConfirmIdx((prev) => (prev === 0 ? 1 : 0));
+            soundManager.playMenuMove();
+          }
+        } else if (showLocal2PModalRef.current) {
           const freshHorizontal = (isLeft && !prevLeft) || (isRight && !prevRight) || (isUp && !prevUp) || (isDown && !prevDown);
           if (freshHorizontal) {
             setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : 'coop'));
@@ -324,7 +380,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         if (confirmTrigger) {
           soundManager.unlockAudio();
-          if (showLocal2PModalRef.current) {
+          if (showExitModalRef.current) {
+            if (exitConfirmIdxRef.current === 0) {
+              handleConfirmExit();
+            } else {
+              setShowExitModal(false);
+              soundManager.playMenuMove();
+            }
+          } else if (showLocal2PModalRef.current) {
             setShowLocal2PModal(false);
             onStartLocal2PlayerRef.current(local2PModeRef.current);
           } else if (showHelpModalRef.current) {
@@ -343,11 +406,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         if (cancelTrigger) {
           soundManager.unlockAudio();
-          if (showLocal2PModalRef.current) {
+          if (showExitModalRef.current) {
+            setShowExitModal(false);
+            soundManager.playMenuMove();
+          } else if (showLocal2PModalRef.current) {
             setShowLocal2PModal(false);
             soundManager.playMenuMove();
           } else if (showHelpModalRef.current) {
             setShowHelpModal(false);
+            soundManager.playMenuMove();
+          } else {
+            setExitConfirmIdx(0);
+            setShowExitModal(true);
             soundManager.playMenuMove();
           }
         }
@@ -359,7 +429,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         if (selectTrigger) {
           soundManager.unlockAudio();
-          if (showLocal2PModalRef.current) {
+          if (showExitModalRef.current) {
+            setExitConfirmIdx((prev) => (prev === 0 ? 1 : 0));
+            soundManager.playMenuMove();
+          } else if (showLocal2PModalRef.current) {
             setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : 'coop'));
             soundManager.playMenuMove();
           } else if (!showHelpModalRef.current && !showLocal2PModalRef.current) {
@@ -668,6 +741,59 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               >
                 START BATTLE!
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Retro Quit Game Confirmation Modal */}
+      {showExitModal && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs select-none"
+          onClick={() => setShowExitModal(false)}
+        >
+          <div
+            className="bg-[#121216] border-4 border-red-600 rounded-md max-w-sm w-full p-5 space-y-4 font-pixel shadow-[0_0_30px_rgba(220,38,38,0.4)] text-white text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-red-500 text-sm tracking-widest flex items-center justify-center gap-2">
+              <span>⚠</span>
+              <span>QUIT GAME?</span>
+              <span>⚠</span>
+            </div>
+
+            <p className="text-[10px] text-zinc-300 leading-relaxed font-pixel">
+              ARE YOU SURE YOU WANT TO EXIT BATTLE CITY 1990?
+            </p>
+
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <button
+                type="button"
+                onClick={handleConfirmExit}
+                className={`flex-1 py-2.5 px-4 text-xs font-pixel border-2 transition-all cursor-pointer ${
+                  exitConfirmIdx === 0
+                    ? 'border-red-500 bg-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.6)]'
+                    : 'border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-500'
+                }`}
+              >
+                {exitConfirmIdx === 0 ? '► YES' : 'YES'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowExitModal(false)}
+                className={`flex-1 py-2.5 px-4 text-xs font-pixel border-2 transition-all cursor-pointer ${
+                  exitConfirmIdx === 1
+                    ? 'border-emerald-400 bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.6)]'
+                    : 'border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-500'
+                }`}
+              >
+                {exitConfirmIdx === 1 ? '► NO' : 'NO'}
+              </button>
+            </div>
+
+            <div className="text-[8px] text-zinc-500 font-sans mt-2">
+              Gamepad: [D-Pad] Select &bull; [A/Start] Confirm &bull; [B/ESC] Cancel
             </div>
           </div>
         </div>

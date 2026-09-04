@@ -36,7 +36,7 @@ export const ArcadeCabinetFrame: React.FC<ArcadeCabinetFrameProps> = ({ children
 
       {/* Full-bleed Arcade Cabinet Artwork Background (Visible on screens >= 640px) */}
       <img
-        src="/assets/arcade_cabinet_bg.webp"
+        src="./assets/arcade_cabinet_bg.webp"
         alt="Battle City 1990 Arcade Machine"
         className="hidden sm:block absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0"
         draggable={false}

@@ -1185,7 +1185,7 @@ class SoundManager {
 
     if (!window.__BATTLE_CITY_MENU_BGM__) {
       try {
-        const audio = new Audio('/audio/menu_bgm.ogg');
+        const audio = new Audio('./audio/menu_bgm.ogg');
         audio.loop = true;
         audio.preload = 'auto';
         window.__BATTLE_CITY_MENU_BGM__ = audio;
