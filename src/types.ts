@@ -12,6 +12,7 @@ export enum TileType {
   TREES = 4,
   ICE = 5,
   BASE = 6,
+  MUD = 7,
 }
 
 // 16x16 sub-tile brick quadrant destruction mask (4 bits: TL=1, TR=2, BL=4, BR=8)
@@ -19,6 +20,18 @@ export enum TileType {
 export interface SubTile {
   type: TileType;
   damageMask: number; // 0-15 bitmask for BRICK sub-quadrants
+}
+
+export interface MudParticle {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  life: number;
+  maxLife: number;
 }
 
 export type EnemyType = 'BASIC' | 'FAST' | 'POWER' | 'ARMOR';
@@ -48,6 +61,7 @@ export interface Tank {
   isFlashingBonus?: boolean; // Enemy drops powerup when damaged
   shieldTimer: number; // Frames remaining of invulnerability
   slideFrames: number; // Frames remaining of ice slide
+  slideDirection?: Direction; // Direction of ongoing slide momentum
   shootCooldown: number; // Frames until can shoot again
   bulletSpeed: number;
   aiChangeDirTimer?: number;

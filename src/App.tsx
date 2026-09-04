@@ -52,7 +52,7 @@ export default function App() {
         const parsed = JSON.parse(saved);
         return {
           mapSize: parsed.mapSize || 'classic',
-          playerSpeed: typeof parsed.playerSpeed === 'number' ? parsed.playerSpeed : 1.4,
+          playerSpeed: 1.1,
           showScanlines: parsed.showScanlines !== false,
           soundEnabled: parsed.soundEnabled !== false,
           windowScale: parsed.windowScale || 'large',
@@ -61,7 +61,7 @@ export default function App() {
     } catch {}
     return {
       mapSize: 'classic',
-      playerSpeed: 1.4,
+      playerSpeed: 1.1,
       showScanlines: true,
       soundEnabled: true,
       windowScale: 'large',

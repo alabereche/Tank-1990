@@ -13,7 +13,6 @@ import {
   Settings,
   Maximize2,
   Minimize2,
-  Gauge,
   Tv,
   Volume2,
   VolumeX,
@@ -50,15 +49,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onUpdateSettings({
       ...settings,
       mapSize: preset,
-    });
-  };
-
-  const handleSelectSpeed = (speed: number) => {
-    soundManager.unlockAudio();
-    soundManager.playHitSteel();
-    onUpdateSettings({
-      ...settings,
-      playerSpeed: speed,
     });
   };
 
@@ -173,46 +163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section 2: Player Tank Speed */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[#f8b800] flex items-center gap-1.5 font-bold">
-                <Gauge className="w-4 h-4 text-amber-400" />
-                <span>TANK SPEED</span>
-              </span>
-              <span className="text-[10px] text-zinc-400 font-mono">
-                Speed: {settings.playerSpeed.toFixed(1)} px/f
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: 'Precision Control', name: 'Slow', val: 1.1, desc: 'Careful & steady aim' },
-                { label: 'Original Balanced', name: 'Normal', val: 1.4, desc: 'Recommended default' },
-                { label: 'Turbo Dynamic', name: 'Fast', val: 2.0, desc: 'Fast-paced action' },
-              ].map((sp) => {
-                const isSelected = Math.abs(settings.playerSpeed - sp.val) < 0.15;
-                return (
-                  <button
-                    key={sp.name}
-                    id={`btn-speed-${sp.name.toLowerCase()}`}
-                    onClick={() => handleSelectSpeed(sp.val)}
-                    className={`p-2 rounded border-2 text-center transition-all ${
-                      isSelected
-                        ? 'bg-amber-950/40 border-[#f8b800] text-[#f8b800]'
-                        : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                    }`}
-                  >
-                    <div className="font-bold text-xs">{sp.name}</div>
-                    <div className="text-[10px] font-sans text-zinc-200 mt-0.5">{sp.label}</div>
-                    <div className="text-[8px] font-sans text-zinc-400 mt-1">{sp.desc}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Section 3: Game Window Size */}
+          {/* Section 2: Game Window Size */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[#a78bfa] flex items-center gap-1.5 font-bold">

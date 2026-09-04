@@ -67,6 +67,8 @@ const PixelTileIcon: React.FC<{ type: TileType | 'ERASE'; size?: number }> = ({ 
       SpriteRenderer.renderTrees(ctx, 0, 0);
     } else if (type === TileType.ICE) {
       SpriteRenderer.renderIce(ctx, 0, 0);
+    } else if (type === TileType.MUD) {
+      SpriteRenderer.renderMud(ctx, 0, 0);
     } else if (type === 'ERASE' || type === TileType.EMPTY) {
       // 16x16 dark grid with pixel eraser cross
       ctx.fillStyle = '#101010';
@@ -137,11 +139,14 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, currentCanvasSize, currentCanvasSize);
 
-    // 1. Ice
+    // 1. Ice & Mud
     for (let r = 0; r < currentGridSize; r++) {
       for (let c = 0; c < currentGridSize; c++) {
-        if (mapGrid[r][c] === TileType.ICE) {
+        const t = mapGrid[r][c];
+        if (t === TileType.ICE) {
           SpriteRenderer.renderIce(ctx, c * BLOCK_SIZE, r * BLOCK_SIZE);
+        } else if (t === TileType.MUD) {
+          SpriteRenderer.renderMud(ctx, c * BLOCK_SIZE, r * BLOCK_SIZE);
         }
       }
     }
@@ -472,17 +477,31 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
                 <span className="text-[8px] font-bold tracking-wider">ICE</span>
               </button>
 
+              {/* Mud */}
+              <button
+                id="tool-mud"
+                onClick={() => setSelectedTool(TileType.MUD)}
+                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all ${
+                  selectedTool === TileType.MUD
+                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                }`}
+              >
+                <PixelTileIcon type={TileType.MUD} size={28} />
+                <span className="text-[8px] font-bold tracking-wider">MUD</span>
+              </button>
+
               {/* Eraser */}
               <button
                 id="tool-eraser"
                 onClick={() => setSelectedTool(TileType.EMPTY)}
-                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all ${
+                className={`col-span-2 p-2 rounded border flex items-center justify-center gap-2 transition-all ${
                   selectedTool === TileType.EMPTY
                     ? 'bg-red-950/60 border-red-400 text-red-300 shadow-[0_0_8px_rgba(239,68,68,0.25)]'
                     : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
                 }`}
               >
-                <PixelTileIcon type="ERASE" size={28} />
+                <PixelTileIcon type="ERASE" size={20} />
                 <span className="text-[8px] font-bold tracking-wider">ERASE</span>
               </button>
             </div>

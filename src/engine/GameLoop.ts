@@ -24,6 +24,7 @@ import {
   TileType,
   MultiplayerMode,
   MultiplayerRole,
+  MudParticle,
 } from '../types';
 import { BLOCK_SIZE, cloneGrid, getStageMapForPresetAndStage } from './maps';
 import { soundManager } from './SoundManager';
@@ -70,7 +71,7 @@ export class GameEngine {
   ];
   private playerSpawn: Position = { x: 128, y: 384 };
   private p2Spawn: Position = { x: 256, y: 384 };
-  private playerBaseSpeed: number = 1.4;
+  private playerBaseSpeed: number = 1.1;
 
   // Grid state: sub-tiles with damage mask
   private grid: SubTile[][] = [];
@@ -103,6 +104,7 @@ export class GameEngine {
   private explosions: Explosion[] = [];
   private powerUps: PowerUp[] = [];
   private scorePopups: ScorePopup[] = [];
+  private mudParticles: MudParticle[] = [];
 
   // Multiplayer Engine State
   public multiMode: MultiplayerMode = 'single';
@@ -499,6 +501,7 @@ export class GameEngine {
     this.explosions = [];
     this.powerUps = [];
     this.scorePopups = [];
+    this.mudParticles = [];
     this.freezeEnemiesTimer = 0;
     this.shovelTimer = 0;
     this.snapBuffer.clear();
@@ -715,6 +718,7 @@ export class GameEngine {
     this.explosions = [];
     this.powerUps = [];
     this.scorePopups = [];
+    this.mudParticles = [];
     this.freezeEnemiesTimer = 0;
     this.shovelTimer = 0;
     this.initGrid(this.currentMap.grid);
@@ -828,7 +832,7 @@ export class GameEngine {
     const open = (r: number, c: number): boolean => {
       if (r >= r0 && r <= r0 + 1 && c >= c0 && c <= c0 + 1) return true; // pocket itself
       const t = this.grid[r]?.[c]?.type ?? TileType.BRICK; // outside the field = wall
-      return t === TileType.EMPTY || t === TileType.TREES || t === TileType.ICE;
+      return t === TileType.EMPTY || t === TileType.TREES || t === TileType.ICE || t === TileType.MUD;
     };
     return (
       (open(r0 - 1, c0) && open(r0 - 1, c0 + 1)) || // up
@@ -1487,21 +1491,48 @@ export class GameEngine {
     else if (input.left) dir = 'LEFT';
     else if (input.right) dir = 'RIGHT';
 
-    const currentSubX = Math.floor((tank.x + 16) / BLOCK_SIZE);
-    const currentSubY = Math.floor((tank.y + 16) / BLOCK_SIZE);
-    const isOnIce = this.grid[currentSubY]?.[currentSubX]?.type === TileType.ICE;
+    const isOnIce = this.isTankOnTileType(tank, TileType.ICE);
+    const isOnMud = this.isTankOnTileType(tank, TileType.MUD);
 
     if (dir) {
       tank.direction = dir;
-      this.moveTankWithCorridorSnap(tank, dir, tank.speed);
+      // Moving on mud heavily reduces speed by ~58% (speed factor 0.42)
+      const currentSpeed = isOnMud ? tank.speed * 0.42 : tank.speed;
+      this.moveTankWithCorridorSnap(tank, dir, currentSpeed);
       tank.moving = true;
-      if (isOnIce) {
-        tank.slideFrames = 12;
+
+      if (isOnMud) {
+        this.spawnMudParticles(tank);
+        tank.slideFrames = 0; // Mud halts all sliding inertia
+      } else if (isOnIce) {
+        tank.slideFrames = 26; // ~0.43s of smooth retro ice momentum
+        tank.slideDirection = dir;
+      } else {
+        tank.slideFrames = 0;
       }
-    } else if (tank.slideFrames > 0 && isOnIce) {
-      this.moveTankWithCorridorSnap(tank, tank.direction, tank.speed * 0.7);
-      tank.slideFrames--;
-      tank.moving = true;
+    } else if (tank.slideFrames > 0) {
+      // Keys released: continue gliding with smooth inertia & deceleration!
+      const slideDir = tank.slideDirection || tank.direction;
+      if (isOnMud) {
+        tank.slideFrames = 0;
+        tank.moving = false;
+      } else {
+        const progress = tank.slideFrames / 26;
+        // Smooth deceleration curve: from ~85% speed down to ~15% before stopping
+        const slideSpeed = tank.speed * (0.15 + 0.70 * progress) * (isOnIce ? 0.85 : 0.45);
+        const moved = this.moveTankWithCorridorSnap(tank, slideDir, slideSpeed);
+        tank.direction = slideDir;
+        tank.distanceTraveled += slideSpeed * 0.5; // Smooth tread animation while sliding
+        tank.moving = true;
+
+        // If slid off ice onto regular terrain, friction decelerates twice as fast
+        tank.slideFrames -= (isOnIce ? 1 : 2);
+
+        if (!moved || tank.slideFrames <= 0) {
+          tank.slideFrames = 0;
+          tank.moving = false;
+        }
+      }
     } else {
       tank.moving = false;
       tank.slideFrames = 0;
@@ -1516,10 +1547,77 @@ export class GameEngine {
     this.updatePlayerSlot(2);
   }
 
+  // --- Multi-point Check if any part of the tank treads occupies a specific TileType ---
+  public isTankOnTileType(tank: Tank, type: TileType): boolean {
+    if (!tank) return false;
+    const minC = Math.floor((tank.x + 4) / BLOCK_SIZE);
+    const maxC = Math.floor((tank.x + 27) / BLOCK_SIZE);
+    const minR = Math.floor((tank.y + 4) / BLOCK_SIZE);
+    const maxR = Math.floor((tank.y + 27) / BLOCK_SIZE);
+
+    for (let r = minR; r <= maxR; r++) {
+      if (r < 0 || r >= this.gridSize) continue;
+      for (let c = minC; c <= maxC; c++) {
+        if (c < 0 || c >= this.gridSize) continue;
+        if (this.grid[r][c].type === type) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // --- Authentic 8-bit Mud Splatter Particles ---
+  private spawnMudParticles(tank: Tank) {
+    if (Math.random() > 0.45) return;
+    if (this.mudParticles.length > 80) return;
+
+    const colors = ['#261507', '#382010', '#502d15', '#6d401e', '#764522'];
+    const isLeftTrack = Math.random() < 0.5;
+    let trackOffsetX = isLeftTrack ? 5 : 23;
+    let trackOffsetY = 16;
+
+    let baseVx = 0;
+    let baseVy = 0;
+    if (tank.direction === 'UP') {
+      trackOffsetY = 28;
+      baseVy = Math.random() * 0.8 + 0.3;
+      baseVx = (Math.random() - 0.5) * 0.6;
+    } else if (tank.direction === 'DOWN') {
+      trackOffsetY = 4;
+      baseVy = -(Math.random() * 0.8 + 0.3);
+      baseVx = (Math.random() - 0.5) * 0.6;
+    } else if (tank.direction === 'LEFT') {
+      trackOffsetX = 28;
+      trackOffsetY = isLeftTrack ? 5 : 23;
+      baseVx = Math.random() * 0.8 + 0.3;
+      baseVy = (Math.random() - 0.5) * 0.6;
+    } else if (tank.direction === 'RIGHT') {
+      trackOffsetX = 4;
+      trackOffsetY = isLeftTrack ? 5 : 23;
+      baseVx = -(Math.random() * 0.8 + 0.3);
+      baseVy = (Math.random() - 0.5) * 0.6;
+    }
+
+    this.mudParticles.push({
+      id: Math.random().toString(),
+      x: tank.x + trackOffsetX,
+      y: tank.y + trackOffsetY,
+      vx: baseVx,
+      vy: baseVy,
+      size: Math.random() < 0.5 ? 2 : 3,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: Math.floor(Math.random() * 8 + 8),
+      maxLife: 16,
+    });
+  }
+
   // --- Smooth Corridor Corner-Snapping (Authentic NES Navigation) ---
   // When a tank tries to turn into a corridor, snap perpendicular axis to 16px grid safely
-  private moveTankWithCorridorSnap(tank: Tank, dir: Direction, speed: number) {
-    if (!tank || !dir) return;
+  private moveTankWithCorridorSnap(tank: Tank, dir: Direction, speed: number): boolean {
+    if (!tank || !dir) return false;
+    const originalX = tank.x;
+    const originalY = tank.y;
     const snapThreshold = 6; // px margin to auto-align into 16px sub-tiles
 
     if (dir === 'UP' || dir === 'DOWN') {
@@ -1580,6 +1678,8 @@ export class GameEngine {
         tank.distanceTraveled += step;
       }
     }
+
+    return tank.x !== originalX || tank.y !== originalY;
   }
 
   // --- World Bounds & Tile Collision Check ---
@@ -1828,7 +1928,12 @@ export class GameEngine {
       // Try move in current direction
       const prevX = enemy.x;
       const prevY = enemy.y;
-      this.moveTankWithCorridorSnap(enemy, enemy.direction, enemy.speed);
+      const isEnemyOnMud = this.isTankOnTileType(enemy, TileType.MUD);
+      const enemySpeed = isEnemyOnMud ? enemy.speed * 0.42 : enemy.speed;
+      if (isEnemyOnMud) {
+        this.spawnMudParticles(enemy);
+      }
+      this.moveTankWithCorridorSnap(enemy, enemy.direction, enemySpeed);
 
       // If blocked, immediately turn towards an open path
       if (Math.abs(enemy.x - prevX) < 0.05 && Math.abs(enemy.y - prevY) < 0.05) {
@@ -2558,6 +2663,17 @@ export class GameEngine {
         this.scorePopups.splice(i, 1);
       }
     }
+
+    // Mud Splatter Particles
+    for (let i = this.mudParticles.length - 1; i >= 0; i--) {
+      const p = this.mudParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+      if (p.life <= 0) {
+        this.mudParticles.splice(i, 1);
+      }
+    }
   }
 
   // --- Rendering Pipeline ---
@@ -2569,11 +2685,14 @@ export class GameEngine {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, this.canvasSize, this.canvasSize);
 
-    // 2. Render Ice (underneath tanks)
+    // 2. Render Ice & Mud (underneath tanks)
     for (let r = 0; r < this.gridSize; r++) {
       for (let c = 0; c < this.gridSize; c++) {
-        if (this.grid[r][c].type === TileType.ICE) {
+        const t = this.grid[r][c].type;
+        if (t === TileType.ICE) {
           SpriteRenderer.renderIce(ctx, c * BLOCK_SIZE, r * BLOCK_SIZE);
+        } else if (t === TileType.MUD) {
+          SpriteRenderer.renderMud(ctx, c * BLOCK_SIZE, r * BLOCK_SIZE);
         }
       }
     }
@@ -2634,6 +2753,12 @@ export class GameEngine {
       if (p) {
         SpriteRenderer.renderTank(ctx, p, this.tickCount);
       }
+    }
+
+    // 7b. Render Mud Splatters (Pixel particles kicked up by tank treads)
+    for (const p of this.mudParticles) {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
     }
 
     // 8. Render Bullets

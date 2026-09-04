@@ -146,6 +146,46 @@ export class SpriteRenderer {
   }
 
   /**
+   * Renders a 16x16 Mud sub-tile (swampy muddy terrain with authentic NES palette)
+   */
+  public static renderMud(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    // 1. Deep damp soil base
+    ctx.fillStyle = '#382010';
+    ctx.fillRect(x, y, 16, 16);
+
+    // 2. Dark soggy peat trenches & clods
+    ctx.fillStyle = '#1e1006';
+    ctx.fillRect(x + 1, y + 2, 5, 2);
+    ctx.fillRect(x + 9, y + 1, 6, 2);
+    ctx.fillRect(x + 4, y + 6, 8, 3);
+    ctx.fillRect(x + 1, y + 11, 6, 3);
+    ctx.fillRect(x + 10, y + 10, 5, 4);
+
+    // 3. Medium earth clods
+    ctx.fillStyle = '#553018';
+    ctx.fillRect(x + 2, y + 1, 3, 1);
+    ctx.fillRect(x + 11, y + 3, 3, 2);
+    ctx.fillRect(x + 6, y + 5, 4, 1);
+    ctx.fillRect(x + 3, y + 10, 4, 1);
+    ctx.fillRect(x + 8, y + 13, 3, 2);
+
+    // 4. Lighter clay & dirt highlights
+    ctx.fillStyle = '#764522';
+    ctx.fillRect(x + 3, y + 2, 2, 1);
+    ctx.fillRect(x + 12, y + 1, 2, 1);
+    ctx.fillRect(x + 7, y + 7, 2, 1);
+    ctx.fillRect(x + 2, y + 12, 2, 1);
+    ctx.fillRect(x + 11, y + 11, 2, 1);
+
+    // 5. Wet mud glints (specular pixel specks)
+    ctx.fillStyle = '#a66a36';
+    ctx.fillRect(x + 4, y + 2, 1, 1);
+    ctx.fillRect(x + 13, y + 2, 1, 1);
+    ctx.fillRect(x + 8, y + 7, 1, 1);
+    ctx.fillRect(x + 12, y + 12, 1, 1);
+  }
+
+  /**
    * Renders a 16x16 Trees / Foliage sub-tile (drawn in top layer over tanks)
    */
   public static renderTrees(ctx: CanvasRenderingContext2D, x: number, y: number) {
