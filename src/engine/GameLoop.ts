@@ -154,6 +154,7 @@ export class GameEngine {
   private p2AuthTarget: { x: number; y: number; dir: Direction; moving: boolean } | null = null;
   private gridVersion = 0;
   private lastSentGridVersion = -1;
+  private gridSyncFramesRemaining = 0;
   private tickWorker: Worker | null = null;
 
   // --- Client-Side Prediction & Input Sequencing (Gambetta / Source Model) ---
@@ -579,6 +580,7 @@ export class GameEngine {
     this.p2AuthTarget = null;
     this.gridVersion++;
     this.lastSentGridVersion = -1;
+    this.gridSyncFramesRemaining = 60;
 
     if (this.isRemoteViewer) {
       // Thin client: every entity arrives via host snapshots
@@ -783,8 +785,10 @@ export class GameEngine {
         this.onStateChange(this.gameState, this.scoreData);
         return;
       }
+      const nextRound = (this.scoreData.roundNumber ?? 1) + 1;
+      this.scoreData.roundNumber = nextRound;
       this.resetRoundArena();
-      this.beginRoundIntro((this.scoreData.roundNumber ?? 1) + 1);
+      this.beginRoundIntro(nextRound);
       return;
     }
 
@@ -799,6 +803,7 @@ export class GameEngine {
       return;
     }
     const nextRound = (this.scoreData.roundNumber ?? 1) + 1;
+    this.scoreData.roundNumber = nextRound;
     // Eagle sides flip with round parity — decide BEFORE the arena re-init
     if (this.multiMode === 'versus') this.pendingVsDefender = this.versusDefenderForRound(nextRound);
 
@@ -835,6 +840,18 @@ export class GameEngine {
     this.shovelTimer = 0;
     this.initGrid(this.currentMap.grid);
     this.gridVersion++;
+    this.lastSentGridVersion = -1;
+    this.gridSyncFramesRemaining = 60;
+
+    // Reliable broadcast of map sync to all peers
+    this.emitNetEvent({
+      t: 'map_sync',
+      round: this.scoreData.roundNumber,
+      grid: this.encodeGrid(),
+      gv: this.gridVersion,
+      gs: this.gridSize,
+    });
+
     if (this.multiMode === '2v2') {
       for (let i = 1; i <= 4; i++) {
         const pt = this.playerSpawns.get(i);
@@ -1246,11 +1263,17 @@ export class GameEngine {
     if (this.gameState === GameState.ROUND_END) {
       soundManager.stopEngineSound();
       this.updateEffects();
+      if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 2 === 0) {
+        this.onNetworkSync(this.getNetworkSnapshot());
+      }
       return;
     }
     if (this.gameState === GameState.ROUND_INTRO) {
       soundManager.stopEngineSound();
       this.updateSpawningTanks();
+      if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 2 === 0) {
+        this.onNetworkSync(this.getNetworkSnapshot());
+      }
       return;
     }
 
@@ -1685,6 +1708,20 @@ export class GameEngine {
       case 'pspawn':
         soundManager.playPowerUpSpawn();
         break;
+      case 'map_sync':
+        if (Array.isArray((ev as any).grid) && typeof (ev as any).gv === 'number') {
+          this.decodeGrid((ev as any).grid, (ev as any).gv, (ev as any).gs);
+        }
+        if (typeof (ev as any).round === 'number') {
+          const newRound = (ev as any).round;
+          this.scoreData.roundNumber = newRound;
+          if (!this.hasCustomMap && this.multiMode === 'versus') {
+            const preset: MapSizePreset = this.gridSize === 42 ? 'giant' : this.gridSize === 34 ? 'large' : 'classic';
+            this.currentMap = getStageMapForPresetAndStage(newRound, preset, this.multiMode);
+          }
+          this.onStateChange(this.gameState, this.scoreData);
+        }
+        break;
     }
   }
 
@@ -1709,6 +1746,10 @@ export class GameEngine {
     if (size !== this.gridSize || !this.grid || this.grid.length !== size) {
       this.gridSize = size;
       this.canvasSize = size * BLOCK_SIZE;
+      if (this.canvas && this.canvas.width !== this.canvasSize) {
+        this.canvas.width = this.canvasSize;
+        this.canvas.height = this.canvasSize;
+      }
       this.grid = Array.from({ length: size }, () =>
         Array.from({ length: size }, () => ({ type: TileType.EMPTY, damageMask: 15 }))
       );
@@ -3808,9 +3849,12 @@ export class GameEngine {
   }
 
   public getNetworkSnapshot() {
-    // Delta-encode grid: only include when damaged or changed. This ensures
-    // brick destruction syncs to the guest without per-frame overhead.
-    const sendGrid = this.gridVersion !== this.lastSentGridVersion;
+    // Delta-encode grid: include when damaged or changed, or while gridSyncFramesRemaining > 0
+    let sendGrid = this.gridVersion !== this.lastSentGridVersion;
+    if (this.gridSyncFramesRemaining > 0) {
+      sendGrid = true;
+      this.gridSyncFramesRemaining--;
+    }
     if (sendGrid) this.lastSentGridVersion = this.gridVersion;
 
     const playersList = Array.from(this.playerTanks.values()).map((p) => ({
@@ -3927,7 +3971,12 @@ export class GameEngine {
         this.decodeGrid(data.grid, data.gv, data.gs);
       }
       if (data.scoreData) {
+        const prevRound = this.scoreData.roundNumber;
         this.scoreData = { ...this.scoreData, ...data.scoreData };
+        if (prevRound !== this.scoreData.roundNumber && !this.hasCustomMap && this.multiMode === 'versus') {
+          const preset: MapSizePreset = this.gridSize === 42 ? 'giant' : this.gridSize === 34 ? 'large' : 'classic';
+          this.currentMap = getStageMapForPresetAndStage(this.scoreData.roundNumber || 1, preset, this.multiMode);
+        }
         this.onStateChange(this.gameState, this.scoreData);
       }
       if (data.vsDefenderSlot !== undefined) {
