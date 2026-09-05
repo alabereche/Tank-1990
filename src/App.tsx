@@ -77,8 +77,13 @@ export default function App() {
     const unsub = gamepadManager.onConnectionChange((gp) => {
       setConnectedGamepad(gp);
       if (gp && gp.connected) {
-        setGamepadAlert(`🎮 Gamepad Detected: ${gp.id.split('(')[0]}`);
-        setTimeout(() => setGamepadAlert(null), 4000);
+        const pads = gamepadManager.getConnectedPads();
+        if (pads.length >= 2) {
+          setGamepadAlert('🎮 Dual Gamepads Connected: Player 1 (Gold) & Player 2 (Green) Ready!');
+        } else {
+          setGamepadAlert(`🎮 Gamepad Detected: Player 1 (${gp.id.split('(')[0].trim()})`);
+        }
+        setTimeout(() => setGamepadAlert(null), 4500);
       }
     });
 
