@@ -22,7 +22,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   isOnlineGuest = false,
   initialFocusQuit = false,
 }) => {
-  // 0: RESUME, 1: QUIT
+  // 0: RESUME, 1: QUIT - Default to RESUME (0)
   const [selectedIdx, setSelectedIdx] = useState<number>(initialFocusQuit ? 1 : 0);
   // Confirmation sub-state when QUIT is selected
   const [showConfirmQuit, setShowConfirmQuit] = useState<boolean>(false);
@@ -77,8 +77,11 @@ export const PauseModal: React.FC<PauseModalProps> = ({
 
       if (showConfirmQuitRef.current) {
         // Confirmation mode: YES / NO
-        if (key === 'arrowleft' || key === 'a' || key === 'arrowright' || key === 'd') {
-          setConfirmIdx((prev) => (prev === 0 ? 1 : 0));
+        if (key === 'arrowleft' || key === 'a') {
+          setConfirmIdx(0);
+          soundManager.playMenuMove();
+        } else if (key === 'arrowright' || key === 'd') {
+          setConfirmIdx(1);
           soundManager.playMenuMove();
         } else if (key === 'enter' || key === ' ') {
           if (confirmIdxRef.current === 0) {
@@ -93,9 +96,16 @@ export const PauseModal: React.FC<PauseModalProps> = ({
       }
 
       // Main Pause Menu: RESUME / QUIT
-      if (key === 'arrowup' || key === 'w' || key === 'arrowdown' || key === 's') {
-        setSelectedIdx((prev) => (prev === 0 ? 1 : 0));
-        soundManager.playMenuMove();
+      if (key === 'arrowup' || key === 'w') {
+        if (selectedIdxRef.current !== 0) {
+          setSelectedIdx(0);
+          soundManager.playMenuMove();
+        }
+      } else if (key === 'arrowdown' || key === 's') {
+        if (selectedIdxRef.current !== 1) {
+          setSelectedIdx(1);
+          soundManager.playMenuMove();
+        }
       } else if (key === 'enter' || key === ' ') {
         if (selectedIdxRef.current === 0) {
           handleExecuteResume();
@@ -125,11 +135,6 @@ export const PauseModal: React.FC<PauseModalProps> = ({
     let prevCancel = false;
     let prevStart = false;
 
-    let heldDirection: 'up' | 'down' | 'left' | 'right' | null = null;
-    let holdTimer = 0;
-    const INITIAL_HOLD_DELAY = 380;
-    const REPEAT_RATE = 220;
-
     const poll = (time: number) => {
       const pad = gamepadManager.pollMenuInput();
       if (pad) {
@@ -140,7 +145,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         // On mount, absorb initial holds from the button that paused the game (e.g. Start or Select)
         if (!initialized) {
           initialized = true;
-          mountCooldownUntil = time + 300;
+          mountCooldownUntil = time + 250;
           prevConfirm = Boolean(pad.confirm);
           prevCancel = Boolean(pad.cancel);
           prevStart = Boolean(pad.start);
@@ -152,81 +157,102 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           return;
         }
 
-        if (time >= mountCooldownUntil) {
-          const isUp = Boolean(pad.up);
-          const isDown = Boolean(pad.down);
-          const isLeft = Boolean(pad.left);
-          const isRight = Boolean(pad.right);
+        // During initial cooldown, continually absorb held buttons so stale triggers don't leak
+        if (time < mountCooldownUntil) {
+          prevConfirm = Boolean(pad.confirm);
+          prevCancel = Boolean(pad.cancel);
+          prevStart = Boolean(pad.start);
+          prevUp = Boolean(pad.up);
+          prevDown = Boolean(pad.down);
+          prevLeft = Boolean(pad.left);
+          prevRight = Boolean(pad.right);
+          animId = requestAnimationFrame(poll);
+          return;
+        }
 
-          // 1. Navigation handling
-          if (showConfirmQuitRef.current) {
-            // Confirmation sub-menu: Left / Right switches YES and NO
-            if ((isLeft && !prevLeft) || (isRight && !prevRight)) {
-              setConfirmIdx((prev) => (prev === 0 ? 1 : 0));
+        const isUp = Boolean(pad.up);
+        const isDown = Boolean(pad.down);
+        const isLeft = Boolean(pad.left);
+        const isRight = Boolean(pad.right);
+
+        // 1. Directional navigation
+        if (showConfirmQuitRef.current) {
+          // Confirmation sub-menu: Left = YES (0), Right = NO (1)
+          if (isLeft && !prevLeft) {
+            setConfirmIdx(0);
+            soundManager.playMenuMove();
+          } else if (isRight && !prevRight) {
+            setConfirmIdx(1);
+            soundManager.playMenuMove();
+          }
+        } else {
+          // Main pause menu: UP moves to RESUME (0), DOWN moves to QUIT (1)
+          if ((isUp && !prevUp) || (isLeft && !prevLeft)) {
+            if (selectedIdxRef.current !== 0) {
+              setSelectedIdx(0);
               soundManager.playMenuMove();
             }
-          } else {
-            // Main menu: Up / Down switches RESUME and QUIT
-            const moveTrigger =
-              (isUp && !prevUp) ||
-              (isDown && !prevDown) ||
-              (isLeft && !prevLeft) ||
-              (isRight && !prevRight);
-
-            if (moveTrigger) {
-              heldDirection = isUp || isLeft ? 'up' : 'down';
-              holdTimer = time + INITIAL_HOLD_DELAY;
-              setSelectedIdx((prev) => (prev === 0 ? 1 : 0));
+          } else if ((isDown && !prevDown) || (isRight && !prevRight)) {
+            if (selectedIdxRef.current !== 1) {
+              setSelectedIdx(1);
               soundManager.playMenuMove();
-            } else if (heldDirection && (isUp || isDown || isLeft || isRight)) {
-              if (time >= holdTimer) {
-                holdTimer = time + REPEAT_RATE;
-                setSelectedIdx((prev) => (prev === 0 ? 1 : 0));
-                soundManager.playMenuMove();
-              }
-            } else if (!isUp && !isDown && !isLeft && !isRight) {
-              heldDirection = null;
-              holdTimer = 0;
             }
           }
+        }
 
-          prevUp = isUp;
-          prevDown = isDown;
-          prevLeft = isLeft;
-          prevRight = isRight;
+        prevUp = isUp;
+        prevDown = isDown;
+        prevLeft = isLeft;
+        prevRight = isRight;
 
-          // 2. Action Buttons (Confirm / Start / Cancel)
-          const confirmPressed = Boolean(pad.confirm);
-          const confirmTrigger = confirmPressed && !prevConfirm;
-          prevConfirm = confirmPressed;
+        // 2. Button actions
+        const confirmPressed = Boolean(pad.confirm);
+        const confirmTrigger = confirmPressed && !prevConfirm;
+        prevConfirm = confirmPressed;
 
-          const startPressed = Boolean(pad.start);
-          const startTrigger = startPressed && !prevStart;
-          prevStart = startPressed;
+        const startPressed = Boolean(pad.start);
+        const startTrigger = startPressed && !prevStart;
+        prevStart = startPressed;
 
-          const cancelPressed = Boolean(pad.cancel);
-          const cancelTrigger = cancelPressed && !prevCancel;
-          prevCancel = cancelPressed;
+        const cancelPressed = Boolean(pad.cancel);
+        const cancelTrigger = cancelPressed && !prevCancel;
+        prevCancel = cancelPressed;
 
-          if (confirmTrigger || startTrigger) {
-            if (showConfirmQuitRef.current) {
-              if (confirmIdxRef.current === 0) {
-                handleExecuteQuit();
-              } else {
-                handleCancelQuitConfirm();
-              }
+        // START button: Immediately resumes if on pause menu, or cancels quit confirmation
+        if (startTrigger) {
+          if (showConfirmQuitRef.current) {
+            handleCancelQuitConfirm();
+          } else {
+            handleExecuteResume();
+          }
+          animId = requestAnimationFrame(poll);
+          return;
+        }
+
+        // B / CANCEL button: Immediately resumes if on pause menu, or cancels quit confirmation
+        if (cancelTrigger) {
+          if (showConfirmQuitRef.current) {
+            handleCancelQuitConfirm();
+          } else {
+            handleExecuteResume();
+          }
+          animId = requestAnimationFrame(poll);
+          return;
+        }
+
+        // A / CONFIRM button: Executes focused action
+        if (confirmTrigger) {
+          if (showConfirmQuitRef.current) {
+            if (confirmIdxRef.current === 0) {
+              handleExecuteQuit();
             } else {
-              if (selectedIdxRef.current === 0) {
-                handleExecuteResume();
-              } else {
-                handlePromptQuit();
-              }
-            }
-          } else if (cancelTrigger) {
-            if (showConfirmQuitRef.current) {
               handleCancelQuitConfirm();
-            } else {
+            }
+          } else {
+            if (selectedIdxRef.current === 0) {
               handleExecuteResume();
+            } else {
+              handlePromptQuit();
             }
           }
         }
@@ -238,7 +264,6 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         prevConfirm = false;
         prevCancel = false;
         prevStart = false;
-        heldDirection = null;
       }
 
       animId = requestAnimationFrame(poll);
@@ -296,7 +321,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
                 <Play className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span className="text-xs tracking-widest font-bold">RESUME</span>
               </div>
-              <span className="text-[9px] text-zinc-500 font-mono">[A / START]</span>
+              <span className="text-[9px] text-zinc-500 font-mono">[A / START / B]</span>
             </button>
 
             {/* QUIT Option */}

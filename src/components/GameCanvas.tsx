@@ -351,8 +351,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       setIsGuestPauseOpen(false);
       return;
     }
-    if (engineRef.current && engineRef.current.getState() === GameState.PAUSED) {
-      engineRef.current.togglePause();
+    if (engineRef.current) {
+      if (engineRef.current.paused || gameStateRef.current === GameState.PAUSED) {
+        engineRef.current.resume();
+      }
     }
   }, [isGuestPauseOpen]);
 

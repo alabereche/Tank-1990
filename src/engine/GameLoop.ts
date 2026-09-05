@@ -1095,6 +1095,24 @@ export class GameEngine {
     return this.isPaused;
   }
 
+  public getState(): GameState {
+    return this.gameState;
+  }
+
+  public pause(): boolean {
+    if (!this.isPaused) {
+      return this.togglePause();
+    }
+    return this.isPaused;
+  }
+
+  public resume(): boolean {
+    if (this.isPaused) {
+      return this.togglePause();
+    }
+    return this.isPaused;
+  }
+
   /** Live pause flag for diagnostics/UI without touching the engine. */
   public get paused(): boolean {
     return this.isPaused;
