@@ -1389,8 +1389,29 @@ export class GameEngine {
       const tile = this.grid[subY]?.[subX];
       if (tile && (tile.type === TileType.STEEL || (tile.type === TileType.BRICK && tile.damageMask !== 0))) {
         this.createExplosion(pb.x, pb.y, false);
+        if (tile.type === TileType.STEEL) {
+          soundManager.playHitSteel();
+        } else {
+          soundManager.playExplosion();
+          this.applyBrickDamage(tile, pb.direction);
+        }
         if (pb.inputSeq !== undefined) this.retiredBulletSeqs.add(pb.inputSeq);
         toRemoveIndices.add(i);
+        continue;
+      }
+
+      // Check collision with opponent player tanks
+      const mySlot = this.localPlayerSlot || 2;
+      for (const [slot, otherTank] of this.playerTanks.entries()) {
+        if (slot !== mySlot && otherTank && otherTank.hp > 0) {
+          if (this.rectIntersect(pb.x - 2, pb.y - 2, 8, 8, otherTank.x, otherTank.y, 32, 32)) {
+            this.createExplosion(pb.x, pb.y, otherTank.shieldTimer <= 0);
+            soundManager.playExplosion();
+            if (pb.inputSeq !== undefined) this.retiredBulletSeqs.add(pb.inputSeq);
+            toRemoveIndices.add(i);
+            break;
+          }
+        }
       }
     }
     if (toRemoveIndices.size > 0) {
@@ -1405,6 +1426,9 @@ export class GameEngine {
       const mySlot = this.localPlayerSlot || 2;
       this.updatePlayerSlot(mySlot);
     }
+
+    // Update Explosions, Mud Splatters, and Popups so they animate & cleanly vanish (no stuck sparks!)
+    this.updateEffects();
 
     let driving = false;
     let remoteTerrain: 'normal' | 'mud' | 'ice' = 'normal';
@@ -1598,22 +1622,43 @@ export class GameEngine {
     const dy = replayTank.y - tank.y;
     const drift = Math.abs(dx) + Math.abs(dy);
 
-    // If drift is significant (> 1px), reconcile to replayed position
-    if (drift > 1.0) {
+    // Deadzone + Soft decay (Source Engine / Gambetta standard)
+    if (drift > 20.0) {
+      // Hard desync (obstacle/wall collision difference) -> snap to authoritative
       tank.x = replayTank.x;
       tank.y = replayTank.y;
       tank.direction = replayTank.direction;
       tank.moving = replayTank.moving;
       tank.slideFrames = replayTank.slideFrames;
+    } else if (drift > 3.0) {
+      // Soft drift: smooth decay without jarring visual snaps
+      tank.x += dx * 0.25;
+      tank.y += dy * 0.25;
+      tank.direction = replayTank.direction;
+      tank.moving = replayTank.moving;
     }
+    // drift <= 3.0: within sub-pixel corridor tolerance, no correction needed!
   }
 
-  private reconcileLocalPlayer() {
-    // Deprecated: Replaced by reconcileAndReplay
-  }
-
-  private reconcileP2() {
-    // Deprecated: Replaced by reconcileAndReplay
+  public applyBrickDamage(tile: GridTile, dir: Direction) {
+    if (!tile || tile.type !== TileType.BRICK || tile.damageMask === 0) return;
+    this.gridVersion++;
+    if (dir === 'UP') {
+      if (tile.damageMask & 12) tile.damageMask &= ~12;
+      else tile.damageMask &= ~3;
+    } else if (dir === 'DOWN') {
+      if (tile.damageMask & 3) tile.damageMask &= ~3;
+      else tile.damageMask &= ~12;
+    } else if (dir === 'LEFT') {
+      if (tile.damageMask & 10) tile.damageMask &= ~10;
+      else tile.damageMask &= ~5;
+    } else if (dir === 'RIGHT') {
+      if (tile.damageMask & 5) tile.damageMask &= ~5;
+      else tile.damageMask &= ~10;
+    }
+    if (tile.damageMask === 0) {
+      tile.type = TileType.EMPTY;
+    }
   }
 
   // Discrete events relayed from the host drive guest-side sound & effects
