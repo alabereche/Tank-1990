@@ -24,6 +24,7 @@ import { gamepadManager, GamepadInfo } from '../engine/GamepadManager';
 import { soundManager } from '../engine/SoundManager';
 import { TouchControls } from './TouchControls';
 import { RoundBanner, MatchEndPanel } from './VersusOverlays';
+import { PauseModal } from './PauseModal';
 import { toggleFullscreen, isFullscreen, onFullscreenChange, isElectronApp } from '../utils/fullscreen';
 import {
   Settings,
@@ -111,6 +112,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [gameState, setGameState] = useState<GameState>(GameState.PLAYING);
   const gameStateRef = useRef<GameState>(gameState);
   gameStateRef.current = gameState;
+  const [isGuestPauseOpen, setIsGuestPauseOpen] = useState<boolean>(false);
+  const isGuestPauseOpenRef = useRef(isGuestPauseOpen);
+  isGuestPauseOpenRef.current = isGuestPauseOpen;
+  const [initialPauseFocusQuit, setInitialPauseFocusQuit] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.getMuted());
   const [showScanlines, setShowScanlines] = useState<boolean>(settings.showScanlines);
   const [gamepad, setGamepad] = useState<GamepadInfo | null>(gamepadManager.getConnectedGamepad());
@@ -320,6 +325,48 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     [multiplayerConfig]
   );
 
+  // In-game Pause and Exit handling
+  const triggerPause = useCallback(
+    (focusQuit = false) => {
+      soundManager.unlockAudio();
+      setInitialPauseFocusQuit(focusQuit);
+      if (multiplayerConfig?.role === 'guest') {
+        setIsGuestPauseOpen((prev) => !prev);
+        return;
+      }
+      if (engineRef.current) {
+        engineRef.current.togglePause();
+      }
+    },
+    [multiplayerConfig?.role]
+  );
+
+  const triggerPauseRef = useRef(triggerPause);
+  triggerPauseRef.current = triggerPause;
+
+  const handleResumeFromPause = useCallback(() => {
+    soundManager.unlockAudio();
+    setInitialPauseFocusQuit(false);
+    if (isGuestPauseOpen) {
+      setIsGuestPauseOpen(false);
+      return;
+    }
+    if (engineRef.current && engineRef.current.getState() === GameState.PAUSED) {
+      engineRef.current.togglePause();
+    }
+  }, [isGuestPauseOpen]);
+
+  const handleQuitMatch = useCallback(() => {
+    soundManager.unlockAudio();
+    soundManager.playMenuSelect();
+    soundManager.stopEngineSound();
+    setIsGuestPauseOpen(false);
+    if (multiplayerConfig && multiplayerConfig.roomCode !== 'LOCAL') {
+      multiplayerClient.disconnect();
+    }
+    onReturnToMenu();
+  }, [multiplayerConfig, onReturnToMenu]);
+
   // Keyboard Event Handlers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -358,14 +405,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         cycleWindowScaleRef.current();
       }
 
-      // Pause toggle: 'Enter' or 'P' (single player); 'P' also for the
-      // online HOST - an always-available escape hatch if a match freezes.
-      if (key === 'p' && multiplayerConfig?.role === 'host') {
-        engineRef.current?.togglePause();
-      }
-      if (key === 'enter' || key === 'p') {
-        if (engineRef.current && !multiplayerConfig) {
-          engineRef.current.togglePause();
+      // Pause / In-Game Menu: 'Escape' (quick quit focus), 'P', or 'Enter'
+      if (key === 'escape') {
+        e.preventDefault();
+        triggerPauseRef.current(true);
+      } else if (key === 'enter' || key === 'p') {
+        if (multiplayerConfig?.roomCode === 'LOCAL' && key === 'enter') {
+          // P2 fire in local 2P mode
+        } else {
+          e.preventDefault();
+          triggerPauseRef.current(false);
         }
       }
     };
@@ -421,8 +470,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const inputLoop = () => {
       const engine = engineRef.current;
 
-      // If Settings Modal is open or match has ended, completely freeze player inputs so tanks don't move in background
-      if (isSettingsOpenRef.current || gameStateRef.current === GameState.MATCH_END) {
+      // If Settings Modal is open, match has ended, or game is paused, completely freeze player inputs so tanks don't move
+      if (
+        isSettingsOpenRef.current ||
+        gameStateRef.current === GameState.MATCH_END ||
+        gameStateRef.current === GameState.PAUSED ||
+        isGuestPauseOpenRef.current
+      ) {
         const idleInput: InputState = {
           up: false,
           down: false,
@@ -465,12 +519,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           grenade: Boolean(kd['numpad8'] || kd['i']),
           shield: Boolean(kd['numpad9'] || kd['o']),
         };
-        const pad1 = gamepadManager.pollInputForOrdinal(0)?.input;
-        const pad2 = gamepadManager.pollInputForOrdinal(1)?.input;
+        const pad1Poll = gamepadManager.pollInputForOrdinal(0);
+        const pad2Poll = gamepadManager.pollInputForOrdinal(1);
+        const pad1 = pad1Poll?.input;
+        const pad2 = pad2Poll?.input;
         const m1 = mergeInput(kbP1, pad1, touchInput.current);
         const m2 = mergeInput(kbP2, pad2);
         engine?.updateInput(m1);
         engine?.setP2Input(m2);
+
+        // Pause controls in Local 2-Player (Start or Select on either controller)
+        if (pad1?.pause || pad2?.pause) {
+          triggerPauseRef.current(false);
+        }
+        if (pad1Poll?.selectPressed || pad2Poll?.selectPressed) {
+          triggerPauseRef.current(true);
+        }
         dbgRef.current = {
           inSig: inputSig(m1),
           sent: '-',
@@ -493,7 +557,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         };
         // Poll the pad exactly ONCE per frame - readPad() consumes button
         // edges (Start), so a second call would drop them.
-        const pad = gamepadManager.pollInputForRole(role)?.input;
+        const padPoll = gamepadManager.pollInputForRole(role);
+        const pad = padPoll?.input;
         const merged = mergeInput(kb, pad, touchInput.current);
         dbgRef.current = {
           inSig: inputSig(merged),
@@ -547,10 +612,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           engine?.setP2Input(finalP2);
           dbgRef.current.p2Sig = inputSig(finalP2);
 
-          // Host pause controls
-          const padActive = Boolean(pad && (pad.up || pad.down || pad.left || pad.right || pad.fire));
-          if (padActive) padTrusted.current = true;
-          if (pad?.pause && padTrusted.current) engine?.togglePause();
+        }
+
+        // Gamepad pause and quit controls (Start or Select on Gamepad)
+        if (pad?.pause) {
+          triggerPauseRef.current(false);
+        }
+        if (padPoll?.selectPressed) {
+          triggerPauseRef.current(true);
         }
       }
 
@@ -623,9 +692,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   };
 
   const handlePause = () => {
-    if (engineRef.current) {
-      engineRef.current.togglePause();
-    }
+    triggerPause(false);
   };
 
   const handleRestartStage = () => {
@@ -826,6 +893,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             {/* CRT Scanline Visual Effect Overlay */}
             {showScanlines && <div className="absolute inset-0 scanlines pointer-events-none" />}
 
+            {/* In-Game Retro Arcade Pause Menu (RESUME & QUIT) */}
+            {(gameState === GameState.PAUSED || isGuestPauseOpen) && (
+              <PauseModal
+                onResume={handleResumeFromPause}
+                onQuit={handleQuitMatch}
+                isOnlineGuest={multiplayerConfig?.role === 'guest'}
+                initialFocusQuit={initialPauseFocusQuit}
+              />
+            )}
+
             {/* Versus & 2v2 round flow: intro/winner banners + match result panel */}
             {(multiplayerConfig?.mode === 'versus' || multiplayerConfig?.mode === '2v2') &&
               (gameState === GameState.ROUND_INTRO || gameState === GameState.ROUND_END) && (
@@ -857,7 +934,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             gamepad={gamepad}
             onOpenConstruction={onOpenEditor}
             onPauseToggle={handlePause}
-            isPaused={gameState === GameState.PAUSED}
+            isPaused={gameState === GameState.PAUSED || isGuestPauseOpen}
             isMaxScale={windowScale === 'max'}
             versus={multiplayerConfig?.mode === 'versus'}
             mode={multiplayerConfig?.mode}
