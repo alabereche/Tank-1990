@@ -58,3 +58,13 @@ export function onFullscreenChange(callback: (active: boolean) => void): () => v
     document.removeEventListener('webkitfullscreenchange', handler);
   };
 }
+
+export function isElectronApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    window.electronAPI?.isElectron ||
+    (window as any).process?.versions?.electron ||
+    (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes(' electron/'))
+  );
+}
+

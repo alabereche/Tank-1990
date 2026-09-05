@@ -24,7 +24,7 @@ import { gamepadManager, GamepadInfo } from '../engine/GamepadManager';
 import { soundManager } from '../engine/SoundManager';
 import { TouchControls } from './TouchControls';
 import { RoundBanner, MatchEndPanel } from './VersusOverlays';
-import { toggleFullscreen, isFullscreen, onFullscreenChange } from '../utils/fullscreen';
+import { toggleFullscreen, isFullscreen, onFullscreenChange, isElectronApp } from '../utils/fullscreen';
 import {
   Settings,
   RefreshCw,
@@ -107,7 +107,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     destroyedEnemies: { BASIC: 0, FAST: 0, POWER: 0, ARMOR: 0 },
   });
 
+  const isElectron = isElectronApp();
   const [gameState, setGameState] = useState<GameState>(GameState.PLAYING);
+  const gameStateRef = useRef<GameState>(gameState);
+  gameStateRef.current = gameState;
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.getMuted());
   const [showScanlines, setShowScanlines] = useState<boolean>(settings.showScanlines);
   const [gamepad, setGamepad] = useState<GamepadInfo | null>(gamepadManager.getConnectedGamepad());
@@ -418,8 +421,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const inputLoop = () => {
       const engine = engineRef.current;
 
-      // If Settings Modal is open, completely freeze player inputs so tank doesn't move in background
-      if (isSettingsOpenRef.current) {
+      // If Settings Modal is open or match has ended, completely freeze player inputs so tanks don't move in background
+      if (isSettingsOpenRef.current || gameStateRef.current === GameState.MATCH_END) {
         const idleInput: InputState = {
           up: false,
           down: false,
@@ -677,19 +680,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               </span>
             </button>
 
-            {/* Fullscreen Toggle */}
-            <button
-              id="btn-fullscreen-toggle"
-              onClick={handleToggleFullscreen}
-              className="text-zinc-300 hover:text-white p-1 rounded hover:bg-zinc-700/50 flex items-center gap-1 transition-colors"
-              title={fullscreenActive ? 'Exit Fullscreen (F)' : 'Enter Fullscreen (F)'}
-            >
-              {fullscreenActive ? (
-                <Minimize2 className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
-              )}
-            </button>
+            {/* Fullscreen Toggle (Web browser only - Electron is already fullscreen desktop) */}
+            {!isElectron && (
+              <button
+                id="btn-fullscreen-toggle"
+                onClick={handleToggleFullscreen}
+                className="text-zinc-300 hover:text-white p-1 rounded hover:bg-zinc-700/50 flex items-center gap-1 transition-colors"
+                title={fullscreenActive ? 'Exit Fullscreen (F)' : 'Enter Fullscreen (F)'}
+              >
+                {fullscreenActive ? (
+                  <Minimize2 className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+                )}
+              </button>
+            )}
 
             {/* CRT Scanlines Toggle */}
             <button

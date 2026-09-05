@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { soundManager } from '../engine/SoundManager';
 import { gamepadManager } from '../engine/GamepadManager';
-import { toggleFullscreen, onFullscreenChange } from '../utils/fullscreen';
+import { toggleFullscreen, onFullscreenChange, isElectronApp } from '../utils/fullscreen';
 
 interface TitleScreenProps {
   highScore: number;
@@ -32,6 +32,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   inCabinet = false,
   disabled = false,
 }) => {
+  const isElectron = isElectronApp();
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showLocal2PModal, setShowLocal2PModal] = useState<boolean>(false);
@@ -73,7 +74,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     { label: 'CONSTRUCTION', action: onOpenConstruction },
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
-    { label: 'FULLSCREEN', action: handleToggleFullscreen },
+    ...(!isElectron ? [{ label: 'FULLSCREEN', action: handleToggleFullscreen }] : []),
     { label: 'EXIT GAME', action: () => { setExitConfirmIdx(0); setShowExitModal(true); } },
   ];
 
@@ -169,7 +170,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         soundManager.playMenuSelect();
         menuOptionsRef.current[selectedIdxRef.current]?.action();
       } else if (e.key.toLowerCase() === 'f') {
-        handleToggleFullscreen();
+        if (!isElectron) {
+          handleToggleFullscreen();
+        }
       } else if (e.key.toLowerCase() === 'h') {
         setShowHelpModal((prev) => !prev);
       } else if (e.key === 'Escape') {

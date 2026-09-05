@@ -9,7 +9,7 @@ import { GameSettings, MapSizePreset, WindowScalePreset } from '../types';
 import { MAP_SIZE_CONFIGS } from '../engine/maps';
 import { soundManager } from '../engine/SoundManager';
 import { gamepadManager } from '../engine/GamepadManager';
-import { toggleFullscreen, isFullscreen, onFullscreenChange } from '../utils/fullscreen';
+import { toggleFullscreen, isFullscreen, onFullscreenChange, isElectronApp } from '../utils/fullscreen';
 import {
   Settings,
   Maximize2,
@@ -35,6 +35,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   onClose,
 }) => {
+  const isElectron = isElectronApp();
   const [currentFullscreen, setCurrentFullscreen] = useState<boolean>(isFullscreen());
   // Focus index:
   // 0, 1, 2: Map Size (Classic, Large, Giant)
@@ -142,7 +143,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         handleSelectWindowScaleRef.current('max');
         break;
       case 6:
-        handleToggleFullscreenRef.current();
+        if (!isElectron) {
+          handleToggleFullscreenRef.current();
+        }
         break;
       case 7:
         handleToggleScanlinesRef.current();
@@ -182,24 +185,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (dir === 'left') {
           if (prev >= 0 && prev <= 2) return prev > 0 ? prev - 1 : 2;
           if (prev >= 3 && prev <= 5) return prev > 3 ? prev - 1 : 5;
-          if (prev >= 6 && prev <= 8) return prev > 6 ? prev - 1 : 8;
+          if (prev >= 6 && prev <= 8) {
+            if (isElectron) return prev === 8 ? 7 : 8;
+            return prev > 6 ? prev - 1 : 8;
+          }
           return prev;
         }
         if (dir === 'right') {
           if (prev >= 0 && prev <= 2) return prev < 2 ? prev + 1 : 0;
           if (prev >= 3 && prev <= 5) return prev < 5 ? prev + 1 : 3;
-          if (prev >= 6 && prev <= 8) return prev < 8 ? prev + 1 : 6;
+          if (prev >= 6 && prev <= 8) {
+            if (isElectron) return prev === 7 ? 8 : 7;
+            return prev < 8 ? prev + 1 : 6;
+          }
           return prev;
         }
         if (dir === 'up') {
           if (prev >= 0 && prev <= 2) return 9; // wrap to confirm button
           if (prev >= 3 && prev <= 5) return prev - 3;
           if (prev >= 6 && prev <= 8) return prev - 3;
-          if (prev === 9) return 7; // up from confirm goes to middle of row 2
+          if (prev === 9) return isElectron ? 7 : 7;
         }
         if (dir === 'down') {
           if (prev >= 0 && prev <= 2) return prev + 3;
-          if (prev >= 3 && prev <= 5) return prev + 3;
+          if (prev >= 3 && prev <= 5) {
+            if (isElectron && prev === 3) return 7;
+            return prev + 3;
+          }
           if (prev >= 6 && prev <= 8) return 9; // down from row 2 goes to confirm
           if (prev === 9) return 1; // wrap to middle of row 0
         }
@@ -512,44 +524,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>DISPLAY & AUDIO</span>
             </span>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {/* Fullscreen Toggle Button */}
-              <button
-                id="btn-toggle-fullscreen-modal"
-                onClick={() => {
-                  setFocusIndex(6);
-                  handleToggleFullscreen();
-                }}
-                className={`p-2.5 rounded border-2 flex items-center justify-between transition-all ${
-                  focusIndex === 6
-                    ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.03] shadow-[0_0_12px_rgba(248,184,0,0.6)] z-10'
-                    : ''
-                } ${
-                  currentFullscreen
-                    ? 'bg-emerald-950/50 border-emerald-500 text-emerald-300'
-                    : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500'
-                }`}
-              >
-                <div className="flex items-center gap-2 text-left">
-                  {focusIndex === 6 && <span className="text-[#f8b800] animate-pulse">▶</span>}
-                  {currentFullscreen ? (
-                    <Minimize2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  ) : (
-                    <Maximize2 className="w-4 h-4 text-amber-400 shrink-0" />
-                  )}
-                  <div>
-                    <div className="text-[10px] font-bold">FULLSCREEN</div>
-                    <div className="text-[9px] font-sans text-zinc-400">Toggle (F)</div>
-                  </div>
-                </div>
-                <span
-                  className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
-                    currentFullscreen ? 'bg-emerald-800 text-white' : 'bg-zinc-800 text-zinc-400'
+            <div className={`grid grid-cols-1 ${isElectron ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-2.5`}>
+              {/* Fullscreen Toggle Button (Web browser only - Electron is already fullscreen desktop) */}
+              {!isElectron && (
+                <button
+                  id="btn-toggle-fullscreen-modal"
+                  onClick={() => {
+                    setFocusIndex(6);
+                    handleToggleFullscreen();
+                  }}
+                  className={`p-2.5 rounded border-2 flex items-center justify-between transition-all ${
+                    focusIndex === 6
+                      ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.03] shadow-[0_0_12px_rgba(248,184,0,0.6)] z-10'
+                      : ''
+                  } ${
+                    currentFullscreen
+                      ? 'bg-emerald-950/50 border-emerald-500 text-emerald-300'
+                      : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500'
                   }`}
                 >
-                  {currentFullscreen ? 'ON' : 'OFF'}
-                </span>
-              </button>
+                  <div className="flex items-center gap-2 text-left">
+                    {focusIndex === 6 && <span className="text-[#f8b800] animate-pulse">▶</span>}
+                    {currentFullscreen ? (
+                      <Minimize2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Maximize2 className="w-4 h-4 text-amber-400 shrink-0" />
+                    )}
+                    <div>
+                      <div className="text-[10px] font-bold">FULLSCREEN</div>
+                      <div className="text-[9px] font-sans text-zinc-400">Toggle (F)</div>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
+                      currentFullscreen ? 'bg-emerald-800 text-white' : 'bg-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    {currentFullscreen ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+              )}
 
               {/* CRT Scanlines Toggle */}
               <button

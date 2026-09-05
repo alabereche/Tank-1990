@@ -4,9 +4,11 @@
  * result panel (first to 7 round wins takes the match).
  */
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GameScore, GameState, MultiplayerMode } from '../types';
 import { Trophy, RotateCcw, LogOut, Swords } from 'lucide-react';
+import { soundManager } from '../engine/SoundManager';
+import { gamepadManager } from '../engine/GamepadManager';
 
 const GOLD = '#f8b800';
 const GREEN = '#00d860';
@@ -140,6 +142,163 @@ export const MatchEndPanel: React.FC<{
   const color = isFfa ? ffaColors[(ffaSlot - 1) % 8] : is2v2 ? (teamWin === 'A' ? BLUE : RED) : winner === 1 ? GOLD : GREEN;
   const ffaKills = scoreData.playerStats?.[ffaSlot]?.kills ?? 0;
 
+  // Selection & Focus Navigation (0 = REMATCH, 1 = EXIT TO MENU)
+  const [selectedIdx, setSelectedIdx] = useState<number>(0);
+  const selectedIdxRef = useRef<number>(0);
+  selectedIdxRef.current = selectedIdx;
+
+  const onRematchRef = useRef(onRematch);
+  onRematchRef.current = onRematch;
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
+
+  // Keyboard Navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (key === 'arrowleft' || key === 'arrowup' || key === 'a' || key === 'w') {
+        if (isHost) {
+          e.preventDefault();
+          setSelectedIdx((prev) => {
+            const next = prev === 0 ? 1 : 0;
+            soundManager.playMenuMove();
+            return next;
+          });
+        }
+      } else if (key === 'arrowright' || key === 'arrowdown' || key === 'd' || key === 's' || key === 'tab') {
+        if (isHost) {
+          e.preventDefault();
+          setSelectedIdx((prev) => {
+            const next = prev === 1 ? 0 : 1;
+            soundManager.playMenuMove();
+            return next;
+          });
+        }
+      } else if (key === 'enter' || key === ' ') {
+        e.preventDefault();
+        soundManager.playMenuSelect();
+        if (isHost && selectedIdxRef.current === 0) {
+          onRematchRef.current();
+        } else {
+          onExitRef.current();
+        }
+      } else if (key === 'escape' || key === 'backspace') {
+        e.preventDefault();
+        soundManager.playMenuSelect();
+        onExitRef.current();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isHost]);
+
+  // Controller / Gamepad Navigation (Seamless Dual-Pad & Single-Pad Support)
+  useEffect(() => {
+    let animId: number;
+    let initialized = false;
+    let mountCooldownUntil = 0;
+
+    let prevLeft = false;
+    let prevRight = false;
+    let prevConfirm = false;
+    let prevCancel = false;
+
+    let heldDirection: 'left' | 'right' | null = null;
+    let holdTimer = 0;
+    const INITIAL_HOLD_DELAY = 350;
+    const REPEAT_RATE = 180;
+
+    const poll = (time: number) => {
+      const pad = gamepadManager.pollMenuInput();
+      if (pad) {
+        if (pad.anyButton) {
+          soundManager.unlockAudio();
+        }
+
+        // On mount, absorb initial holds from intense gameplay upon modal appear
+        if (!initialized) {
+          initialized = true;
+          mountCooldownUntil = time + 350;
+          prevConfirm = Boolean(pad.confirm || pad.start);
+          prevCancel = Boolean(pad.cancel);
+          prevLeft = Boolean(pad.left || pad.up);
+          prevRight = Boolean(pad.right || pad.down);
+          animId = requestAnimationFrame(poll);
+          return;
+        }
+
+        if (time >= mountCooldownUntil) {
+          const isLeft = Boolean(pad.left || pad.up);
+          const isRight = Boolean(pad.right || pad.down);
+
+          // Fresh Directional Press
+          if (isLeft && !prevLeft) {
+            heldDirection = 'left';
+            holdTimer = time + INITIAL_HOLD_DELAY;
+            if (isHost) {
+              setSelectedIdx((prev) => (prev === 0 ? 1 : 0));
+              soundManager.playMenuMove();
+            }
+          } else if (isRight && !prevRight) {
+            heldDirection = 'right';
+            holdTimer = time + INITIAL_HOLD_DELAY;
+            if (isHost) {
+              setSelectedIdx((prev) => (prev === 1 ? 0 : 1));
+              soundManager.playMenuMove();
+            }
+          } else if (heldDirection === 'left' && isLeft) {
+            if (time >= holdTimer) {
+              holdTimer = time + REPEAT_RATE;
+              if (isHost) {
+                setSelectedIdx((prev) => (prev === 0 ? 1 : 0));
+                soundManager.playMenuMove();
+              }
+            }
+          } else if (heldDirection === 'right' && isRight) {
+            if (time >= holdTimer) {
+              holdTimer = time + REPEAT_RATE;
+              if (isHost) {
+                setSelectedIdx((prev) => (prev === 1 ? 0 : 1));
+                soundManager.playMenuMove();
+              }
+            }
+          } else if (!isLeft && !isRight) {
+            heldDirection = null;
+          }
+
+          // Confirm: A / X / Start
+          const isConfirm = Boolean(pad.confirm || pad.start);
+          if (isConfirm && !prevConfirm) {
+            soundManager.playMenuSelect();
+            if (isHost && selectedIdxRef.current === 0) {
+              onRematchRef.current();
+            } else {
+              onExitRef.current();
+            }
+          }
+
+          // Cancel: B / Circle
+          const isCancel = Boolean(pad.cancel);
+          if (isCancel && !prevCancel) {
+            soundManager.playMenuSelect();
+            onExitRef.current();
+          }
+
+          prevLeft = isLeft;
+          prevRight = isRight;
+          prevConfirm = isConfirm;
+          prevCancel = isCancel;
+        }
+      }
+
+      animId = requestAnimationFrame(poll);
+    };
+
+    animId = requestAnimationFrame(poll);
+    return () => cancelAnimationFrame(animId);
+  }, [isHost]);
+
   return (
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/85 font-pixel select-none">
       <div className="w-11/12 max-w-lg border-4 border-[#3a3a3a] bg-[#101010] px-6 py-6 flex flex-col items-center gap-4 shadow-2xl">
@@ -160,13 +319,22 @@ export const MatchEndPanel: React.FC<{
           {isFfa ? 'KILL TARGET REACHED' : is2v2 ? 'FIRST TO 5 ROUNDS ACHIEVED' : 'FIRST TO 7 ROUNDS ACHIEVED'}
         </div>
 
-        <div className="flex items-center gap-3 mt-2">
+        <div className="flex items-center gap-4 mt-2">
           {isHost ? (
             <button
-              onClick={onRematch}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 border-2 border-emerald-400 text-white text-[10px] rounded active:translate-y-px transition-colors"
+              onClick={() => {
+                soundManager.playMenuSelect();
+                onRematch();
+              }}
+              onMouseEnter={() => setSelectedIdx(0)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded text-[11px] font-bold tracking-wider transition-all duration-150 active:translate-y-px ${
+                selectedIdx === 0
+                  ? 'bg-emerald-500 text-black border-2 border-white ring-4 ring-emerald-400 ring-offset-2 ring-offset-black scale-105 shadow-[0_0_20px_rgba(16,185,129,0.7)]'
+                  : 'bg-emerald-800 hover:bg-emerald-700 border-2 border-emerald-500 text-emerald-100 opacity-80 hover:opacity-100'
+              }`}
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              {selectedIdx === 0 && <span className="text-white animate-pulse">▶</span>}
+              <RotateCcw className={`w-3.5 h-3.5 ${selectedIdx === 0 ? 'animate-spin-slow text-black' : ''}`} />
               REMATCH
             </button>
           ) : (
@@ -175,14 +343,33 @@ export const MatchEndPanel: React.FC<{
             </span>
           )}
           <button
-            onClick={onExit}
-            className="flex items-center gap-2 px-4 py-2 bg-[#383838] hover:bg-[#484848] border-2 border-[#555] text-zinc-200 text-[10px] rounded active:translate-y-px transition-colors"
+            onClick={() => {
+              soundManager.playMenuSelect();
+              onExit();
+            }}
+            onMouseEnter={() => setSelectedIdx(isHost ? 1 : 0)}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded text-[11px] font-bold tracking-wider transition-all duration-150 active:translate-y-px ${
+              (isHost ? selectedIdx === 1 : selectedIdx === 0)
+                ? 'bg-amber-400 text-black border-2 border-white ring-4 ring-amber-400 ring-offset-2 ring-offset-black scale-105 shadow-[0_0_20px_rgba(245,158,11,0.7)]'
+                : 'bg-[#383838] hover:bg-[#484848] border-2 border-[#666] text-zinc-300 opacity-80 hover:opacity-100'
+            }`}
           >
+            {(isHost ? selectedIdx === 1 : selectedIdx === 0) && <span className="text-black animate-pulse">▶</span>}
             <LogOut className="w-3.5 h-3.5" />
             EXIT TO MENU
           </button>
+        </div>
+
+        {/* Controller & Keyboard Navigation Legend */}
+        <div className="flex items-center justify-center gap-3 text-[8px] text-zinc-400 tracking-widest mt-2 pt-3 border-t border-zinc-800/80 w-full font-mono">
+          <span className="flex items-center gap-1">🎮 <span className="text-amber-400">D-PAD / STICK</span> NAVIGATE</span>
+          <span className="text-zinc-600">•</span>
+          <span className="flex items-center gap-1"><span className="text-emerald-400">[A / START]</span> SELECT</span>
+          <span className="text-zinc-600">•</span>
+          <span className="flex items-center gap-1"><span className="text-rose-400">[B]</span> EXIT</span>
         </div>
       </div>
     </div>
   );
 };
+

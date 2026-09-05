@@ -17,7 +17,7 @@ import { ArcadeCabinetFrame } from './components/ArcadeCabinetFrame';
 import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './engine/maps';
 import { soundManager } from './engine/SoundManager';
 import { gamepadManager, GamepadInfo } from './engine/GamepadManager';
-import { toggleFullscreen } from './utils/fullscreen';
+import { toggleFullscreen, isElectronApp } from './utils/fullscreen';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<GameState>(GameState.MENU);
@@ -109,8 +109,9 @@ export default function App() {
     }
   }, [currentScreen]);
 
-  // Global keydown handler for Fullscreen
+  // Global keydown handler for Fullscreen (Web browser only)
   useEffect(() => {
+    if (isElectronApp()) return;
     const handleGlobalKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key.toLowerCase() === 'f') {
