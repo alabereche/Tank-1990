@@ -122,6 +122,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [touchActive, setTouchActive] = useState<boolean>(false);
   const [fullscreenActive, setFullscreenActive] = useState<boolean>(isFullscreen());
   const [multiplayerPing, setMultiplayerPing] = useState<number>(0);
+  const [transportType, setTransportType] = useState<'p2p' | 'relay'>('relay');
   const [partnerDisconnected, setPartnerDisconnected] = useState<boolean>(false);
   const [tacticalInv, setTacticalInv] = useState<TacticalInventory>({ smoke: 1, grenade: 0, shield: 1 });
   const [tacticalInvP2, setTacticalInvP2] = useState<TacticalInventory | undefined>(undefined);
@@ -260,8 +261,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const unsubPing = multiplayerClient.on('ping_updated', (data) => {
       setMultiplayerPing(data.ping);
+      if (data.transport) {
+        setTransportType(data.transport);
+      }
       if (engineRef.current) {
         engineRef.current.lastPingMs = data.ping;
+      }
+    });
+
+    const unsubTransport = multiplayerClient.on('transport_status', (data) => {
+      if (data.transport) {
+        setTransportType(data.transport);
       }
     });
 
@@ -308,6 +318,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     return () => {
       unsubPing();
+      unsubTransport();
       unsubInput();
       unsubSync();
       unsubEvent();
@@ -693,8 +704,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     if (!multiplayerConfig || multiplayerConfig.roomCode === 'LOCAL') return;
     const id = window.setInterval(() => {
       const d = dbgRef.current;
+      const netMode = multiplayerClient.isP2P() ? 'P2P-UDP' : 'RELAY-WS';
       setInputDebug(
-        `PADS:${d.pads} ROLE:${multiplayerConfig.role} IN:${d.inSig} SENT:${d.sent} PAUSED:${engineRef.current?.paused ? 1 : 0} PING:${multiplayerClient.getPing()}ms`
+        `NET:${netMode} PADS:${d.pads} ROLE:${multiplayerConfig.role} IN:${d.inSig} SENT:${d.sent} PAUSED:${engineRef.current?.paused ? 1 : 0} PING:${multiplayerClient.getPing()}ms`
       );
     }, 250);
     return () => window.clearInterval(id);
@@ -864,6 +876,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
             {multiplayerConfig.roomCode !== 'LOCAL' && (
               <div className="flex items-center gap-2">
+                <span
+                  className={`text-[8px] px-1.5 py-0.5 rounded font-pixel transition-colors ${
+                    transportType === 'p2p'
+                      ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/50'
+                      : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                  }`}
+                  title={
+                    transportType === 'p2p'
+                      ? 'WebRTC P2P Direct UDP Connection (Fastest)'
+                      : 'WebSocket Relay through Server'
+                  }
+                >
+                  {transportType === 'p2p' ? 'P2P DIRECT' : 'RELAY'}
+                </span>
                 <div
                   className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border ${
                     multiplayerPing <= 50

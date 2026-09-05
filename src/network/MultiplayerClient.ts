@@ -5,11 +5,13 @@
  */
 
 import { InputState, MultiplayerMode, MultiplayerRole } from '../types';
+import { WebRTCManager } from './WebRTCManager';
 
 export type NetworkEventHandler = (payload: any) => void;
 
 export class MultiplayerClient {
   private ws: WebSocket | null = null;
+  private webrtc: WebRTCManager;
   private handlers: Map<string, Set<NetworkEventHandler>> = new Map();
   private pingInterval: number | null = null;
   private currentPing: number = 0;
@@ -23,7 +25,18 @@ export class MultiplayerClient {
   private reconnectAttempts: number = 0;
 
   constructor() {
-    // Initialized on demand
+    this.webrtc = new WebRTCManager(
+      (sig) => this.send(sig),
+      (msg) => this.handleIncomingMessage(msg)
+    );
+
+    this.webrtc.onStatusChange = (status) => {
+      this.emit('transport_status', status);
+      if (status.active) {
+        this.currentPing = status.ping;
+        this.emit('ping_updated', { ping: status.ping, transport: 'p2p' });
+      }
+    };
   }
 
   public connect(): Promise<boolean> {
@@ -72,7 +85,12 @@ export class MultiplayerClient {
             if (data.type === 'pong') {
               const rtt = Math.round(performance.now() - data.timestamp);
               this.currentPing = Math.max(1, rtt);
-              this.emit('ping_updated', { ping: this.currentPing });
+              this.emit('ping_updated', { ping: this.currentPing, transport: this.getTransport() });
+              return;
+            }
+
+            if (data.type === 'webrtc_signal') {
+              this.webrtc.handleSignal(data);
               return;
             }
 
@@ -82,12 +100,20 @@ export class MultiplayerClient {
               this.mode = data.mode;
               this.slot = data.slot || 1;
               this.team = data.team || (data.mode === '2v2' ? 'A' : 'FFA');
+              this.webrtc.init('host', 1, 2);
+            } else if (data.type === 'player_joined') {
+              if (this.role === 'host') {
+                const guestSlot = data.slot || 2;
+                this.webrtc.init('host', 1, guestSlot);
+                this.webrtc.startOffer();
+              }
             } else if (data.type === 'room_joined') {
               this.roomCode = data.code;
               this.role = 'guest';
               this.mode = data.mode;
               this.slot = data.slot || 2;
               this.team = data.team || 'FFA';
+              this.webrtc.init('guest', this.slot, 1);
             }
 
             this.emit(data.type, data);
@@ -185,26 +211,35 @@ export class MultiplayerClient {
 
   public sendSyncState(state: Record<string, unknown>) {
     // Wrapped under `snapshot` - the guest handler reads data.snapshot
-    this.send({
+    const payload = {
       type: 'sync_state',
       snapshot: state,
-    });
+    };
+    if (!this.webrtc.sendDirect(payload)) {
+      this.send(payload);
+    }
   }
 
   public sendInput(input: InputState, slot?: number, seq?: number) {
-    this.send({
+    const payload = {
       type: 'player_input',
       input,
       slot: slot ?? this.slot,
       seq,
-    });
+    };
+    if (!this.webrtc.sendDirect(payload)) {
+      this.send(payload);
+    }
   }
 
   public sendGameEvent(event: Record<string, unknown>) {
-    this.send({
+    const payload = {
       type: 'game_event',
       ...event,
-    });
+    };
+    if (!this.webrtc.sendDirect(payload)) {
+      this.send(payload);
+    }
   }
 
   public sendTaunt(text: string, sender?: 'P1' | 'P2' | string) {
@@ -240,8 +275,21 @@ export class MultiplayerClient {
     }
   }
 
+  private handleIncomingMessage(data: any) {
+    if (!data || !data.type) return;
+    this.emit(data.type, data);
+  }
+
   public getPing(): number {
     return this.currentPing;
+  }
+
+  public isP2P(): boolean {
+    return this.webrtc.isConnected;
+  }
+
+  public getTransport(): 'p2p' | 'relay' {
+    return this.webrtc.isConnected ? 'p2p' : 'relay';
   }
 
   public getRoomCode(): string | null {
@@ -271,6 +319,7 @@ export class MultiplayerClient {
   public disconnect() {
     this.shouldReconnect = false;
     this.stopHeartbeat();
+    this.webrtc.cleanup();
     if (this.ws) {
       try {
         this.ws.close();

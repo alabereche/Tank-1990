@@ -296,6 +296,23 @@ wss.on('connection', (ws: WebSocket) => {
         return;
       }
 
+      // WebRTC P2P Signaling Relay (Exchanges SDP offers, answers, and ICE candidates)
+      if (msg.type === 'webrtc_signal') {
+        const targetSlot = msg.targetSlot;
+        room.clients.forEach((c) => {
+          if (c !== session && c.ws.readyState === WebSocket.OPEN) {
+            if (typeof targetSlot !== 'number' || c.slot === targetSlot) {
+              safeSend(c.ws, {
+                ...msg,
+                fromSlot: session.slot,
+                fromRole: session.role,
+              });
+            }
+          }
+        });
+        return;
+      }
+
       // Taunt message (Retro chat popup like "ATTACK!", "DEFEND!", "GG!")
       if (msg.type === 'taunt') {
         const senderLabel = `P${session.slot}`;
