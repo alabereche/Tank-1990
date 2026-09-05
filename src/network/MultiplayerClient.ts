@@ -83,9 +83,12 @@ export class MultiplayerClient {
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'pong') {
-              const rtt = Math.round(performance.now() - data.timestamp);
-              this.currentPing = Math.max(1, rtt);
-              this.emit('ping_updated', { ping: this.currentPing, transport: this.getTransport() });
+              // Only update ping from VPS server if P2P direct is NOT active
+              if (!this.isP2P()) {
+                const rtt = Math.round(performance.now() - data.timestamp);
+                this.currentPing = Math.max(1, rtt);
+                this.emit('ping_updated', { ping: this.currentPing, transport: 'relay' });
+              }
               return;
             }
 

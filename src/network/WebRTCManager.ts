@@ -137,9 +137,9 @@ export class WebRTCManager {
           return;
         }
         if (parsed.__p2p_pong !== undefined) {
-          // Pong received - calculate direct RTT
+          // Pong received - calculate direct RTT with EWMA smoothing
           const rtt = Math.max(1, Math.round(performance.now() - parsed.__p2p_pong));
-          this.p2pPing = rtt;
+          this.p2pPing = this.p2pPing === 0 ? rtt : Math.round(this.p2pPing * 0.7 + rtt * 0.3);
           this.notifyStatus();
           return;
         }
@@ -226,7 +226,7 @@ export class WebRTCManager {
       if (this.isConnected) {
         this.sendDirect({ __p2p_ping: performance.now() });
       }
-    }, 1500);
+    }, 1000);
   }
 
   private stopPingLoop() {
