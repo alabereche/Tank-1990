@@ -40,6 +40,13 @@ export class MultiplayerClient {
         const envWsUrl = (import.meta as any).env?.VITE_WS_URL;
         if (envWsUrl) {
           wsUrl = envWsUrl;
+        } else if (
+          typeof window !== 'undefined' &&
+          (window.location.host === 'tank.nosfir.online' ||
+            window.location.host === 'tank1990.pages.dev' ||
+            window.location.host.endsWith('.tank1990.pages.dev'))
+        ) {
+          wsUrl = 'wss://api-tank.nosfir.online/ws';
         } else if (typeof window !== 'undefined' && (window.location.protocol === 'file:' || !window.location.host)) {
           wsUrl = 'ws://127.0.0.1:3000/ws';
         } else {
