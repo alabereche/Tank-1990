@@ -17,7 +17,11 @@ export const ArcadeCabinetFrame: React.FC<ArcadeCabinetFrameProps> = ({ children
   return (
     <div className="relative w-screen h-screen bg-[#080808] flex items-center justify-center overflow-hidden select-none">
       <style>{`
-        @media (min-width: 640px) {
+        /* Desktop & large tablet screens: center inside authentic arcade cabinet bezel */
+        @media (min-width: 768px) and (min-height: 520px) {
+          #arcade-cabinet-art {
+            display: block !important;
+          }
           #arcade-crt-screen {
             position: absolute !important;
             left: 32.4% !important;
@@ -34,21 +38,22 @@ export const ArcadeCabinetFrame: React.FC<ArcadeCabinetFrameProps> = ({ children
         }
       `}</style>
 
-      {/* Full-bleed Arcade Cabinet Artwork Background (Visible on screens >= 640px) */}
+      {/* Full-bleed Arcade Cabinet Artwork Background (Desktop / Tall screens only) */}
       <img
+        id="arcade-cabinet-art"
         src="./assets/arcade_cabinet_bg.webp"
         alt="Battle City 1990 Arcade Machine"
-        className="hidden sm:block absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0"
+        className="hidden absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0"
         draggable={false}
       />
 
       {/* Central CRT Arcade Monitor Screen Area - Mounted EXACTLY ONCE */}
       <div
         id="arcade-crt-screen"
-        className="relative z-10 overflow-hidden flex flex-col select-none w-full max-w-sm aspect-[4/5] bg-black border-4 border-[#333] rounded-lg shadow-2xl"
+        className="relative z-10 overflow-hidden flex flex-col select-none w-full h-full max-w-2xl sm:max-w-3xl max-h-screen bg-black sm:border-4 border-zinc-800 sm:rounded-lg shadow-2xl p-1"
       >
         {/* Inner Content (Title Screen / Menus) with comfortable CRT margin */}
-        <div className="relative z-10 w-full h-full flex flex-col overflow-hidden px-4 sm:px-6 py-4 sm:py-5">
+        <div className="relative z-10 w-full h-full flex flex-col overflow-hidden px-2 sm:px-6 py-1 sm:py-4">
           {children}
         </div>
 

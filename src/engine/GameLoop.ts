@@ -1573,11 +1573,22 @@ export class GameEngine {
       const bSlot = (b as any).pIdx || (b as any).playerIndex;
       const bSeq = (b as any).inputSeq;
 
-      // If bullet belongs to local player and has an inputSeq:
-      if (bSlot === mySlot && bSeq !== undefined) {
-        // If actively simulated locally or recently finished, skip to prevent double-bullet stutter!
-        if (activePredSeqs.has(bSeq) || this.retiredBulletSeqs.has(bSeq)) {
+      // If bullet belongs to local player:
+      if (bSlot === mySlot) {
+        // 1. If actively simulated locally or recently retired by exact inputSeq:
+        if (bSeq !== undefined && (activePredSeqs.has(bSeq) || this.retiredBulletSeqs.has(bSeq))) {
           continue;
+        }
+
+        // 2. Spatial reconciliation: If we have an active predictive bullet heading in the same direction nearby,
+        // hand off smoothly to the authoritative host bullet to prevent duplicate phantom bullets!
+        const matchingPredIdx = this.predictiveBullets.findIndex(
+          (pb) => pb.direction === b.dir && Math.hypot(pb.x - b.x, pb.y - b.y) < 96
+        );
+        if (matchingPredIdx !== -1) {
+          const matched = this.predictiveBullets[matchingPredIdx];
+          if (matched.inputSeq !== undefined) this.retiredBulletSeqs.add(matched.inputSeq);
+          this.predictiveBullets.splice(matchingPredIdx, 1);
         }
       }
 
@@ -1596,8 +1607,14 @@ export class GameEngine {
       });
     }
 
-    // Merge remote bullets with unconfirmed & active local predictive bullets
-    this.bullets = [...remoteBullets, ...this.predictiveBullets];
+    // Merge remote bullets with unconfirmed local predictive bullets, strictly enforcing player max bullets
+    const localTank = this.playerTanks.get(mySlot) || (mySlot === 1 ? this.player : this.player2);
+    const maxLocalBullets = (localTank?.tier ?? 0) >= 2 ? 2 : 1;
+    const remoteMyBulletsCount = remoteBullets.filter((b) => b.playerIndex === mySlot).length;
+    const allowedPredBullets = Math.max(0, maxLocalBullets - remoteMyBulletsCount);
+    const trimmedPredictive = this.predictiveBullets.slice(0, allowedPredBullets);
+
+    this.bullets = [...remoteBullets, ...trimmedPredictive];
 
     this.powerUps = view.powerUps.map(
       (p) => ({ id: p.id, type: p.type, x: p.x, y: p.y, flashFrame: 0, duration: 900 }) as PowerUp
@@ -1677,7 +1694,7 @@ export class GameEngine {
     // drift <= 3.0: within sub-pixel corridor tolerance, no correction needed!
   }
 
-  public applyBrickDamage(tile: GridTile, dir: Direction) {
+  public applyBrickDamage(tile: SubTile, dir: Direction) {
     if (!tile || tile.type !== TileType.BRICK || tile.damageMask === 0) return;
     this.gridVersion++;
     if (dir === 'UP') {

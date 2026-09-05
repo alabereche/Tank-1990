@@ -40,6 +40,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [fullscreenActive, setFullscreenActive] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [exitConfirmIdx, setExitConfirmIdx] = useState<number>(0); // 0: YES, 1: NO
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
+  const [showPcDownloadModal, setShowPcDownloadModal] = useState<boolean>(false);
 
   useEffect(() => {
     const unsub = onFullscreenChange((active) => {
@@ -47,6 +50,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     });
     return unsub;
   }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallApp = async () => {
+    soundManager.unlockAudio();
+    soundManager.playMenuSelect();
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+      } catch {}
+      setDeferredPrompt(null);
+    } else {
+      setShowInstallModal(true);
+    }
+  };
 
   const handleToggleFullscreen = () => {
     soundManager.unlockAudio();
@@ -67,13 +93,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     }
   };
 
-  const menuOptions = [
+  const menuOptions: { label: string; action: () => void; badge?: string }[] = [
     { label: '1 PLAYER', action: onStart1Player },
     { label: '2 PLAYERS (LOCAL)', action: () => setShowLocal2PModal(true) },
     { label: 'ONLINE MULTIPLAYER', action: onOpenMultiplayer },
     { label: 'CONSTRUCTION', action: onOpenConstruction },
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
+    { label: '📱 INSTALL (MOBILE)', action: handleInstallApp, badge: 'PWA' },
+    { label: '💻 PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'SOON' },
     ...(!isElectron ? [{ label: 'FULLSCREEN', action: handleToggleFullscreen }] : []),
     { label: 'EXIT GAME', action: () => { setExitConfirmIdx(0); setShowExitModal(true); } },
   ];
@@ -93,6 +121,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const showExitModalRef = useRef(showExitModal);
   showExitModalRef.current = showExitModal;
+
+  const showInstallModalRef = useRef(showInstallModal);
+  showInstallModalRef.current = showInstallModal;
+
+  const showPcDownloadModalRef = useRef(showPcDownloadModal);
+  showPcDownloadModalRef.current = showPcDownloadModal;
 
   const exitConfirmIdxRef = useRef(exitConfirmIdx);
   exitConfirmIdxRef.current = exitConfirmIdx;
@@ -114,6 +148,22 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       if (Date.now() - mountTime < 350) return;
       if (disabledRef.current) return;
       soundManager.unlockAudio();
+
+      if (showInstallModalRef.current) {
+        if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+          setShowInstallModal(false);
+          soundManager.playMenuMove();
+        }
+        return;
+      }
+
+      if (showPcDownloadModalRef.current) {
+        if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+          setShowPcDownloadModal(false);
+          soundManager.playMenuMove();
+        }
+        return;
+      }
 
       if (showExitModalRef.current) {
         if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowRight' || e.key === 'd' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -140,6 +190,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         } else if (e.key === 'Enter' || e.key === ' ') {
           setShowLocal2PModal(false);
           onStartLocal2PlayerRef.current(local2PModeRef.current);
+          soundManager.playStageStart();
         } else if (e.key === 'Escape') {
           setShowLocal2PModal(false);
           soundManager.playMenuMove();
@@ -466,6 +517,34 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       id="title-screen-container"
       className="flex flex-col items-center justify-between w-full h-full text-white font-pixel select-none relative overflow-hidden py-2 sm:py-3.5 px-3"
     >
+      <style>{`
+        @media (max-height: 520px) {
+          #title-logo-banner {
+            margin-bottom: 2px !important;
+          }
+          #title-logo-h1, #title-logo-h2 {
+            display: inline-block !important;
+            font-size: 1.35rem !important;
+            line-height: 1.2 !important;
+            margin-right: 8px !important;
+          }
+          #title-tanks-duel {
+            display: none !important;
+          }
+          #title-menu-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            max-width: 620px !important;
+            gap: 2px 14px !important;
+            margin-top: 2px !important;
+            margin-bottom: 2px !important;
+          }
+          #title-screen-footer {
+            display: none !important;
+          }
+        }
+      `}</style>
+
       {/* High Score Header (Authentic Arcade HUD) */}
       <div className="w-full flex items-center justify-between px-2 sm:px-6 text-xs sm:text-sm tracking-widest border-b border-zinc-800/80 pb-1.5">
         <div className="flex items-center gap-2">
@@ -479,27 +558,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       </div>
 
       {/* Main Center Stage: Logo, Pixel Tanks, and Navigation Menu */}
-      <div className="flex-1 w-full flex flex-col items-center justify-center gap-2 sm:gap-4 my-auto">
+      <div className="flex-1 w-full flex flex-col items-center justify-center gap-1 sm:gap-4 my-auto">
         {/* Retro Pixel Logo Banner */}
-        <div className="flex flex-col items-center text-center">
-          <h1 className="font-extrabold tracking-widest text-[#e52521] select-none text-4xl sm:text-5xl md:text-6xl drop-shadow-[0_4px_0_#500000]">
-            BATTLE
-          </h1>
-          <h2 className="font-extrabold tracking-wider text-[#f8b800] select-none text-3xl sm:text-4xl md:text-5xl mt-0.5 drop-shadow-[0_4px_0_#704000]">
-            CITY 1990
-          </h2>
-          <div className="text-[10px] sm:text-xs text-zinc-400 tracking-widest uppercase mt-1 drop-shadow">
+        <div id="title-logo-banner" className="flex flex-col items-center text-center">
+          <div>
+            <h1 id="title-logo-h1" className="font-extrabold tracking-widest text-[#e52521] select-none text-3xl sm:text-5xl md:text-6xl drop-shadow-[0_4px_0_#500000]">
+              BATTLE
+            </h1>
+            <h2 id="title-logo-h2" className="font-extrabold tracking-wider text-[#f8b800] select-none text-2xl sm:text-4xl md:text-5xl mt-0.5 drop-shadow-[0_4px_0_#704000]">
+              CITY 1990
+            </h2>
+          </div>
+          <div className="text-[9px] sm:text-xs text-zinc-400 tracking-widest uppercase mt-0.5 drop-shadow">
             NES 8-BIT TANK COMBAT
           </div>
           {mapSizeLabel && (
-            <div className="inline-block mt-1 px-2.5 py-0.5 bg-black/70 border border-amber-500/40 rounded text-[9px] sm:text-[10px] text-amber-300 font-sans tracking-wide shadow-sm">
+            <div className="inline-block mt-0.5 px-2.5 py-0.5 bg-black/70 border border-amber-500/40 rounded text-[8px] sm:text-[10px] text-amber-300 font-sans tracking-wide shadow-sm">
               ARENA: {mapSizeLabel}
             </div>
           )}
         </div>
 
         {/* Decorative Pixel Tanks Duel */}
-        <div className="flex items-center justify-center gap-4 sm:gap-6 my-0.5">
+        <div id="title-tanks-duel" className="flex items-center justify-center gap-4 sm:gap-6 my-0.5">
           {/* Player Gold Tank */}
           <div className="w-7 h-7 sm:w-8 sm:h-8 relative">
             <svg viewBox="0 0 16 16" className="w-full h-full fill-[#f8b800] drop-shadow-[0_2px_6px_rgba(248,184,0,0.6)]">
@@ -525,8 +606,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </div>
         </div>
 
-        {/* Menu Options with Animated Tank Cursor (Centered on Screen) */}
-        <div className="flex flex-col w-full max-w-[340px] sm:max-w-[400px] gap-1.5 sm:gap-2 my-1">
+        {/* Menu Options with Animated Tank Cursor */}
+        <div id="title-menu-grid" className="flex flex-col w-full max-w-[340px] sm:max-w-[400px] gap-1 sm:gap-2 my-1">
           {menuOptions.map((opt, idx) => {
             const isSelected = selectedIdx === idx;
             return (
@@ -543,12 +624,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   setSelectedIdx(idx);
                   soundManager.playMenuMove();
                 }}
-                className="flex items-center gap-3 py-0.5 sm:py-1 px-2 text-left transition-colors group cursor-pointer"
+                className="flex items-center gap-2 sm:gap-3 py-0.5 sm:py-1 px-1.5 text-left transition-colors group cursor-pointer"
               >
                 {/* Tank Cursor */}
-                <div className="w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center shrink-0">
+                <div className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex items-center justify-center shrink-0">
                   {isSelected ? (
-                    <svg viewBox="0 0 16 16" className="w-4 h-4 sm:w-5 sm:h-5 fill-[#f8b800] animate-pulse drop-shadow-[0_0_8px_rgba(248,184,0,0.9)]">
+                    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-[#f8b800] animate-pulse drop-shadow-[0_0_8px_rgba(248,184,0,0.9)]">
                       <rect x="2" y="1" width="12" height="3" />
                       <rect x="2" y="12" width="12" height="3" />
                       <rect x="4" y="4" width="8" height="8" />
@@ -559,15 +640,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   )}
                 </div>
 
-                <span
-                  className={`text-xs sm:text-sm md:text-base tracking-wider font-bold whitespace-nowrap transition-all ${
-                    isSelected
-                      ? 'text-[#f8b800] underline decoration-2 drop-shadow-[0_0_10px_rgba(248,184,0,0.6)] translate-x-1'
-                      : 'text-zinc-200 group-hover:text-white drop-shadow'
-                  }`}
-                >
-                  {opt.label}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] sm:text-xs md:text-sm tracking-wider font-bold whitespace-nowrap transition-all ${
+                      isSelected
+                        ? 'text-[#f8b800] underline decoration-2 drop-shadow-[0_0_10px_rgba(248,184,0,0.6)] translate-x-1'
+                        : 'text-zinc-200 group-hover:text-white drop-shadow'
+                    }`}
+                  >
+                    {opt.label}
+                  </span>
+                  {opt.badge && (
+                    <span
+                      className={`text-[7px] font-pixel px-1.5 py-0.2 rounded font-bold border ${
+                        opt.badge === 'PWA'
+                          ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/80 animate-pulse'
+                          : 'bg-zinc-800 text-zinc-400 border-zinc-600'
+                      }`}
+                    >
+                      {opt.badge}
+                    </span>
+                  )}
+                </div>
               </button>
             );
           })}
@@ -798,6 +892,83 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <div className="text-[8px] text-zinc-500 font-sans mt-2">
               Gamepad: [D-Pad] Select &bull; [A/Start] Confirm &bull; [B/ESC] Cancel
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PWA Mobile App Installation Modal */}
+      {showInstallModal && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs select-none"
+          onClick={() => setShowInstallModal(false)}
+        >
+          <div
+            className="bg-[#121216] border-4 border-emerald-500 rounded-lg max-w-md w-full p-5 space-y-4 font-pixel shadow-[0_0_30px_rgba(16,185,129,0.4)] text-white text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-emerald-400 text-sm tracking-widest flex items-center justify-center gap-2">
+              <span>📱</span>
+              <span>INSTALL MOBILE APP</span>
+              <span>📱</span>
+            </div>
+
+            <p className="text-[10px] text-zinc-300 leading-relaxed font-sans text-right" dir="rtl">
+              لتثبيت اللعبة كتطبيق رسمي بشاشة كاملة وبدون متصفح:
+            </p>
+
+            <div className="text-[9px] text-zinc-300 leading-relaxed text-right space-y-2 bg-black/60 p-3 rounded border border-zinc-800 font-sans" dir="rtl">
+              <div>
+                <strong className="text-emerald-400">🤖 على هواتف أندرويد (Chrome):</strong>
+                <p className="text-zinc-400 mt-0.5">اضغط على قائمة المتصفح (⋮) بأعلى الشاشة ثم اختر <b>«تثبيت التطبيق» (Install app)</b> أو <b>«إضافة إلى الشاشة الرئيسية»</b>.</p>
+              </div>
+              <div className="border-t border-zinc-800 pt-2">
+                <strong className="text-blue-400">🍏 على هواتف آيفون (Safari):</strong>
+                <p className="text-zinc-400 mt-0.5">اضغط على زر المشاركة (Share ⎘) بأسفل الشاشة ثم اختر <b>«إضافة إلى الشاشة الرئيسية» (Add to Home Screen)</b>.</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowInstallModal(false)}
+              className="w-full py-2.5 px-4 text-xs font-pixel border-2 border-emerald-500 bg-emerald-600 hover:bg-emerald-500 text-white rounded cursor-pointer transition-all shadow-md font-bold"
+            >
+              حسناً / GOT IT
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* PC (.EXE) Download Coming Soon Modal */}
+      {showPcDownloadModal && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs select-none"
+          onClick={() => setShowPcDownloadModal(false)}
+        >
+          <div
+            className="bg-[#121216] border-4 border-blue-500 rounded-lg max-w-md w-full p-5 space-y-4 font-pixel shadow-[0_0_30px_rgba(59,130,246,0.4)] text-white text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-blue-400 text-sm tracking-widest flex items-center justify-center gap-2">
+              <span>💻</span>
+              <span>PC DOWNLOAD (.EXE)</span>
+              <span>💻</span>
+            </div>
+
+            <div className="inline-block px-3 py-1 bg-amber-500/20 border border-amber-500 text-amber-300 text-[10px] rounded font-pixel">
+              COMING SOON / قريباً جداً
+            </div>
+
+            <p className="text-[10px] text-zinc-300 leading-relaxed font-sans text-right" dir="rtl">
+              نسخة الويندوز للكمبيوتر المستقلة (PC Executable .EXE) قيد التجميع والرفع، وستكون متاحة للتحميل المباشر هنا قريباً!
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setShowPcDownloadModal(false)}
+              className="w-full py-2.5 px-4 text-xs font-pixel border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 text-white rounded cursor-pointer transition-all shadow-md font-bold"
+            >
+              إغلاق / CLOSE
+            </button>
           </div>
         </div>
       )}

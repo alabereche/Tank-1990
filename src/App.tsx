@@ -17,7 +17,7 @@ import { ArcadeCabinetFrame } from './components/ArcadeCabinetFrame';
 import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './engine/maps';
 import { soundManager } from './engine/SoundManager';
 import { gamepadManager, GamepadInfo } from './engine/GamepadManager';
-import { toggleFullscreen, isElectronApp } from './utils/fullscreen';
+import { toggleFullscreen, isElectronApp, lockOrientationLandscape, isStandaloneApp } from './utils/fullscreen';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<GameState>(GameState.MENU);
@@ -26,6 +26,10 @@ export default function App() {
   const [finalScoreData, setFinalScoreData] = useState<GameScore | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isMultiplayerLobbyOpen, setIsMultiplayerLobbyOpen] = useState<boolean>(false);
+  const [isMobileDevice, setIsMobileDevice] = useState<boolean>(false);
+  const [isPortraitMode, setIsPortraitMode] = useState<boolean>(false);
+  const [pwaPrompt, setPwaPrompt] = useState<any>(null);
+  const [showPwaBanner, setShowPwaBanner] = useState<boolean>(false);
   const [multiplayerConfig, setMultiplayerConfig] = useState<{
     roomCode: string;
     role: MultiplayerRole;
@@ -144,6 +148,54 @@ export default function App() {
     try {
       localStorage.setItem('battle_city_settings', JSON.stringify(newSettings));
     } catch {}
+  };
+
+  // Mobile orientation & PWA installation state
+  useEffect(() => {
+    const updateOrientation = () => {
+      const hasTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      const isMobile = hasTouch && Math.min(window.innerWidth, window.innerHeight) <= 900;
+      setIsMobileDevice(isMobile);
+      setIsPortraitMode(window.innerHeight > window.innerWidth);
+    };
+
+    updateOrientation();
+    window.addEventListener('resize', updateOrientation);
+    window.addEventListener('orientationchange', updateOrientation);
+    return () => {
+      window.removeEventListener('resize', updateOrientation);
+      window.removeEventListener('orientationchange', updateOrientation);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setPwaPrompt(e);
+      if (!isStandaloneApp()) {
+        setShowPwaBanner(true);
+      }
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallPwa = async () => {
+    soundManager.unlockAudio();
+    if (pwaPrompt) {
+      try {
+        pwaPrompt.prompt();
+        await pwaPrompt.userChoice;
+      } catch {}
+      setPwaPrompt(null);
+      setShowPwaBanner(false);
+    }
+  };
+
+  const handleRotateToLandscape = async () => {
+    soundManager.unlockAudio();
+    await toggleFullscreen();
+    await lockOrientationLandscape();
   };
 
   // Handlers for Transitions
@@ -276,6 +328,70 @@ export default function App() {
           : 'p-2 sm:p-4'
       }`}
     >
+      {/* Mobile Landscape Orientation Enforcer */}
+      {isMobileDevice && isPortraitMode && (
+        <div className="fixed inset-0 z-50 bg-[#0a0a0f] flex flex-col items-center justify-center p-6 text-center select-none font-pixel shadow-2xl">
+          <div className="w-20 h-20 mb-5 relative flex items-center justify-center">
+            {/* Animated Rotating Phone Icon */}
+            <div className="w-16 h-12 border-4 border-amber-400 rounded-lg flex items-center justify-center bg-amber-950/40 shadow-[0_0_20px_rgba(245,158,11,0.5)] animate-pulse">
+              <span className="text-xl">🎮</span>
+            </div>
+            <div className="absolute -bottom-1 text-[8px] text-amber-300 animate-bounce">
+              ↺ ROTATE
+            </div>
+          </div>
+
+          <h2 className="text-amber-400 text-sm sm:text-base font-bold tracking-wider mb-2 drop-shadow">
+            BATTLE CITY 1990
+          </h2>
+
+          <p className="text-xs text-white mb-2 leading-relaxed" dir="rtl">
+            يرجى تدوير هاتفك للوضع الأفقي للعب
+          </p>
+          <p className="text-[9px] text-zinc-400 mb-6 max-w-xs leading-relaxed font-sans" dir="rtl">
+            تم تصميم اللعبة والتحكم بالأنالوج وعصا التحكم لتعمل بالشاشة الكاملة الأفقية.
+          </p>
+
+          <button
+            type="button"
+            onClick={handleRotateToLandscape}
+            className="py-3 px-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs rounded-lg shadow-[0_0_25px_rgba(245,158,11,0.6)] cursor-pointer active:scale-95 transition-all flex items-center gap-2"
+          >
+            <span>📱</span>
+            <span>تدوير وشاشة كاملة / FULLSCREEN</span>
+          </button>
+        </div>
+      )}
+
+      {/* Mobile PWA Install Floating Banner */}
+      {showPwaBanner && isMobileDevice && !isPortraitMode && (
+        <div className="fixed top-2 z-40 max-w-lg w-[94%] bg-gradient-to-r from-zinc-900 via-emerald-950 to-zinc-900 border-2 border-emerald-500/80 rounded-lg px-3 py-1.5 flex items-center justify-between shadow-2xl text-[8px] font-pixel">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📱</span>
+            <div className="flex flex-col text-left">
+              <span className="text-emerald-300 font-bold">ثبّت اللعبة على هاتفك لتلعب كتطبيق أصلي!</span>
+              <span className="text-[7px] text-zinc-400 font-sans">شاشة كاملة وبدون متصفح وبأعلى سرعة</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleInstallPwa}
+              className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded text-[8px] cursor-pointer shadow-md transition-all active:scale-95"
+            >
+              تثبيت الآن
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPwaBanner(false)}
+              className="text-zinc-400 hover:text-white px-1 text-xs cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Gamepad Connected Flash Notification */}
       {gamepadAlert && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-emerald-700 border-2 border-emerald-400 text-white font-pixel text-[9px] px-3 py-1.5 rounded shadow-xl z-50 animate-bounce">

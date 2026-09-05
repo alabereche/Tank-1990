@@ -68,3 +68,25 @@ export function isElectronApp(): boolean {
   );
 }
 
+export async function lockOrientationLandscape(): Promise<boolean> {
+  try {
+    if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation as any).lock) {
+      await (screen.orientation as any).lock('landscape');
+      return true;
+    }
+  } catch {
+    // Orientation lock might require active user gesture or fullscreen in certain browsers
+  }
+  return false;
+}
+
+export function isStandaloneApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: fullscreen)').matches ||
+    (navigator as any).standalone ||
+    document.referrer.includes('android-app://')
+  );
+}
+

@@ -234,6 +234,8 @@ export const TouchActionButtons: React.FC<TouchActionButtonsProps> = ({
 }) => {
   const [fireActive, setFireActive] = useState<boolean>(false);
   const fireTouchIdRef = useRef<number | null>(null);
+  const lastTouchTimeRef = useRef<number>(0);
+  const lastFireTimeRef = useRef<number>(0);
 
   const triggerHaptic = useCallback(() => {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -247,9 +249,27 @@ export const TouchActionButtons: React.FC<TouchActionButtonsProps> = ({
 
   const handleFireStart = (e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
-    if ('changedTouches' in e && fireTouchIdRef.current === null) {
-      fireTouchIdRef.current = e.changedTouches[0].identifier;
+    const isTouch = 'changedTouches' in e;
+    const now = Date.now();
+
+    if (isTouch) {
+      lastTouchTimeRef.current = now;
+      if (fireTouchIdRef.current === null) {
+        fireTouchIdRef.current = e.changedTouches[0].identifier;
+      }
+    } else {
+      // Suppress synthesized mouse events following a touch event within 650ms
+      if (now - lastTouchTimeRef.current < 650) {
+        return;
+      }
     }
+
+    // Debounce rapid touch chatter (minimum 120ms between distinct button presses)
+    if (now - lastFireTimeRef.current < 120) {
+      return;
+    }
+    lastFireTimeRef.current = now;
+
     setFireActive(true);
     triggerHaptic();
     onInput({ fire: true });
@@ -257,16 +277,28 @@ export const TouchActionButtons: React.FC<TouchActionButtonsProps> = ({
 
   const handleFireEnd = (e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
-    if ('changedTouches' in e && fireTouchIdRef.current !== null) {
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === fireTouchIdRef.current) {
-          fireTouchIdRef.current = null;
-          break;
+    const isTouch = 'changedTouches' in e;
+    const now = Date.now();
+
+    if (isTouch) {
+      lastTouchTimeRef.current = now;
+      if (fireTouchIdRef.current !== null) {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === fireTouchIdRef.current) {
+            fireTouchIdRef.current = null;
+            break;
+          }
         }
+      } else {
+        fireTouchIdRef.current = null;
       }
     } else {
+      if (now - lastTouchTimeRef.current < 650) {
+        return;
+      }
       fireTouchIdRef.current = null;
     }
+
     setFireActive(false);
     onInput({ fire: false });
   };
@@ -279,6 +311,10 @@ export const TouchActionButtons: React.FC<TouchActionButtonsProps> = ({
     }, 80);
   };
 
+  const isMouseSuppressed = () => {
+    return Date.now() - lastTouchTimeRef.current < 650;
+  };
+
   return (
     <div className="flex items-center gap-3 select-none touch-none">
       {/* Tactical Abilities Cluster */}
@@ -288,9 +324,14 @@ export const TouchActionButtons: React.FC<TouchActionButtonsProps> = ({
           type="button"
           onTouchStart={(e) => {
             e.preventDefault();
+            lastTouchTimeRef.current = Date.now();
             handleTactical('smoke');
           }}
-          onMouseDown={() => handleTactical('smoke')}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            if (isMouseSuppressed()) return;
+            handleTactical('smoke');
+          }}
           className="relative w-11 h-11 rounded-xl bg-gradient-to-b from-blue-900 to-blue-950 border-2 border-blue-400 text-blue-200 flex flex-col items-center justify-center active:scale-90 shadow-lg transition-transform"
           title="Smoke Screen (Q)"
         >
@@ -306,9 +347,14 @@ export const TouchActionButtons: React.FC<TouchActionButtonsProps> = ({
           type="button"
           onTouchStart={(e) => {
             e.preventDefault();
+            lastTouchTimeRef.current = Date.now();
             handleTactical('grenade');
           }}
-          onMouseDown={() => handleTactical('grenade')}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            if (isMouseSuppressed()) return;
+            handleTactical('grenade');
+          }}
           className="relative w-11 h-11 rounded-xl bg-gradient-to-b from-amber-900 to-amber-950 border-2 border-amber-400 text-amber-200 flex flex-col items-center justify-center active:scale-90 shadow-lg transition-transform"
           title="Bouncing Bomb (E)"
         >
@@ -324,9 +370,14 @@ export const TouchActionButtons: React.FC<TouchActionButtonsProps> = ({
           type="button"
           onTouchStart={(e) => {
             e.preventDefault();
+            lastTouchTimeRef.current = Date.now();
             handleTactical('shield');
           }}
-          onMouseDown={() => handleTactical('shield')}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            if (isMouseSuppressed()) return;
+            handleTactical('shield');
+          }}
           className="relative w-11 h-11 rounded-xl bg-gradient-to-b from-emerald-900 to-emerald-950 border-2 border-emerald-400 text-emerald-200 flex flex-col items-center justify-center active:scale-90 shadow-lg transition-transform"
           title="Deployable Shield (R)"
         >

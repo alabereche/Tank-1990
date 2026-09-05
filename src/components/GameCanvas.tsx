@@ -516,6 +516,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const touchInput = useRef<Partial<InputState>>({});
   const lastSentInput = useRef('');
   const lastSentRelayInput = useRef('');
+  const guestHeartbeatCounter = useRef(0);
   const netP2Input = useRef<Partial<InputState>>({});
   const padTrusted = useRef(false);
   const dbgRef = useRef({ inSig: '00000', sent: '-', p2Sig: '00000', pads: 0 });
@@ -656,8 +657,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           );
           const sig = inputSig(cleanInput);
           const hasChanged = sig !== lastSentInput.current;
+          guestHeartbeatCounter.current++;
 
-          if (isActive || hasChanged) {
+          // Send immediately on state transition (e.g. fire pressed, direction change)
+          // or every 4 frames as an active heartbeat to survive UDP packet loss
+          const shouldSend = hasChanged || (isActive && guestHeartbeatCounter.current % 4 === 0);
+
+          if (shouldSend) {
             lastSentInput.current = sig;
             const seq = engine?.recordAndSendInput(mySlot, cleanInput);
             if (seq !== undefined) {
