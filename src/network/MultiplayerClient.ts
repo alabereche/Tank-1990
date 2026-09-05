@@ -36,9 +36,14 @@ export class MultiplayerClient {
 
     return new Promise((resolve) => {
       try {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        const wsUrl = `${protocol}//${host}/ws`;
+        let wsUrl: string;
+        if (typeof window !== 'undefined' && (window.location.protocol === 'file:' || !window.location.host)) {
+          wsUrl = 'ws://127.0.0.1:3000/ws';
+        } else {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const host = window.location.host;
+          wsUrl = `${protocol}//${host}/ws`;
+        }
 
         const socket = new WebSocket(wsUrl);
         this.ws = socket;

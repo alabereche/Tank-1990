@@ -8,10 +8,9 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createServer as createViteServer } from 'vite';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const server = http.createServer(app);
 
 // JSON body parser with safety limit
@@ -357,7 +356,12 @@ wss.on('connection', (ws: WebSocket) => {
 
 // Vite Middleware & Static Serving setup
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    (typeof __filename !== 'undefined' && __filename.includes('dist'));
+
+  if (!isProduction) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -372,8 +376,24 @@ async function startServer() {
   }
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Battle City 1990] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[Battle City 1990] Server running on http://0.0.0.0:${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
   });
 }
+
+// Graceful shutdown handling for Docker, PM2, and systemd
+const gracefulShutdown = (signal: string) => {
+  console.log(`[Battle City 1990] Received ${signal}. Closing server gracefully...`);
+  server.close(() => {
+    console.log('[Battle City 1990] HTTP/WS server closed.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('[Battle City 1990] Forcing server exit after timeout.');
+    process.exit(1);
+  }, 5000).unref();
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 startServer();

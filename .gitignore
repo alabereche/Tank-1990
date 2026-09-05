@@ -17,3 +17,4 @@ coverage/
 
 # Local test bundle artifacts
 scripts/.*.cjs
+scratch/
