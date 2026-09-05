@@ -85,6 +85,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
 
+  const handleCanvasRef = useCallback((node: HTMLCanvasElement | null) => {
+    canvasRef.current = node;
+    if (node && engineRef.current) {
+      engineRef.current.bindCanvas(node);
+    }
+  }, []);
+
   const isSettingsOpenRef = useRef(isSettingsOpen);
   isSettingsOpenRef.current = isSettingsOpen;
 
@@ -169,6 +176,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Screen orientation lock may not be allowed in some contexts
     }
   }, []);
+
+  // Re-bind engine canvas when switching between landscape console and portrait cabinet
+  useEffect(() => {
+    if (canvasRef.current && engineRef.current) {
+      engineRef.current.bindCanvas(canvasRef.current);
+    }
+  }, [isLandscape, isMobile]);
 
   // Listen for Fullscreen changes
   useEffect(() => {
@@ -921,7 +935,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           <div className="flex-1 h-full flex items-center justify-center relative min-w-0">
             <div className="relative bg-black border-2 border-[#30303c] shadow-2xl rounded overflow-hidden flex items-center justify-center max-h-full">
               <canvas
-                ref={canvasRef}
+                ref={handleCanvasRef}
                 id="battle-city-canvas-landscape"
                 width={currentCanvasSize}
                 height={currentCanvasSize}
@@ -1200,7 +1214,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           {/* Main Canvas Viewport */}
           <div className="relative bg-black border-4 border-[#202020] shadow-inner overflow-hidden flex items-center justify-center">
             <canvas
-              ref={canvasRef}
+              ref={handleCanvasRef}
               id="battle-city-canvas"
               width={currentCanvasSize}
               height={currentCanvasSize}

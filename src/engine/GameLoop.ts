@@ -248,6 +248,20 @@ export class GameEngine {
     this.initGrid(map.grid);
   }
 
+  public bindCanvas(canvas: HTMLCanvasElement) {
+    if (!canvas || this.canvas === canvas) return;
+    this.canvas = canvas;
+    if (this.canvas.width !== this.canvasSize) {
+      this.canvas.width = this.canvasSize;
+      this.canvas.height = this.canvasSize;
+    }
+    const context = canvas.getContext('2d', { alpha: false });
+    if (context) {
+      this.ctx = context;
+    }
+    this.render();
+  }
+
   public setupDimensions(map: StageMap) {
     this.gridSize = map.grid?.length || 26;
     this.canvasSize = this.gridSize * BLOCK_SIZE;
