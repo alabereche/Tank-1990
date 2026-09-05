@@ -36,7 +36,7 @@ import {
 import { BLOCK_SIZE, cloneGrid, getStageMapForPresetAndStage } from './maps';
 import { soundManager } from './SoundManager';
 import { SpriteRenderer } from './spriteRenderer';
-import { SnapshotBuffer, NetSnapshot } from '../network/interpolation';
+import { SnapshotBuffer, NetSnapshot, getAdaptiveDelay } from '../network/interpolation';
 import { createTickWorker } from './tickWorker';
 
 // 1v1 versus: first player to win this many rounds takes the match (CS-style)
@@ -155,6 +155,16 @@ export class GameEngine {
   private gridVersion = 0;
   private lastSentGridVersion = -1;
   private tickWorker: Worker | null = null;
+
+  // --- Client-Side Prediction & Input Sequencing (Gambetta / Source Model) ---
+  public lastPingMs: number = 50;
+  private localInputSeq: number = 0;
+  private pendingInputs: { seq: number; input: InputState; timestamp: number }[] = [];
+  private predictiveBullets: Bullet[] = [];
+  private retiredBulletSeqs: Set<number> = new Set();
+  private hostLastProcessedSeq: Map<number, number> = new Map();
+  private hostSlotInputSeq: Map<number, number> = new Map();
+  private lastSentSeq: number = 0;
 
   // Versus round flow timers (public ms fields so tests can shorten them)
   public roundIntroMs = 2200;
@@ -370,7 +380,24 @@ export class GameEngine {
     }
   }
 
-  public setPlayerSlotInput(slot: number, input: Partial<InputState>) {
+  public recordAndSendInput(slot: number, input: InputState): number {
+    this.localInputSeq++;
+    const seq = this.localInputSeq;
+    this.lastSentSeq = seq;
+    this.pendingInputs.push({
+      seq,
+      input: { ...input },
+      timestamp: performance.now(),
+    });
+    // Keep history bounded to avoid memory build-up
+    if (this.pendingInputs.length > 120) {
+      this.pendingInputs.shift();
+    }
+    this.setPlayerSlotInput(slot, input, seq);
+    return seq;
+  }
+
+  public setPlayerSlotInput(slot: number, input: Partial<InputState>, seq?: number) {
     const current = this.playerInputs.get(slot) || {
       up: false,
       right: false,
@@ -380,13 +407,17 @@ export class GameEngine {
       pause: false,
     };
     this.playerInputs.set(slot, { ...current, ...input });
+    if (seq !== undefined) {
+      this.hostLastProcessedSeq.set(slot, seq);
+      this.hostSlotInputSeq.set(slot, seq);
+    }
     if (slot === 1) {
       this.currentInput = { ...this.currentInput, ...input };
     }
   }
 
-  public setP2Input(input: Partial<InputState>) {
-    this.setPlayerSlotInput(2, input);
+  public setP2Input(input: Partial<InputState>, seq?: number) {
+    this.setPlayerSlotInput(2, input, seq);
   }
 
   public triggerTaunt(text: string, sender: 'P1' | 'P2' | string) {
@@ -529,6 +560,9 @@ export class GameEngine {
     this.enemies = [];
     this.spawningTanks = [];
     this.bullets = [];
+    this.predictiveBullets = [];
+    this.retiredBulletSeqs.clear();
+    this.pendingInputs = [];
     this.explosions = [];
     this.powerUps = [];
     this.scorePopups = [];
@@ -784,6 +818,9 @@ export class GameEngine {
     this.enemies = [];
     this.spawningTanks = [];
     this.bullets = [];
+    this.predictiveBullets = [];
+    this.retiredBulletSeqs.clear();
+    this.pendingInputs = [];
     this.explosions = [];
     this.powerUps = [];
     this.scorePopups = [];
@@ -1323,15 +1360,50 @@ export class GameEngine {
       return;
     }
 
-    const view = this.snapBuffer.sample();
+    // Sample view with adaptive jitter delay based on measured ping
+    const adaptiveDelay = getAdaptiveDelay(this.lastPingMs);
+    const view = this.snapBuffer.sample(adaptiveDelay);
     if (view) this.applyRemoteView(view);
 
-    // Client-side prediction only while the fight is live (frozen during
-    // Client-side prediction for the local player's own slot
+    // Advance local predictive bullets & perform boundary/solid collision check
+    const canvasLimit = this.canvasSize;
+    const toRemoveIndices = new Set<number>();
+    for (let i = 0; i < this.predictiveBullets.length; i++) {
+      const pb = this.predictiveBullets[i];
+      if (pb.direction === 'UP') pb.y -= pb.speed;
+      else if (pb.direction === 'DOWN') pb.y += pb.speed;
+      else if (pb.direction === 'LEFT') pb.x -= pb.speed;
+      else if (pb.direction === 'RIGHT') pb.x += pb.speed;
+
+      // Boundary collision check
+      if (pb.x < 0 || pb.x > canvasLimit || pb.y < 0 || pb.y > canvasLimit) {
+        this.createExplosion(pb.x, pb.y, false);
+        if (pb.inputSeq !== undefined) this.retiredBulletSeqs.add(pb.inputSeq);
+        toRemoveIndices.add(i);
+        continue;
+      }
+
+      // Check solid tile collision (sub-quadrant brick / steel)
+      const subX = Math.floor(pb.x / BLOCK_SIZE);
+      const subY = Math.floor(pb.y / BLOCK_SIZE);
+      const tile = this.grid[subY]?.[subX];
+      if (tile && (tile.type === TileType.STEEL || (tile.type === TileType.BRICK && tile.damageMask !== 0))) {
+        this.createExplosion(pb.x, pb.y, false);
+        if (pb.inputSeq !== undefined) this.retiredBulletSeqs.add(pb.inputSeq);
+        toRemoveIndices.add(i);
+      }
+    }
+    if (toRemoveIndices.size > 0) {
+      this.predictiveBullets = this.predictiveBullets.filter((_, idx) => !toRemoveIndices.has(idx));
+    }
+    if (this.retiredBulletSeqs.size > 120) {
+      this.retiredBulletSeqs.clear();
+    }
+
+    // Client-side prediction for the local player's own slot (reconcile is triggered by authoritative snapshots)
     if (this.gameState === GameState.PLAYING) {
       const mySlot = this.localPlayerSlot || 2;
       this.updatePlayerSlot(mySlot);
-      this.reconcileLocalPlayer();
     }
 
     let driving = false;
@@ -1429,21 +1501,42 @@ export class GameEngine {
       } as Tank;
     });
 
-    this.bullets = view.bullets.map(
-      (b) =>
-        ({
-          id: b.id,
-          ownerId: '',
-          isPlayer: b.isPlayer as boolean,
-          playerIndex: b.pIdx as 1 | 2 | undefined,
-          x: b.x,
-          y: b.y,
-          direction: b.dir as Direction,
-          speed: 4.5,
-          canDestroySteel: false,
-          size: 4,
-        }) as Bullet
+    // Authoritative bullets from snapshot
+    const mySlot = this.localPlayerSlot || 2;
+    const activePredSeqs = new Set(
+      this.predictiveBullets.map((pb) => pb.inputSeq).filter((seq): seq is number => seq !== undefined)
     );
+
+    const remoteBullets: Bullet[] = [];
+    for (const b of view.bullets) {
+      const bSlot = (b as any).pIdx || (b as any).playerIndex;
+      const bSeq = (b as any).inputSeq;
+
+      // If bullet belongs to local player and has an inputSeq:
+      if (bSlot === mySlot && bSeq !== undefined) {
+        // If actively simulated locally or recently finished, skip to prevent double-bullet stutter!
+        if (activePredSeqs.has(bSeq) || this.retiredBulletSeqs.has(bSeq)) {
+          continue;
+        }
+      }
+
+      remoteBullets.push({
+        id: b.id,
+        ownerId: '',
+        isPlayer: b.isPlayer as boolean,
+        playerIndex: bSlot as 1 | 2 | undefined,
+        x: b.x,
+        y: b.y,
+        direction: b.dir as Direction,
+        speed: 4.5,
+        canDestroySteel: false,
+        size: 4,
+        inputSeq: bSeq,
+      });
+    }
+
+    // Merge remote bullets with unconfirmed & active local predictive bullets
+    this.bullets = [...remoteBullets, ...this.predictiveBullets];
 
     this.powerUps = view.powerUps.map(
       (p) => ({ id: p.id, type: p.type, x: p.x, y: p.y, flashFrame: 0, duration: 900 }) as PowerUp
@@ -1473,29 +1566,54 @@ export class GameEngine {
     }
   }
 
-  private reconcileLocalPlayer() {
-    const auth = this.p2AuthTarget;
-    const mySlot = this.localPlayerSlot || 2;
-    const tank = this.playerTanks.get(mySlot);
-    if (!auth || !tank) return;
-    const dx = auth.x - tank.x;
-    const dy = auth.y - tank.y;
-    const err = Math.abs(dx) + Math.abs(dy);
-    if (err > 32) {
-      // Large divergence: snap
-      tank.x = auth.x;
-      tank.y = auth.y;
-      tank.direction = auth.dir;
-    } else if (err > 3) {
-      // Small drift: ease toward the authoritative position
-      tank.x += dx * 0.18;
-      tank.y += dy * 0.18;
-      if (!tank.moving) tank.direction = auth.dir;
+  public reconcileAndReplay(
+    slot: number,
+    ackSeq: number,
+    auth: { x: number; y: number; dir: Direction; moving?: boolean } | null
+  ) {
+    if (!auth) return;
+    const tank = this.playerTanks.get(slot);
+    if (!tank) return;
+
+    // 1. Discard acknowledged inputs
+    this.pendingInputs = this.pendingInputs.filter((item) => item.seq > ackSeq);
+
+    // 2. Start replay from authoritative state
+    const replayTank: Tank = {
+      ...tank,
+      x: auth.x,
+      y: auth.y,
+      direction: auth.dir,
+      moving: Boolean(auth.moving),
+      slideFrames: 0,
+    };
+
+    // 3. Replay all unacknowledged inputs
+    for (const item of this.pendingInputs) {
+      this.simulatePlayerMovement(replayTank, item.input);
+    }
+
+    // 4. Compare replayed position with current predicted position
+    const dx = replayTank.x - tank.x;
+    const dy = replayTank.y - tank.y;
+    const drift = Math.abs(dx) + Math.abs(dy);
+
+    // If drift is significant (> 1px), reconcile to replayed position
+    if (drift > 1.0) {
+      tank.x = replayTank.x;
+      tank.y = replayTank.y;
+      tank.direction = replayTank.direction;
+      tank.moving = replayTank.moving;
+      tank.slideFrames = replayTank.slideFrames;
     }
   }
 
+  private reconcileLocalPlayer() {
+    // Deprecated: Replaced by reconcileAndReplay
+  }
+
   private reconcileP2() {
-    this.reconcileLocalPlayer();
+    // Deprecated: Replaced by reconcileAndReplay
   }
 
   // Discrete events relayed from the host drive guest-side sound & effects
@@ -1637,8 +1755,11 @@ export class GameEngine {
     const fireRequested = input.fire;
     if (fireRequested && (!prevFire || tank.tier >= 2)) {
       if (tank.shootCooldown <= 0) {
-        if (this.isRemoteViewer && slot === this.localPlayerSlot) soundManager.playShoot();
-        else this.fireBullet(tank);
+        if (this.isRemoteViewer && slot === this.localPlayerSlot) {
+          this.firePredictiveBullet(tank, this.lastSentSeq);
+        } else {
+          this.fireBullet(tank, this.hostSlotInputSeq.get(slot));
+        }
         tank.shootCooldown = tank.tier >= 2 ? 14 : 22;
       }
     }
@@ -1661,6 +1782,10 @@ export class GameEngine {
       shield: Boolean(input.shield),
     });
 
+    this.simulatePlayerMovement(tank, input);
+  }
+
+  public simulatePlayerMovement(tank: Tank, input: InputState): void {
     let dir: Direction | null = null;
     if (input.up) dir = 'UP';
     else if (input.down) dir = 'DOWN';
@@ -1713,6 +1838,44 @@ export class GameEngine {
       tank.moving = false;
       tank.slideFrames = 0;
     }
+  }
+
+  public firePredictiveBullet(tank: Tank, seq?: number): Bullet | null {
+    if (!tank || !tank.direction) return null;
+    const maxBullets = tank.tier >= 2 ? 2 : 1;
+    const mySlot = tank.playerIndex ?? this.localPlayerSlot;
+    const currentCount = this.bullets.filter(
+      (b) => b.ownerId === tank.id || b.playerIndex === mySlot
+    ).length;
+    if (currentCount >= maxBullets) return null;
+
+    let bx = tank.x + 16;
+    let by = tank.y + 16;
+    if (tank.direction === 'UP') by = tank.y - 2;
+    else if (tank.direction === 'DOWN') by = tank.y + 34;
+    else if (tank.direction === 'LEFT') bx = tank.x - 2;
+    else if (tank.direction === 'RIGHT') bx = tank.x + 34;
+
+    const bullet: Bullet = {
+      id: 'pred_bullet_' + (seq ?? Math.random()),
+      ownerId: tank.id,
+      isPlayer: true,
+      playerIndex: mySlot as 1 | 2 | undefined,
+      team: tank.team,
+      x: bx,
+      y: by,
+      direction: tank.direction,
+      speed: tank.bulletSpeed,
+      canDestroySteel: tank.tier >= 3,
+      size: 4,
+      inputSeq: seq,
+      isPredicted: true,
+    };
+
+    this.predictiveBullets.push(bullet);
+    this.bullets.push(bullet);
+    soundManager.playShoot();
+    return bullet;
   }
 
   private updatePlayer() {
@@ -2151,7 +2314,7 @@ export class GameEngine {
   }
 
   // --- Fire Bullet ---
-  private fireBullet(tank: Tank) {
+  private fireBullet(tank: Tank, inputSeq?: number) {
     if (!tank || !tank.direction) return;
     // Max bullets check: Player tier 0-1 = 1 bullet; tier 2-3 = 2 bullets
     const maxBullets = tank.isPlayer ? (tank.tier >= 2 ? 2 : 1) : 1;
@@ -2177,6 +2340,7 @@ export class GameEngine {
       speed: tank.bulletSpeed,
       canDestroySteel: tank.isPlayer && tank.tier >= 3,
       size: 4,
+      inputSeq,
     };
 
     this.bullets.push(bullet);
@@ -3666,6 +3830,7 @@ export class GameEngine {
         x: b.x,
         y: b.y,
         dir: b.direction,
+        inputSeq: b.inputSeq,
       })),
       powerUps: this.powerUps.map((p) => ({
         id: p.id,
@@ -3679,6 +3844,7 @@ export class GameEngine {
       bases: Array.from(this.bases.values()),
       vsDefenderSlot: this.vsDefenderSlot,
       gameState: this.gameState,
+      ackSeqs: Object.fromEntries(this.hostLastProcessedSeq.entries()),
       gv: this.gridVersion,
       gs: this.gridSize,
       ...(sendGrid ? { grid: this.encodeGrid() } : {}),
@@ -3702,6 +3868,15 @@ export class GameEngine {
         this.p2AuthTarget = data.p2
           ? { x: data.p2.x, y: data.p2.y, dir: data.p2.dir, moving: data.p2.moving }
           : null;
+      }
+
+      // Gambetta authoritative reconciliation: reconcile using acknowledged sequence number
+      if (data.ackSeqs && typeof data.ackSeqs === 'object') {
+        const mySlot = this.localPlayerSlot || 2;
+        const ack = data.ackSeqs[mySlot];
+        if (typeof ack === 'number' && this.p2AuthTarget) {
+          this.reconcileAndReplay(mySlot, ack, this.p2AuthTarget);
+        }
       }
       if (Array.isArray(data.grid) && typeof data.gv === 'number' && data.gv !== this.gridVersion) {
         this.decodeGrid(data.grid, data.gv, data.gs);

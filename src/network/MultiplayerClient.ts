@@ -191,11 +191,12 @@ export class MultiplayerClient {
     });
   }
 
-  public sendInput(input: InputState, slot?: number) {
+  public sendInput(input: InputState, slot?: number, seq?: number) {
     this.send({
       type: 'player_input',
       input,
       slot: slot ?? this.slot,
+      seq,
     });
   }
 

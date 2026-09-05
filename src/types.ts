@@ -147,6 +147,15 @@ export interface Bullet {
   speed: number;
   canDestroySteel: boolean;
   size: number;
+  inputSeq?: number;
+  isPredicted?: boolean;
+}
+
+export interface SequencedInput {
+  seq: number;
+  input: InputState;
+  slot: number;
+  timestamp: number;
 }
 
 export type PowerUpType = 'STAR' | 'BOMB' | 'TIMER' | 'SHOVEL' | 'HELMET' | 'LIFE';

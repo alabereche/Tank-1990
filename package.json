@@ -11,7 +11,8 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:netcode": "node --test --import tsx scripts/test-netcode-prediction.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

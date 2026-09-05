@@ -31,9 +31,21 @@ export interface NetSnapshot {
   gameState?: unknown;
   gv?: number;
   grid?: number[];
+  ackSeqs?: Record<number, number>;
 }
 
 export const RENDER_DELAY_MS = 120;
+
+/**
+ * Calculates adaptive render delay for jitter buffering based on real RTT.
+ * Clamped between 45ms (fast network) and 125ms (high latency / mobile connection).
+ */
+export function getAdaptiveDelay(ping: number, jitter: number = 10): number {
+  const oneWay = Math.max(12, ping * 0.5);
+  // Ensure buffer covers 1.5 snapshot intervals (33ms) + one-way latency + jitter
+  const calculated = oneWay + jitter + 33;
+  return Math.min(125, Math.max(45, Math.round(calculated)));
+}
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;

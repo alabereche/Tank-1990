@@ -260,6 +260,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const unsubPing = multiplayerClient.on('ping_updated', (data) => {
       setMultiplayerPing(data.ping);
+      if (engineRef.current) {
+        engineRef.current.lastPingMs = data.ping;
+      }
     });
 
     // Host receives input packets from Guest (Player 2..8) - stored and fed to engine
@@ -267,7 +270,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (multiplayerConfig.role === 'host') {
         const slot = data.slot || 2;
         if (engineRef.current) {
-          engineRef.current.setPlayerSlotInput(slot, data.input);
+          engineRef.current.setPlayerSlotInput(slot, data.input, data.seq);
         }
         if (slot === 2) {
           netP2Input.current = data.input;
@@ -570,13 +573,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         };
 
         if (multiplayerConfig?.role === 'guest') {
-          // Prediction locally + transmit on change with slot (host is the authority)
+          // Client-side prediction with Sequenced Input Channel (Gambetta model)
           const mySlot = multiplayerConfig.slot || 2;
-          engine?.setPlayerSlotInput(mySlot, merged);
-          const sig = inputSig(merged);
-          if (sig !== lastSentInput.current) {
+          const cleanInput = { ...merged, pause: false };
+          const isActive = Boolean(
+            cleanInput.up ||
+              cleanInput.down ||
+              cleanInput.left ||
+              cleanInput.right ||
+              cleanInput.fire ||
+              cleanInput.smoke ||
+              cleanInput.grenade ||
+              cleanInput.shield
+          );
+          const sig = inputSig(cleanInput);
+          const hasChanged = sig !== lastSentInput.current;
+
+          if (isActive || hasChanged) {
             lastSentInput.current = sig;
-            multiplayerClient.sendInput({ ...merged, pause: false }, mySlot);
+            const seq = engine?.recordAndSendInput(mySlot, cleanInput);
+            if (seq !== undefined) {
+              multiplayerClient.sendInput(cleanInput, mySlot, seq);
+            }
+          } else {
+            engine?.setPlayerSlotInput(mySlot, cleanInput);
           }
 
           // Same-machine dual-pad relay: if 2 pads are connected on this PC and guest window is focused,
