@@ -84,7 +84,7 @@ export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mod
                 className="flex items-center gap-2 text-xs tracking-widest"
                 style={{ color: myRole === 'DEFEND' ? '#58b8d8' : '#f87858' }}
               >
-                {myRole === 'DEFEND' ? '🛡 DEFEND YOUR EAGLE' : '⚔ DESTROY THE ENEMY EAGLE'}
+                {myRole === 'DEFEND' ? '[DEFEND] YOUR EAGLE' : '[DESTROY] THE ENEMY EAGLE'}
               </div>
             )}
             <div className="text-[9px] text-zinc-500 tracking-widest animate-pulse">
@@ -362,7 +362,7 @@ export const MatchEndPanel: React.FC<{
 
         {/* Controller & Keyboard Navigation Legend */}
         <div className="flex items-center justify-center gap-3 text-[8px] text-zinc-400 tracking-widest mt-2 pt-3 border-t border-zinc-800/80 w-full font-mono">
-          <span className="flex items-center gap-1">🎮 <span className="text-amber-400">D-PAD / STICK</span> NAVIGATE</span>
+          <span className="flex items-center gap-1"><span className="text-amber-400">D-PAD / STICK</span> NAVIGATE</span>
           <span className="text-zinc-600">•</span>
           <span className="flex items-center gap-1"><span className="text-emerald-400">[A / START]</span> SELECT</span>
           <span className="text-zinc-600">•</span>

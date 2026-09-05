@@ -1303,7 +1303,7 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
                 <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
                 {hasGamepad ? (
                   <span className="text-amber-300 font-bold tracking-wide">
-                    🎮 [D-PAD] MOVE • [A] DRAW • [X] ERASE • [LB/RB] TILE • [Y] BRUSH • [START] PLAY • [B] CANCEL
+                    [D-PAD] MOVE • [A] DRAW • [X] ERASE • [LB/RB] TILE • [Y] BRUSH • [START] PLAY • [B] CANCEL
                   </span>
                 ) : (
                   <span>

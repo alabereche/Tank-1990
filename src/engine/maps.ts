@@ -899,7 +899,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'القلعة الكلاسيكية',
     subtitle: 'Original 1990 tribute with tactical flank ice avenues',
     subtitleAr: 'تحية للميدان الأصلي مع ممرات جليد جانبية خاطفة',
-    icon: '🏰',
+    icon: '01',
     theme: 'citadel',
   },
   {
@@ -908,7 +908,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'الحصن الحديدي',
     subtitle: 'Heavy steel cross bulkheads, lateral slipways & water moats',
     subtitleAr: 'صليب فولاذي منيع مع خنادق مائية وممرات انزلاق دفاعية',
-    icon: '🛡️',
+    icon: '02',
     theme: 'fortress',
   },
   {
@@ -917,7 +917,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'معبر النهرين',
     subtitle: 'Double river barrier, frozen ice bridge & muddy riverbanks',
     subtitleAr: 'حاجز نهرين مائيين مع جسر جليدي وخنادق وحلية على الضفاف',
-    icon: '🌊',
+    icon: '03',
     theme: 'rivers',
   },
   {
@@ -926,7 +926,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'غابة الأمازون الكثيفة',
     subtitle: 'Dense 40% jungle canopy, stealth ambushes & sunken temple',
     subtitleAr: 'غطاء شجري كثيف 40% للكمائن الخفية ومعبد غارق في الوحل',
-    icon: '🌴',
+    icon: '04',
     theme: 'jungle',
   },
   {
@@ -935,7 +935,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'الأرخبيل الجليدي',
     subtitle: 'High-speed drift ice sheets & 4 fortified island outposts',
     subtitleAr: 'مسطحات جليدية للانزلاق السريع و4 جزر حصينة عبر المياه',
-    icon: '❄️',
+    icon: '05',
     theme: 'arctic',
   },
   {
@@ -944,7 +944,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'المتاهة الكبرى',
     subtitle: 'Geometric 90° corridors, steel junction pillars & breakable shortcuts',
     subtitleAr: 'ممرات هندسية 90 درجة مع أعمدة فولاذية وجدران قابلة للاختراق',
-    icon: '🌀',
+    icon: '06',
     theme: 'labyrinth',
   },
   {
@@ -953,7 +953,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'وادي الوحل والخنادق',
     subtitle: 'Three quagmire canyons (42% speed), brick mesas & steel watchtowers',
     subtitleAr: 'ثلاثة خنادق وحلية عميقة تبطئ الحركة وهضاب مراقبة فولاذية',
-    icon: '🏜️',
+    icon: '07',
     theme: 'badlands',
   },
   {
@@ -962,7 +962,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'مدينة الحرب الحضرية',
     subtitle: 'Symmetrical street avenues, 3x3 city blocks & central park plaza',
     subtitleAr: 'شوارع أسفلتية متقاطعة مع مجمعات سكنية وحديقة مركزية بنافورة',
-    icon: '🏙️',
+    icon: '08',
     theme: 'urban',
   },
   {
@@ -971,7 +971,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'مجمع المخابئ العسكرية',
     subtitle: 'Underground diamond bastion, 4 cardinal pillboxes & security moats',
     subtitleAr: 'حصن ألماسي تحت الأرض مع 4 دشم فولاذية وخنادق أمنية مائية',
-    icon: '⚓',
+    icon: '09',
     theme: 'bunker',
   },
   {
@@ -980,7 +980,7 @@ export const STAGES_METADATA: StageMetadata[] = [
     nameAr: 'فوهة بركان الموت',
     subtitle: 'Concentric volcanic caldera, ash swamps & central elevated Steel Throne',
     subtitleAr: 'فوهة بركانية دائرية مع مستنقع رماد وحلي وعرش فولاذي مركزي',
-    icon: '🌋',
+    icon: '10',
     theme: 'crater',
   },
 ];

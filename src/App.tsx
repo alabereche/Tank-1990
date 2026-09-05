@@ -83,9 +83,9 @@ export default function App() {
       if (gp && gp.connected) {
         const pads = gamepadManager.getConnectedPads();
         if (pads.length >= 2) {
-          setGamepadAlert('🎮 Dual Gamepads Connected: Player 1 (Gold) & Player 2 (Green) Ready!');
+          setGamepadAlert('DUAL GAMEPADS CONNECTED: P1 (GOLD) & P2 (GREEN) READY!');
         } else {
-          setGamepadAlert(`🎮 Gamepad Detected: Player 1 (${gp.id.split('(')[0].trim()})`);
+          setGamepadAlert(`GAMEPAD CONNECTED: P1 (${gp.id.split('(')[0].trim()})`);
         }
         setTimeout(() => setGamepadAlert(null), 4500);
       }
@@ -330,65 +330,26 @@ export default function App() {
     >
       {/* Mobile Landscape Orientation Enforcer */}
       {isMobileDevice && isPortraitMode && (
-        <div className="fixed inset-0 z-50 bg-[#0a0a0f] flex flex-col items-center justify-center p-6 text-center select-none font-pixel shadow-2xl">
-          <div className="w-20 h-20 mb-5 relative flex items-center justify-center">
-            {/* Animated Rotating Phone Icon */}
-            <div className="w-16 h-12 border-4 border-amber-400 rounded-lg flex items-center justify-center bg-amber-950/40 shadow-[0_0_20px_rgba(245,158,11,0.5)] animate-pulse">
-              <span className="text-xl">🎮</span>
-            </div>
-            <div className="absolute -bottom-1 text-[8px] text-amber-300 animate-bounce">
-              ↺ ROTATE
-            </div>
+        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6 text-center select-none font-pixel border-4 border-[#f8b800]">
+          <div className="w-16 h-12 border-4 border-[#f8b800] bg-zinc-900 flex items-center justify-center mb-4">
+            <span className="text-amber-400 text-xs animate-pulse">&gt;&gt;&gt;</span>
           </div>
 
-          <h2 className="text-amber-400 text-sm sm:text-base font-bold tracking-wider mb-2 drop-shadow">
-            BATTLE CITY 1990
+          <h2 className="text-[#f8b800] text-sm sm:text-base font-bold tracking-wider mb-2">
+            PLEASE ROTATE DEVICE
           </h2>
 
-          <p className="text-xs text-white mb-2 leading-relaxed" dir="rtl">
-            يرجى تدوير هاتفك للوضع الأفقي للعب
-          </p>
-          <p className="text-[9px] text-zinc-400 mb-6 max-w-xs leading-relaxed font-sans" dir="rtl">
-            تم تصميم اللعبة والتحكم بالأنالوج وعصا التحكم لتعمل بالشاشة الكاملة الأفقية.
+          <p className="text-[9px] text-zinc-300 mb-6 max-w-xs leading-relaxed">
+            BATTLE CITY 1990 REQUIRES HORIZONTAL LANDSCAPE ORIENTATION FOR VIRTUAL JOYSTICK &amp; FULLSCREEN COMBAT.
           </p>
 
           <button
             type="button"
             onClick={handleRotateToLandscape}
-            className="py-3 px-6 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs rounded-lg shadow-[0_0_25px_rgba(245,158,11,0.6)] cursor-pointer active:scale-95 transition-all flex items-center gap-2"
+            className="py-3 px-6 bg-[#f8b800] hover:bg-amber-400 text-black font-bold text-xs border-2 border-white cursor-pointer active:scale-95 transition-all"
           >
-            <span>📱</span>
-            <span>تدوير وشاشة كاملة / FULLSCREEN</span>
+            [ ROTATE &amp; FULLSCREEN ]
           </button>
-        </div>
-      )}
-
-      {/* Mobile PWA Install Floating Banner */}
-      {showPwaBanner && isMobileDevice && !isPortraitMode && (
-        <div className="fixed top-2 z-40 max-w-lg w-[94%] bg-gradient-to-r from-zinc-900 via-emerald-950 to-zinc-900 border-2 border-emerald-500/80 rounded-lg px-3 py-1.5 flex items-center justify-between shadow-2xl text-[8px] font-pixel">
-          <div className="flex items-center gap-2">
-            <span className="text-base">📱</span>
-            <div className="flex flex-col text-left">
-              <span className="text-emerald-300 font-bold">ثبّت اللعبة على هاتفك لتلعب كتطبيق أصلي!</span>
-              <span className="text-[7px] text-zinc-400 font-sans">شاشة كاملة وبدون متصفح وبأعلى سرعة</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleInstallPwa}
-              className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded text-[8px] cursor-pointer shadow-md transition-all active:scale-95"
-            >
-              تثبيت الآن
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowPwaBanner(false)}
-              className="text-zinc-400 hover:text-white px-1 text-xs cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
         </div>
       )}
 

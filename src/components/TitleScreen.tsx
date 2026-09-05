@@ -100,8 +100,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     { label: 'CONSTRUCTION', action: onOpenConstruction },
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
-    { label: '📱 INSTALL (MOBILE)', action: handleInstallApp, badge: 'PWA' },
-    { label: '💻 PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'SOON' },
+    { label: 'INSTALL APP', action: handleInstallApp, badge: 'PWA' },
+    { label: 'PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'SOON' },
     ...(!isElectron ? [{ label: 'FULLSCREEN', action: handleToggleFullscreen }] : []),
     { label: 'EXIT GAME', action: () => { setExitConfirmIdx(0); setShowExitModal(true); } },
   ];
@@ -519,14 +519,23 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     >
       <style>{`
         @media (max-height: 520px) {
+          #title-screen-container {
+            padding-top: 4px !important;
+            padding-bottom: 4px !important;
+          }
+          #title-header-bar {
+            padding-bottom: 3px !important;
+            font-size: 10px !important;
+          }
           #title-logo-banner {
+            margin-top: 1px !important;
             margin-bottom: 2px !important;
           }
           #title-logo-h1, #title-logo-h2 {
             display: inline-block !important;
-            font-size: 1.35rem !important;
-            line-height: 1.2 !important;
-            margin-right: 8px !important;
+            font-size: 1.15rem !important;
+            line-height: 1.1 !important;
+            margin-right: 6px !important;
           }
           #title-tanks-duel {
             display: none !important;
@@ -534,19 +543,35 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           #title-menu-grid {
             display: grid !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            max-width: 620px !important;
-            gap: 2px 14px !important;
+            max-width: 580px !important;
+            gap: 1px 16px !important;
             margin-top: 2px !important;
             margin-bottom: 2px !important;
           }
+          #title-menu-grid button {
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+          }
+          #title-menu-grid span {
+            font-size: 9px !important;
+          }
           #title-screen-footer {
+            padding-top: 3px !important;
+            margin-top: 1px !important;
+            gap: 2px !important;
+          }
+          #title-footer-hints {
             display: none !important;
+          }
+          #title-footer-copy {
+            font-size: 8px !important;
+            display: block !important;
           }
         }
       `}</style>
 
       {/* High Score Header (Authentic Arcade HUD) */}
-      <div className="w-full flex items-center justify-between px-2 sm:px-6 text-xs sm:text-sm tracking-widest border-b border-zinc-800/80 pb-1.5">
+      <div id="title-header-bar" className="w-full flex items-center justify-between px-2 sm:px-6 text-xs sm:text-sm tracking-widest border-b border-zinc-800/80 pb-1.5">
         <div className="flex items-center gap-2">
           <span className="text-red-500 font-bold drop-shadow">I-</span>
           <span className="text-white tracking-widest drop-shadow">00</span>
@@ -669,8 +694,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       </div>
 
       {/* Arcade Coin-Op Footer Prompt & Copyright */}
-      <div className="w-full flex flex-col items-center gap-1.5 text-center pt-2 border-t border-zinc-800/80">
-        <div className="text-[8px] sm:text-[10px] text-zinc-400 tracking-wider flex items-center justify-center flex-wrap gap-x-2 gap-y-1">
+      <div id="title-screen-footer" className="w-full flex flex-col items-center gap-1.5 text-center pt-2 border-t border-zinc-800/80">
+        <div id="title-footer-hints" className="text-[8px] sm:text-[10px] text-zinc-400 tracking-wider flex items-center justify-center flex-wrap gap-x-2 gap-y-1">
           <span>[W/S • D-PAD] SELECT</span>
           <span>•</span>
           <span>[ENTER / SPACE • A / START] CONFIRM</span>
@@ -679,7 +704,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           <span>•</span>
           <span>[F] FULLSCREEN</span>
         </div>
-        <div className="text-[8px] sm:text-[9px] text-zinc-500 tracking-widest">
+        <div id="title-footer-copy" className="text-[8px] sm:text-[9px] text-zinc-500 tracking-widest">
           © 1990 NAMCO LTD. / ENHANCED EDITION
         </div>
       </div>
@@ -854,9 +879,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-red-500 text-sm tracking-widest flex items-center justify-center gap-2">
-              <span>⚠</span>
+              <span>[!]</span>
               <span>QUIT GAME?</span>
-              <span>⚠</span>
+              <span>[!]</span>
             </div>
 
             <p className="text-[10px] text-zinc-300 leading-relaxed font-pixel">
@@ -899,40 +924,38 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* PWA Mobile App Installation Modal */}
       {showInstallModal && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs select-none"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-3 backdrop-blur-xs select-none"
           onClick={() => setShowInstallModal(false)}
         >
           <div
-            className="bg-[#121216] border-4 border-emerald-500 rounded-lg max-w-md w-full p-5 space-y-4 font-pixel shadow-[0_0_30px_rgba(16,185,129,0.4)] text-white text-center"
+            className="bg-[#0c0c0c] border-4 border-[#f8b800] max-w-md w-full p-4 space-y-3 font-pixel shadow-[0_0_25px_rgba(248,184,0,0.5)] text-white text-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-emerald-400 text-sm tracking-widest flex items-center justify-center gap-2">
-              <span>📱</span>
-              <span>INSTALL MOBILE APP</span>
-              <span>📱</span>
+            <div className="text-[#f8b800] text-xs sm:text-sm tracking-widest">
+              INSTALL MOBILE APP (PWA)
             </div>
 
-            <p className="text-[10px] text-zinc-300 leading-relaxed font-sans text-right" dir="rtl">
-              لتثبيت اللعبة كتطبيق رسمي بشاشة كاملة وبدون متصفح:
+            <p className="text-[9px] text-zinc-300 leading-relaxed font-pixel text-left">
+              RUN AS FULLSCREEN RETRO APP WITHOUT BROWSER TOOLBARS:
             </p>
 
-            <div className="text-[9px] text-zinc-300 leading-relaxed text-right space-y-2 bg-black/60 p-3 rounded border border-zinc-800 font-sans" dir="rtl">
+            <div className="text-[8px] text-zinc-300 leading-relaxed text-left space-y-2 bg-black p-2.5 border-2 border-zinc-800 font-pixel">
               <div>
-                <strong className="text-emerald-400">🤖 على هواتف أندرويد (Chrome):</strong>
-                <p className="text-zinc-400 mt-0.5">اضغط على قائمة المتصفح (⋮) بأعلى الشاشة ثم اختر <b>«تثبيت التطبيق» (Install app)</b> أو <b>«إضافة إلى الشاشة الرئيسية»</b>.</p>
+                <span className="text-emerald-400 font-bold block mb-0.5">&gt; ANDROID (CHROME):</span>
+                <span className="text-zinc-400">TAP BROWSER MENU (⋮) THEN SELECT 'INSTALL APP' OR 'ADD TO HOME SCREEN'.</span>
               </div>
-              <div className="border-t border-zinc-800 pt-2">
-                <strong className="text-blue-400">🍏 على هواتف آيفون (Safari):</strong>
-                <p className="text-zinc-400 mt-0.5">اضغط على زر المشاركة (Share ⎘) بأسفل الشاشة ثم اختر <b>«إضافة إلى الشاشة الرئيسية» (Add to Home Screen)</b>.</p>
+              <div className="border-t border-zinc-800 pt-1.5">
+                <span className="text-cyan-400 font-bold block mb-0.5">&gt; APPLE IOS (SAFARI):</span>
+                <span className="text-zinc-400">TAP SHARE BUTTON THEN SELECT 'ADD TO HOME SCREEN'.</span>
               </div>
             </div>
 
             <button
               type="button"
               onClick={() => setShowInstallModal(false)}
-              className="w-full py-2.5 px-4 text-xs font-pixel border-2 border-emerald-500 bg-emerald-600 hover:bg-emerald-500 text-white rounded cursor-pointer transition-all shadow-md font-bold"
+              className="w-full py-2 px-3 text-[10px] font-pixel border-2 border-[#f8b800] bg-amber-600 hover:bg-amber-500 text-black cursor-pointer transition-all shadow-md font-bold"
             >
-              حسناً / GOT IT
+              [ OK / CLOSE ]
             </button>
           </div>
         </div>
@@ -941,33 +964,31 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* PC (.EXE) Download Coming Soon Modal */}
       {showPcDownloadModal && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs select-none"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-3 backdrop-blur-xs select-none"
           onClick={() => setShowPcDownloadModal(false)}
         >
           <div
-            className="bg-[#121216] border-4 border-blue-500 rounded-lg max-w-md w-full p-5 space-y-4 font-pixel shadow-[0_0_30px_rgba(59,130,246,0.4)] text-white text-center"
+            className="bg-[#0c0c0c] border-4 border-[#58b8d8] max-w-md w-full p-4 space-y-3 font-pixel shadow-[0_0_25px_rgba(88,184,216,0.5)] text-white text-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-blue-400 text-sm tracking-widest flex items-center justify-center gap-2">
-              <span>💻</span>
-              <span>PC DOWNLOAD (.EXE)</span>
-              <span>💻</span>
+            <div className="text-[#58b8d8] text-xs sm:text-sm tracking-widest">
+              PC DOWNLOAD (.EXE)
             </div>
 
-            <div className="inline-block px-3 py-1 bg-amber-500/20 border border-amber-500 text-amber-300 text-[10px] rounded font-pixel">
-              COMING SOON / قريباً جداً
+            <div className="inline-block px-3 py-1 bg-zinc-900 border border-zinc-700 text-amber-300 text-[9px] font-pixel">
+              STATUS: COMING SOON
             </div>
 
-            <p className="text-[10px] text-zinc-300 leading-relaxed font-sans text-right" dir="rtl">
-              نسخة الويندوز للكمبيوتر المستقلة (PC Executable .EXE) قيد التجميع والرفع، وستكون متاحة للتحميل المباشر هنا قريباً!
+            <p className="text-[8px] text-zinc-300 leading-relaxed font-pixel text-left">
+              THE STANDALONE WINDOWS PC EXECUTABLE (.EXE) IS BEING PACKAGED AND WILL BE AVAILABLE FOR DIRECT DOWNLOAD HERE.
             </p>
 
             <button
               type="button"
               onClick={() => setShowPcDownloadModal(false)}
-              className="w-full py-2.5 px-4 text-xs font-pixel border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 text-white rounded cursor-pointer transition-all shadow-md font-bold"
+              className="w-full py-2 px-3 text-[10px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold"
             >
-              إغلاق / CLOSE
+              [ CLOSE ]
             </button>
           </div>
         </div>

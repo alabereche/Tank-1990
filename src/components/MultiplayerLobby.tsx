@@ -627,10 +627,63 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
   return (
     <div
       id="multiplayer-lobby-container"
-      className="flex flex-col items-center justify-between w-full max-w-xl mx-auto min-h-[560px] bg-[#1a1a1a] border-4 border-[#444] p-5 text-white font-pixel select-none shadow-2xl relative"
+      className="flex flex-col items-center justify-between w-full max-w-xl mx-auto max-h-[96vh] sm:max-h-[92vh] overflow-y-auto bg-[#1a1a1a] border-4 border-[#444] p-3 sm:p-5 text-white font-pixel select-none shadow-2xl relative my-auto scrollbar-thin"
     >
+      <style>{`
+        @media (max-height: 520px) {
+          #multiplayer-lobby-container {
+            min-height: auto !important;
+            max-height: 98vh !important;
+            padding: 8px 12px !important;
+            overflow-y: auto !important;
+          }
+          #lobby-header-logo {
+            margin-top: 2px !important;
+            margin-bottom: 4px !important;
+          }
+          #lobby-header-h2 {
+            font-size: 1.05rem !important;
+            line-height: 1.2 !important;
+          }
+          #lobby-header-sub {
+            font-size: 7px !important;
+            margin-top: 1px !important;
+          }
+          #lobby-tabs {
+            margin-bottom: 6px !important;
+          }
+          #tab-create-room, #tab-join-room {
+            padding-top: 4px !important;
+            padding-bottom: 4px !important;
+            font-size: 10px !important;
+          }
+          #lobby-create-form, #lobby-join-form {
+            padding: 8px !important;
+            gap: 6px !important;
+          }
+          .protocol-btn {
+            padding: 4px 6px !important;
+          }
+          .protocol-desc {
+            display: none !important;
+          }
+          .protocol-title {
+            font-size: 10px !important;
+          }
+          #arena-dimensions-grid button {
+            padding: 3px 4px !important;
+            font-size: 8px !important;
+          }
+          #btn-confirm-create-room, #btn-confirm-join-room {
+            margin-top: 4px !important;
+            padding: 6px 8px !important;
+            font-size: 10px !important;
+          }
+        }
+      `}</style>
+
       {/* Top Bar: Back button, Server status, Ping */}
-      <div className="w-full flex items-center justify-between pb-3 border-b-2 border-zinc-800">
+      <div className="w-full flex items-center justify-between pb-2 sm:pb-3 border-b-2 border-zinc-800">
         <button
           id="lobby-back-btn"
           onClick={() => {
@@ -670,11 +723,11 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
       </div>
 
       {/* Lobby Header Logo */}
-      <div className="flex flex-col items-center my-3 text-center">
-        <h2 className="text-xl sm:text-2xl font-bold tracking-widest text-[#f8b800] drop-shadow-[0_3px_0_#704000]">
+      <div id="lobby-header-logo" className="flex flex-col items-center my-2 sm:my-3 text-center">
+        <h2 id="lobby-header-h2" className="text-lg sm:text-2xl font-bold tracking-widest text-[#f8b800] drop-shadow-[0_3px_0_#704000]">
           ONLINE COMBAT LOBBY
         </h2>
-        <div className="text-[8px] sm:text-[9px] text-zinc-400 tracking-wider mt-1 uppercase">
+        <div id="lobby-header-sub" className="text-[7px] sm:text-[9px] text-zinc-400 tracking-wider mt-1 uppercase">
           LOW-LATENCY WEBSOCKET MULTIPLAYER
         </div>
       </div>
@@ -748,7 +801,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
 
           {tab === 'create' ? (
             /* CREATE ROOM VIEW */
-            <div className="w-full flex flex-col gap-3.5 text-[10px] bg-zinc-900/60 p-4 rounded border border-zinc-800">
+            <div id="lobby-create-form" className="w-full flex flex-col gap-3.5 text-[10px] bg-zinc-900/60 p-4 rounded border border-zinc-800">
               {/* Game Mode */}
               <div>
                 <label className="text-zinc-400 block mb-1.5 font-bold uppercase tracking-wider">
@@ -761,7 +814,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                       soundManager.playHitSteel();
                       setMode('coop');
                     }}
-                    className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                    className={`protocol-btn p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
                       focusedId === 'mode-coop'
                         ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
                         : ''
@@ -773,11 +826,11 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs">
                       {focusedId === 'mode-coop' && <span className="text-[#f8b800] animate-pulse">▶</span>}
-                      <Users className="w-4 h-4 text-emerald-400" />
-                      <span>2P CO-OP</span>
+                      <span className="text-emerald-400 font-mono text-[9px]">[2P]</span>
+                      <span className="protocol-title">2P CO-OP</span>
                     </div>
-                    <div className="text-[8px] text-zinc-400 leading-tight">
-                      Team up to defend Eagle Base vs 20 Enemy Tanks!
+                    <div className="text-[8px] text-zinc-400 leading-tight protocol-desc">
+                      Defend Eagle Base vs 20 Enemy Tanks!
                     </div>
                   </button>
 
@@ -787,7 +840,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                       soundManager.playHitSteel();
                       setMode('versus');
                     }}
-                    className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                    className={`protocol-btn p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
                       focusedId === 'mode-versus'
                         ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
                         : ''
@@ -799,11 +852,11 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs">
                       {focusedId === 'mode-versus' && <span className="text-[#f8b800] animate-pulse">▶</span>}
-                      <Swords className="w-4 h-4 text-red-400" />
-                      <span>1V1 VERSUS</span>
+                      <span className="text-red-400 font-mono text-[9px]">[1V1]</span>
+                      <span className="protocol-title">1V1 VERSUS</span>
                     </div>
-                    <div className="text-[8px] text-zinc-400 leading-tight">
-                      Tank duel! P1 (Gold) vs P2 (Green) with 5 lives each!
+                    <div className="text-[8px] text-zinc-400 leading-tight protocol-desc">
+                      Duel! P1 vs P2 with 5 lives each!
                     </div>
                   </button>
 
@@ -813,7 +866,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                       soundManager.playHitSteel();
                       setMode('2v2');
                     }}
-                    className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                    className={`protocol-btn p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
                       focusedId === 'mode-2v2'
                         ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
                         : ''
@@ -825,11 +878,11 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs">
                       {focusedId === 'mode-2v2' && <span className="text-[#f8b800] animate-pulse">▶</span>}
-                      <Shield className="w-4 h-4 text-blue-400" />
-                      <span>2V2 TEAMS</span>
+                      <span className="text-blue-400 font-mono text-[9px]">[2V2]</span>
+                      <span className="protocol-title">2V2 TEAMS</span>
                     </div>
-                    <div className="text-[8px] text-zinc-400 leading-tight">
-                      Team A (P1/P3) vs Team B (P2/P4) with Friendly Fire Shield!
+                    <div className="text-[8px] text-zinc-400 leading-tight protocol-desc">
+                      Team A vs Team B with Friendly Shield!
                     </div>
                   </button>
 
@@ -842,7 +895,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                         setMapSize('large');
                       }
                     }}
-                    className={`p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
+                    className={`protocol-btn p-2.5 rounded border text-left flex flex-col gap-1 transition-all ${
                       focusedId === 'mode-ffa'
                         ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-[1.02] z-10 shadow-[0_0_12px_rgba(248,184,0,0.6)]'
                         : ''
@@ -854,11 +907,11 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs">
                       {focusedId === 'mode-ffa' && <span className="text-[#f8b800] animate-pulse">▶</span>}
-                      <Crown className="w-4 h-4 text-purple-400" />
-                      <span>8 FREE-FOR-ALL</span>
+                      <span className="text-purple-400 font-mono text-[9px]">[8P]</span>
+                      <span className="protocol-title">8 FREE-FOR-ALL</span>
                     </div>
-                    <div className="text-[8px] text-zinc-400 leading-tight">
-                      8 tanks battle in expanded arena with instant respawns!
+                    <div className="text-[8px] text-zinc-400 leading-tight protocol-desc">
+                      8 tanks battle in expanded arena!
                     </div>
                   </button>
                 </div>
@@ -869,7 +922,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                 <label className="text-zinc-400 block mb-1.5 font-bold uppercase tracking-wider">
                   ARENA DIMENSIONS
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div id="arena-dimensions-grid" className="grid grid-cols-3 gap-2">
                   {(['classic', 'large', 'giant'] as const).map((sz) => {
                     const isClassicFfaDisabled = mode === 'ffa' && sz === 'classic';
                     const szId = `size-${sz}`;
@@ -957,6 +1010,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
           ) : (
             /* JOIN ROOM VIEW */
             <form
+              id="lobby-join-form"
               onSubmit={handleJoinRoom}
               className="w-full flex flex-col gap-4 text-[10px] bg-zinc-900/60 p-4 rounded border border-zinc-800"
             >
