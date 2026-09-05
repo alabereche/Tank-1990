@@ -56,7 +56,8 @@ export function getCanvasSizeForPreset(preset: MapSizePreset): number {
 }
 
 /**
- * Creates an empty grid with the Base Eagle and standard protective brick bunker
+ * Creates an empty grid with the Base Eagle, standard protective brick bunker,
+ * and an Advance Blast Deflector to eliminate spawn-to-eagle sniper vulnerabilities.
  */
 export function createEmptyGrid(gridSize: number = 26): number[][] {
   const grid: number[][] = Array(gridSize)
@@ -87,11 +88,22 @@ export function createEmptyGrid(gridSize: number = 26): number[][] {
     grid[baseRow + 1][baseCol + 2] = TileType.BRICK;
   }
 
+  // Tactical Advance Blast Deflector (حاجز الصد المتقدم ضد القنص المباشر)
+  // Positioned at baseRow - 4 leaving a full 2-tile (32px) maneuvering corridor at rows baseRow - 3 and baseRow - 2
+  const defR = baseRow - 4;
+  if (defR >= 0) {
+    grid[defR][baseCol] = TileType.STEEL;
+    grid[defR][baseCol + 1] = TileType.STEEL;
+    if (baseCol - 1 >= 0) grid[defR][baseCol - 1] = TileType.BRICK;
+    if (baseCol + 2 < gridSize) grid[defR][baseCol + 2] = TileType.BRICK;
+  }
+
   return grid;
 }
 
 /**
- * Adds the North Base Eagle and symmetrical protective brick bunker for dual-base modes (1v1, 2v2)
+ * Adds the North Base Eagle, symmetrical protective brick bunker, and North Advance Blast Deflector
+ * for dual-base modes (1v1, 2v2).
  */
 export function addNorthBaseBunker(grid: number[][], gridSize: number): void {
   const baseCol = Math.floor(gridSize / 2) - 1;
@@ -117,6 +129,14 @@ export function addNorthBaseBunker(grid: number[][], gridSize: number): void {
     grid[0][baseCol + 2] = TileType.BRICK;
     grid[1][baseCol + 2] = TileType.BRICK;
   }
+
+  // Symmetrical North Advance Blast Deflector at row 4
+  if (4 < gridSize) {
+    grid[4][baseCol] = TileType.STEEL;
+    grid[4][baseCol + 1] = TileType.STEEL;
+    if (baseCol - 1 >= 0) grid[4][baseCol - 1] = TileType.BRICK;
+    if (baseCol + 2 < gridSize) grid[4][baseCol + 2] = TileType.BRICK;
+  }
 }
 
 /**
@@ -126,12 +146,12 @@ function createBuilder(gridSize: number) {
   const g = createEmptyGrid(gridSize);
   const mid = Math.floor(gridSize / 2);
 
-  // Protected zones: Base bunkers, P1 & P2 spawns, and enemy spawn pockets
+  // Protected zones: Base bunkers + deflectors, P1 & P2 spawns, and enemy spawn pockets
   const isProtected = (r: number, c: number): boolean => {
-    // South Base zone (Eagle + Bunker ring)
-    if (r >= gridSize - 3 && c >= mid - 2 && c <= mid + 2) return true;
-    // North Base zone (Dual Base mode reserve)
-    if (r <= 2 && c >= mid - 2 && c <= mid + 2) return true;
+    // South Base zone (Eagle + Bunker ring + Advance Deflector)
+    if (r >= gridSize - 5 && c >= mid - 3 && c <= mid + 2) return true;
+    // North Base zone (Dual Base mode reserve + Advance Deflector)
+    if (r <= 4 && c >= mid - 3 && c <= mid + 2) return true;
     // Player 1 spawn pocket
     if (r >= gridSize - 3 && c >= mid - 5 && c <= mid - 3) return true;
     // Player 2 spawn pocket
@@ -183,8 +203,8 @@ function createBuilder(gridSize: number) {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 1: Classic Citadel (القلعة الكلاسيكية)
-// NES Tribute + Outermost Ice Avenues + Ambush Foliage + Mud Choke Points
+// STAGE 1: Classic Imperial Citadel (القلعة الإمبراطورية الكلاسيكية)
+// NES Tribute + Outermost Ice Avenues + Ambush Foliage + Midfield Gatehouse
 // ---------------------------------------------------------------------------
 export function createStage1(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
@@ -199,11 +219,13 @@ export function createStage1(gridSize: number = 26): number[][] {
   placeVLine(2 + offset, 9 + offset, 18 + offset, TileType.BRICK);
   placeVLine(2 + offset, 9 + offset, 22 + offset, TileType.BRICK);
 
+  // Upper Steel Redoubt
   placeBlock(7 + offset, 12 + offset, TileType.STEEL);
 
-  // Horizontal Middle Brick Gateways
+  // Horizontal Middle Brick Gateways & Central Fortress Gatehouse
   placeHLine(11 + offset, offset, 3 + offset, TileType.BRICK);
   placeHLine(11 + offset, 6 + offset, 9 + offset, TileType.BRICK);
+  placeBlock(11 + offset, 12 + offset, TileType.BRICK); // Midfield gatehouse barrier
   placeHLine(11 + offset, 16 + offset, 19 + offset, TileType.BRICK);
   placeHLine(11 + offset, 22 + offset, 25 + offset, TileType.BRICK);
 
@@ -218,6 +240,7 @@ export function createStage1(gridSize: number = 26): number[][] {
   placeVLine(15 + offset, 20 + offset, 18 + offset, TileType.BRICK);
   placeVLine(15 + offset, 20 + offset, 22 + offset, TileType.BRICK);
 
+  // Lower Central Steel Bastion
   placeBlock(19 + offset, 12 + offset, TileType.STEEL);
 
   // High-speed Ice corridors on the far edges for rapid flanking
@@ -236,7 +259,7 @@ export function createStage1(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 2: Iron Fortress (الحصن الحديدي)
+// STAGE 2: Iron Bastion Complex (مجمع الحصون الفولاذية)
 // Heavy Industrial Bastion + Steel Cross + Water Hazard Moat + Ice Slipways
 // ---------------------------------------------------------------------------
 export function createIronFortress(gridSize: number = 26): number[][] {
@@ -251,7 +274,7 @@ export function createIronFortress(gridSize: number = 26): number[][] {
   // Lateral ICE patrol slipway behind steel battlements
   placeHLine(4, 4, gridSize - 6, TileType.ICE);
 
-  // Central Steel Cross
+  // Central Steel Cross & Interlocking Bastion
   for (let r = mid - 3; r <= mid + 2; r++) {
     b.placeCell(r, mid - 1, TileType.STEEL);
     b.placeCell(r, mid, TileType.STEEL);
@@ -277,7 +300,7 @@ export function createIronFortress(gridSize: number = 26): number[][] {
     b.placeCell(10, gridSize - 1 - c, TileType.MUD);
   }
 
-  // Brick defensive ramparts
+  // Brick defensive ramparts with ample demolition corridors
   placeVLine(12, gridSize - 6, 4, TileType.BRICK);
   placeVLine(12, gridSize - 6, gridSize - 6, TileType.BRICK);
 
@@ -289,8 +312,8 @@ export function createIronFortress(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 3: Twin Rivers (معبر النهرين)
-// Double River Channels + Frozen Ice Bridge + Muddy Shallows + Sniping Groves
+// STAGE 3: Twin Rivers Delta (دلتا النهرين التكتيكية)
+// Double River Channels + Staggered Chicane Bridges + Fort Delta Island Bastion
 // ---------------------------------------------------------------------------
 export function createRiverCrossing(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
@@ -298,33 +321,55 @@ export function createRiverCrossing(gridSize: number = 26): number[][] {
 
   const r1 = Math.floor(gridSize * 0.32);
   const r2 = Math.floor(gridSize * 0.62);
-
   const bridgeLeft = Math.floor(gridSize * 0.2);
   const bridgeRight = Math.floor(gridSize * 0.72);
 
-  // River 1 & River 2
-  for (const r of [r1, r2]) {
-    for (let c = 0; c < gridSize; c++) {
-      if ((c >= bridgeLeft && c <= bridgeLeft + 1) || (c >= bridgeRight && c <= bridgeRight + 1)) {
-        b.placeCell(r, c, TileType.BRICK);
-        b.placeCell(r + 1, c, TileType.BRICK);
-      } else if (c >= mid - 1 && c <= mid) {
-        // Frozen Ice bridge in the middle
-        b.placeCell(r, c, TileType.ICE);
-        b.placeCell(r + 1, c, TileType.ICE);
-      } else {
-        b.placeCell(r, c, TileType.WATER);
-        b.placeCell(r + 1, c, TileType.WATER);
-      }
+  // River 1: Drivable Ice crossing at cols mid-2..mid-1 (cols 11..12) and flank bridges
+  for (let c = 0; c < gridSize; c++) {
+    if ((c >= bridgeLeft && c <= bridgeLeft + 1) || (c >= bridgeRight && c <= bridgeRight + 1)) {
+      b.placeCell(r1, c, TileType.ICE);
+      b.placeCell(r1 + 1, c, TileType.ICE);
+    } else if (c >= mid - 2 && c <= mid - 1) {
+      b.placeCell(r1, c, TileType.ICE);
+      b.placeCell(r1 + 1, c, TileType.ICE);
+    } else {
+      b.placeCell(r1, c, TileType.WATER);
+      b.placeCell(r1 + 1, c, TileType.WATER);
     }
-    // Mud banks along the rivers
+  }
+
+  // River 2: Drivable Ice crossing at cols mid..mid+1 (cols 13..14) and flank bridges
+  for (let c = 0; c < gridSize; c++) {
+    if ((c >= bridgeLeft && c <= bridgeLeft + 1) || (c >= bridgeRight && c <= bridgeRight + 1)) {
+      b.placeCell(r2, c, TileType.ICE);
+      b.placeCell(r2 + 1, c, TileType.ICE);
+    } else if (c >= mid && c <= mid + 1) {
+      b.placeCell(r2, c, TileType.ICE);
+      b.placeCell(r2 + 1, c, TileType.ICE);
+    } else {
+      b.placeCell(r2, c, TileType.WATER);
+      b.placeCell(r2 + 1, c, TileType.WATER);
+    }
+  }
+
+  // Mud banks along the rivers
+  for (const r of [r1, r2]) {
     for (let c = 2; c < gridSize - 2; c++) {
-      if ((c < bridgeLeft - 1 || c > bridgeRight + 2) && (c < mid - 2 || c > mid + 1)) {
+      if ((c < bridgeLeft - 1 || c > bridgeRight + 2) && (c < mid - 3 || c > mid + 2)) {
         b.placeCell(r - 1, c, TileType.MUD);
         b.placeCell(r + 2, c, TileType.MUD);
       }
     }
   }
+
+  // Central Fort Delta Island Bastion between River 1 and River 2:
+  // Solid Steel core in columns mid-1..mid (cols 12-13)
+  placeBlock(mid - 1, mid - 1, TileType.STEEL);
+  // Staggered baffle teeth that intercept cross-river sniper angles
+  b.placeCell(r1 - 1, mid, TileType.BRICK);
+  b.placeCell(r1 - 1, mid + 1, TileType.BRICK);
+  b.placeCell(r2 + 2, mid - 2, TileType.BRICK);
+  b.placeCell(r2 + 2, mid - 1, TileType.BRICK);
 
   // Willow trees along riverbanks
   for (let c = bridgeLeft + 3; c < mid - 2; c++) {
@@ -346,8 +391,8 @@ export function createRiverCrossing(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 4: Amazon Rainforest (غابة الأمازون الكثيفة)
-// Dense Jungle Warfare (>40% Trees) + Ancient Temple Ruins + Sunken Mud Trails
+// STAGE 4: Amazonian Temple of Doom (معبد الغابة الاستوائية)
+// Dense Jungle Warfare (>35% Trees) + Stepped Aztec Pyramid + Sacred Steel Altar
 // ---------------------------------------------------------------------------
 export function createAmazonRainforest(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
@@ -360,7 +405,7 @@ export function createAmazonRainforest(gridSize: number = 26): number[][] {
   placeRect(gridSize - 6 - qSize, gridSize - 6, 2, 2 + qSize, TileType.TREES);
   placeRect(gridSize - 6 - qSize, gridSize - 6, gridSize - 4 - qSize, gridSize - 4, TileType.TREES);
 
-  // 2. Central Sunken Temple Ruins (Brick walls + Steel Totems)
+  // 2. Central Stepped Temple Ruins (Concentric Brick Walls + Steel Totems)
   placeHLine(mid - 4, mid - 4, mid + 3, TileType.BRICK);
   placeHLine(mid + 3, mid - 4, mid + 3, TileType.BRICK);
   placeVLine(mid - 4, mid + 3, mid - 4, TileType.BRICK);
@@ -372,8 +417,12 @@ export function createAmazonRainforest(gridSize: number = 26): number[][] {
   placeBlock(mid + 3, mid - 4, TileType.STEEL);
   placeBlock(mid + 3, mid + 3, TileType.STEEL);
 
-  // Temple courtyard mud pit (rainwater pool)
-  placeRect(mid - 1, mid, mid - 2, mid + 1, TileType.MUD);
+  // Sacred Steel Altar with destructible brick pedestal
+  placeBlock(mid - 1, mid - 1, TileType.STEEL);
+  b.placeCell(mid - 1, mid - 2, TileType.BRICK);
+  b.placeCell(mid, mid - 2, TileType.BRICK);
+  b.placeCell(mid - 1, mid + 1, TileType.BRICK);
+  b.placeCell(mid, mid + 1, TileType.BRICK);
 
   // 3. Serpentine mud trails through jungle
   placeVLine(6, gridSize - 8, mid - 6, TileType.MUD);
@@ -387,8 +436,8 @@ export function createAmazonRainforest(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 5: Glacial Archipelago (الأرخبيل الجليدي)
-// Vast Arctic Ice Sheets (>35%) + Blue Water Lagoons + 4 Fortified Outposts
+// STAGE 5: Arctic Archipelago & Glacial Keep (قلعة الأرخبيل القطبي)
+// Arctic Ice Sheets + Blue Water Lagoons + 4 Fortified Outposts + Central Glacial Keep
 // ---------------------------------------------------------------------------
 export function createGlacialArchipelago(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
@@ -399,10 +448,18 @@ export function createGlacialArchipelago(gridSize: number = 26): number[][] {
   placeRect(3, gridSize - 5, gridSize - 3, gridSize - 1, TileType.ICE);
   placeRect(mid - 2, mid + 1, 0, gridSize - 1, TileType.ICE);
 
-  // Central ice highway
-  placeRect(3, gridSize - 5, mid - 1, mid, TileType.ICE);
+  // 2. Central Glacial Keep Bastion (Solid Steel Core and Reinforced Brick Ramparts)
+  placeBlock(mid - 1, mid - 1, TileType.STEEL);
+  b.placeCell(mid - 2, mid - 1, TileType.BRICK);
+  b.placeCell(mid - 2, mid, TileType.BRICK);
+  b.placeCell(mid + 1, mid - 1, TileType.BRICK);
+  b.placeCell(mid + 1, mid, TileType.BRICK);
+  b.placeCell(mid - 1, mid - 2, TileType.BRICK);
+  b.placeCell(mid, mid - 2, TileType.BRICK);
+  b.placeCell(mid - 1, mid + 1, TileType.BRICK);
+  b.placeCell(mid, mid + 1, TileType.BRICK);
 
-  // 2. Deep water lagoons separating sectors
+  // 3. Deep water lagoons separating sectors
   const wR1 = Math.floor(gridSize * 0.28);
   const wR2 = Math.floor(gridSize * 0.68);
   placeRect(wR1, wR1 + 1, 4, mid - 3, TileType.WATER);
@@ -410,23 +467,32 @@ export function createGlacialArchipelago(gridSize: number = 26): number[][] {
   placeRect(wR2, wR2 + 1, 4, mid - 3, TileType.WATER);
   placeRect(wR2, wR2 + 1, mid + 2, gridSize - 5, TileType.WATER);
 
-  // 3. Four Fortified Outpost Islands (NW, NE, SW, SE)
-  // Island 1 (NW)
+  // Staggered ice and stone bridges over lagoons preventing straight-line sniping
+  b.placeCell(wR1, mid - 2, TileType.ICE);
+  b.placeCell(wR1 + 1, mid - 2, TileType.ICE);
+  b.placeCell(wR1, mid - 1, TileType.ICE);
+  b.placeCell(wR1 + 1, mid - 1, TileType.ICE);
+  placeBlock(wR1, mid, TileType.STEEL);
+
+  b.placeCell(wR2, mid, TileType.ICE);
+  b.placeCell(wR2 + 1, mid, TileType.ICE);
+  b.placeCell(wR2, mid + 1, TileType.ICE);
+  b.placeCell(wR2 + 1, mid + 1, TileType.ICE);
+  placeBlock(wR2, mid - 2, TileType.STEEL);
+
+  // 4. Four Fortified Outpost Islands (NW, NE, SW, SE)
   placeBlock(5, 5, TileType.BRICK);
   placeBlock(5, 7, TileType.STEEL);
   placeBlock(7, 5, TileType.BRICK);
 
-  // Island 2 (NE)
   placeBlock(5, gridSize - 9, TileType.STEEL);
   placeBlock(5, gridSize - 7, TileType.BRICK);
   placeBlock(7, gridSize - 7, TileType.BRICK);
 
-  // Island 3 (SW)
   placeBlock(gridSize - 9, 5, TileType.BRICK);
   placeBlock(gridSize - 9, 7, TileType.STEEL);
   placeBlock(gridSize - 7, 5, TileType.BRICK);
 
-  // Island 4 (SE)
   placeBlock(gridSize - 9, gridSize - 9, TileType.STEEL);
   placeBlock(gridSize - 9, gridSize - 7, TileType.BRICK);
   placeBlock(gridSize - 7, gridSize - 7, TileType.BRICK);
@@ -435,8 +501,8 @@ export function createGlacialArchipelago(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 6: The Great Labyrinth (المتاهة الكبرى)
-// Geometric 90° Maze + Steel Pillars + Breakable Brick Shortcuts + Dead-end Mud
+// STAGE 6: The Minotaur's Grand Labyrinth (متاهة المينوتور الكبرى)
+// Geometric 90° Maze + Steel Vault Core + Secret Destructible Brick Shortcuts
 // ---------------------------------------------------------------------------
 export function createGreatLabyrinth(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
@@ -472,12 +538,18 @@ export function createGreatLabyrinth(gridSize: number = 26): number[][] {
   placeBlock(gridSize - 9, 8, TileType.STEEL);
   placeBlock(gridSize - 9, gridSize - 10, TileType.STEEL);
 
-  // Center Chamber with Foliage Ambush & Ice Center
-  b.placeCell(mid - 1, mid - 1, TileType.ICE);
-  b.placeCell(mid - 1, mid, TileType.ICE);
-  b.placeCell(mid, mid - 1, TileType.ICE);
-  b.placeCell(mid, mid, TileType.ICE);
+  // Center Vault Chamber: Solid Steel Core + Brick Enclosure
+  placeBlock(mid - 1, mid - 1, TileType.STEEL);
+  b.placeCell(mid - 1, mid - 2, TileType.BRICK);
+  b.placeCell(mid, mid - 2, TileType.BRICK);
+  b.placeCell(mid - 1, mid + 1, TileType.BRICK);
+  b.placeCell(mid, mid + 1, TileType.BRICK);
 
+  // Inner baffle gates that eliminate straight-line sniper trajectories
+  placeBlock(5, mid - 1, TileType.BRICK);
+  placeBlock(gridSize - 7, mid - 1, TileType.BRICK);
+
+  // Ambush foliage pockets
   placeBlock(mid - 3, mid - 1, TileType.TREES);
   placeBlock(mid + 2, mid - 1, TileType.TREES);
 
@@ -491,37 +563,50 @@ export function createGreatLabyrinth(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 7: Muddy Badlands (وادي الوحل والخنادق)
-// Quagmire Canyons (42% Speed) + Dry High-Ground Mesas + Steel Watchtowers
+// STAGE 7: Badlands Quagmire & Mesas (وادي الأخاديد والهضاب الصخرية)
+// Quagmire Canyons (42% Speed) + Dry High-Ground Mesas + Thunder Mesa Citadel
 // ---------------------------------------------------------------------------
 export function createMuddyBadlands(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
   const { mid, placeBlock, placeVLine } = b;
 
-  // 1. Three deep vertical Mud Canyons (crawling 42% speed)
+  // 1. Vertical Mud Canyons (crawling 42% speed)
   const c1 = Math.floor(gridSize * 0.22);
   const c2 = mid - 1;
   const c3 = Math.floor(gridSize * 0.72);
 
   placeVLine(3, gridSize - 5, c1, TileType.MUD);
   placeVLine(3, gridSize - 5, c3, TileType.MUD);
-  // Center mud canyon
   placeVLine(4, gridSize - 6, c2, TileType.MUD);
 
-  // 2. High-Ground Brick Mesas (Fortified high dry ridges)
+  // 2. High-Ground Thunder Mesa Citadel in the center of the canyon
+  placeBlock(mid - 1, mid - 1, TileType.STEEL);
+  b.placeCell(mid - 2, mid - 1, TileType.BRICK);
+  b.placeCell(mid - 2, mid, TileType.BRICK);
+  b.placeCell(mid + 1, mid - 1, TileType.BRICK);
+  b.placeCell(mid + 1, mid, TileType.BRICK);
+  b.placeCell(mid - 1, mid - 2, TileType.BRICK);
+  b.placeCell(mid, mid - 2, TileType.BRICK);
+  b.placeCell(mid - 1, mid + 1, TileType.BRICK);
+  b.placeCell(mid, mid + 1, TileType.BRICK);
+
+  // Rock pillars breaking up the mud canyon
+  placeBlock(5, mid - 1, TileType.BRICK);
+  placeBlock(gridSize - 7, mid - 1, TileType.BRICK);
+
+  // 3. High-Ground Brick Mesas (Fortified high dry ridges with ample demolition)
   placeVLine(5, 11, c1 - 3, TileType.BRICK);
   placeVLine(14, gridSize - 7, c1 - 3, TileType.BRICK);
-
   placeVLine(5, 11, c3 + 3, TileType.BRICK);
   placeVLine(14, gridSize - 7, c3 + 3, TileType.BRICK);
 
-  // 3. Steel Watchtower Pillars on high ground
+  // 4. Steel Watchtower Pillars on high ground
   placeBlock(8, c1 - 3, TileType.STEEL);
   placeBlock(17, c1 - 3, TileType.STEEL);
   placeBlock(8, c3 + 3, TileType.STEEL);
   placeBlock(17, c3 + 3, TileType.STEEL);
 
-  // 4. Outer border Ice washouts (slick escape runways)
+  // 5. Outer border Ice washouts (slick escape runways)
   placeVLine(4, gridSize - 5, 0, TileType.ICE);
   placeVLine(4, gridSize - 5, gridSize - 2, TileType.ICE);
 
@@ -533,8 +618,8 @@ export function createMuddyBadlands(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 8: Urban Gridlock (مدينة الحرب الحضرية)
-// City Street Grid + 3x3 Blocks + Asphalt Ice Avenues + Central Park Fountain
+// STAGE 8: Metropolis Warzone (مدينة الحرب الحضرية الكبرى)
+// Street Grid + 4 Massive Destructible Skyscraper Complexes + City Hall Monument
 // ---------------------------------------------------------------------------
 export function createUrbanGridlock(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
@@ -549,24 +634,34 @@ export function createUrbanGridlock(gridSize: number = 26): number[][] {
   placeVLine(0, gridSize - 1, street1, TileType.ICE);
   placeVLine(0, gridSize - 1, street2, TileType.ICE);
 
-  // City Building Blocks (Brick buildings with steel vault corners)
+  // City Building Blocks (Brick buildings with steel vault cores for demolition joy)
   const buildBlock = (topR: number, leftC: number, w: number, h: number) => {
     placeRect(topR, topR + h - 1, leftC, leftC + w - 1, TileType.BRICK);
     placeBlock(topR, leftC, TileType.STEEL);
   };
 
-  // Top-Left Block
   buildBlock(4, 2, street1 - 3, street1 - 5);
-  // Top-Right Block
   buildBlock(4, street2 + 2, gridSize - street2 - 4, street1 - 5);
-  // Bottom-Left Block
   buildBlock(street2 + 2, 2, street1 - 3, gridSize - street2 - 6);
-  // Bottom-Right Block
   buildBlock(street2 + 2, street2 + 2, gridSize - street2 - 4, gridSize - street2 - 6);
 
-  // Central City Park Plaza (Water fountain in center + tree park surrounding)
+  // Central City Park Plaza (Tree groves surrounding solid civic monument)
   placeRect(street1 + 2, street2 - 2, street1 + 2, street2 - 2, TileType.TREES);
-  placeBlock(mid - 1, mid - 1, TileType.WATER);
+
+  // City Hall Monument in the center
+  placeBlock(mid - 1, mid - 1, TileType.STEEL);
+  b.placeCell(mid - 2, mid - 1, TileType.BRICK);
+  b.placeCell(mid - 2, mid, TileType.BRICK);
+  b.placeCell(mid + 1, mid - 1, TileType.BRICK);
+  b.placeCell(mid + 1, mid, TileType.BRICK);
+  b.placeCell(mid - 1, mid - 2, TileType.BRICK);
+  b.placeCell(mid, mid - 2, TileType.BRICK);
+  b.placeCell(mid - 1, mid + 1, TileType.BRICK);
+  b.placeCell(mid, mid + 1, TileType.BRICK);
+
+  // Reinforced Park Gates
+  placeBlock(street1 + 2, mid - 1, TileType.BRICK);
+  placeBlock(street2 - 3, mid - 1, TileType.BRICK);
 
   // Mud on side alleys (construction zones)
   placeBlock(street1 - 1, 0, TileType.MUD);
@@ -576,8 +671,8 @@ export function createUrbanGridlock(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 9: Bunker Complex (مجمع المخابئ العسكرية)
-// Underground Bastion + 4 Cardinal Steel Pillboxes + Water Security Moats
+// STAGE 9: Deep Bunker Complex (مجمع المخابئ والأنفاق العسكرية)
+// Underground Bastion + 4 Cardinal Steel Pillboxes + Sealed Brick Blast Curtains
 // ---------------------------------------------------------------------------
 export function createBunkerComplex(gridSize: number = 26): number[][] {
   const b = createBuilder(gridSize);
@@ -589,13 +684,17 @@ export function createBunkerComplex(gridSize: number = 26): number[][] {
   placeBlock(mid - 1, mid - 6, TileType.STEEL); // West Pillbox
   placeBlock(mid - 1, mid + 4, TileType.STEEL); // East Pillbox
 
-  // Water Security Moats surrounding Pillboxes
+  // Solid connecting blast walls across columns mid-2 and mid+1 (sealing the sniper channel)
+  placeVLine(mid - 4, mid + 3, mid - 2, TileType.BRICK);
+  placeVLine(mid - 4, mid + 3, mid + 1, TileType.BRICK);
+
+  // Water Security Moats flanking Pillboxes
   placeVLine(mid - 5, mid + 3, mid - 4, TileType.WATER);
   placeVLine(mid - 5, mid + 3, mid + 3, TileType.WATER);
   placeHLine(mid - 4, mid - 3, mid + 2, TileType.WATER);
   placeHLine(mid + 3, mid - 3, mid + 2, TileType.WATER);
 
-  // 2. Thick Brick Blast Walls
+  // 2. Thick Brick Outer Armor Walls (Rich demolition opportunities)
   placeHLine(5, 5, mid - 4, TileType.BRICK);
   placeHLine(5, mid + 3, gridSize - 6, TileType.BRICK);
   placeHLine(gridSize - 7, 5, mid - 4, TileType.BRICK);
@@ -617,7 +716,7 @@ export function createBunkerComplex(gridSize: number = 26): number[][] {
 }
 
 // ---------------------------------------------------------------------------
-// STAGE 10: Death Valley Crater / The Caldera (فوهة بركان الموت)
+// STAGE 10: The Obsidian Caldera (فوهة البركان الأسطورية)
 // Concentric Volcanic Caldera + Ash Swamps + Elevated Central Steel Throne
 // ---------------------------------------------------------------------------
 export function createDeathValley(gridSize: number = 26): number[][] {
@@ -631,18 +730,14 @@ export function createDeathValley(gridSize: number = 26): number[][] {
   placeVLine(3, gridSize - 5, 3, TileType.MUD);
   placeVLine(3, gridSize - 5, gridSize - 5, TileType.MUD);
 
-  // 2. Middle Ring: Segmented Brick Ramparts with 4 Diagonal Entry Avenues
+  // 2. Middle Ring: Segmented Obsidian Brick Ramparts with 4 Diagonal Entry Avenues
   const rOffset = Math.floor(gridSize * 0.28);
-  // Top segment
   placeHLine(mid - rOffset, mid - rOffset + 2, mid + rOffset - 3, TileType.BRICK);
-  // Bottom segment
   placeHLine(mid + rOffset - 1, mid - rOffset + 2, mid + rOffset - 3, TileType.BRICK);
-  // Left segment
   placeVLine(mid - rOffset + 2, mid + rOffset - 3, mid - rOffset, TileType.BRICK);
-  // Right segment
   placeVLine(mid - rOffset + 2, mid + rOffset - 3, mid + rOffset - 1, TileType.BRICK);
 
-  // 3. Inner Circular Ring Moat of Water
+  // 3. Inner Circular Ring Moat of Lava / Water
   placeHLine(mid - 3, mid - 3, mid + 2, TileType.WATER);
   placeHLine(mid + 2, mid - 3, mid + 2, TileType.WATER);
   placeVLine(mid - 3, mid + 2, mid - 3, TileType.WATER);

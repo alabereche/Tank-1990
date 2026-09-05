@@ -444,6 +444,11 @@ export class GameEngine {
         if (this.grid[1]?.[bCol - 1]) this.grid[1][bCol - 1] = { type: TileType.BRICK, damageMask: 15 };
         if (this.grid[0]?.[bCol + 2]) this.grid[0][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
         if (this.grid[1]?.[bCol + 2]) this.grid[1][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
+        // North Advance Deflector (row 4)
+        if (this.grid[4]?.[bCol]) this.grid[4][bCol] = { type: TileType.STEEL, damageMask: 15 };
+        if (this.grid[4]?.[bCol + 1]) this.grid[4][bCol + 1] = { type: TileType.STEEL, damageMask: 15 };
+        if (this.grid[4]?.[bCol - 1]) this.grid[4][bCol - 1] = { type: TileType.BRICK, damageMask: 15 };
+        if (this.grid[4]?.[bCol + 2]) this.grid[4][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
         this.clearBaseArea('south');
       } else {
         // South eagle lives in the map template — strip the north side only
@@ -475,6 +480,11 @@ export class GameEngine {
       if (this.grid[1]?.[bCol - 1]) this.grid[1][bCol - 1] = { type: TileType.BRICK, damageMask: 15 };
       if (this.grid[0]?.[bCol + 2]) this.grid[0][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
       if (this.grid[1]?.[bCol + 2]) this.grid[1][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
+      // North Advance Deflector (row 4)
+      if (this.grid[4]?.[bCol]) this.grid[4][bCol] = { type: TileType.STEEL, damageMask: 15 };
+      if (this.grid[4]?.[bCol + 1]) this.grid[4][bCol + 1] = { type: TileType.STEEL, damageMask: 15 };
+      if (this.grid[4]?.[bCol - 1]) this.grid[4][bCol - 1] = { type: TileType.BRICK, damageMask: 15 };
+      if (this.grid[4]?.[bCol + 2]) this.grid[4][bCol + 2] = { type: TileType.BRICK, damageMask: 15 };
     }
   }
 
