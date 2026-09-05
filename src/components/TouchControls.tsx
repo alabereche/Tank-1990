@@ -19,18 +19,21 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
   size = 140,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const knobRef = useRef<HTMLDivElement | null>(null);
   const touchIdRef = useRef<number | null>(null);
-  const [knobPos, setKnobPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const originRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isDraggingRef = useRef<boolean>(false);
   const [activeDir, setActiveDir] = useState<'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | null>(null);
   const activeDirRef = useRef<'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | null>(null);
 
   const radius = size / 2;
-  const maxKnobDist = radius - 20; // Maximum travel distance for knob
+  const maxKnobDist = radius - 16; // Maximum travel distance for knob
+  const deadzone = 3; // Ultra-sensitive: only 3px displacement required to activate movement
 
   const triggerHaptic = useCallback(() => {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
-        navigator.vibrate(10);
+        navigator.vibrate(5);
       } catch {
         // Ignore haptic errors
       }
@@ -39,25 +42,37 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
 
   const updateJoystick = useCallback(
     (clientX: number, clientY: number) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
+      if (!isDraggingRef.current || !containerRef.current) return;
 
-      const dx = clientX - centerX;
-      const dy = clientY - centerY;
+      let dx = clientX - originRef.current.x;
+      let dy = clientY - originRef.current.y;
       const dist = Math.hypot(dx, dy);
 
-      // Clamp knob movement to max radius
-      const clampedDist = Math.min(dist, maxKnobDist);
+      // Follow-through dynamic anchor: if dragging past maxKnobDist, slide origin along with finger
+      // This ensures reversing direction or turning requires only 3px of thumb motion!
+      if (dist > maxKnobDist) {
+        const excess = dist - maxKnobDist;
+        const angle = Math.atan2(dy, dx);
+        originRef.current.x += Math.cos(angle) * excess;
+        originRef.current.y += Math.sin(angle) * excess;
+        dx = clientX - originRef.current.x;
+        dy = clientY - originRef.current.y;
+      }
+
+      // Visual knob positioning clamped to max travel
+      const currentDist = Math.hypot(dx, dy);
+      const clampedDist = Math.min(currentDist, maxKnobDist);
       const angle = Math.atan2(dy, dx);
       const knobX = Math.cos(angle) * clampedDist;
       const knobY = Math.sin(angle) * clampedDist;
-      setKnobPos({ x: knobX, y: knobY });
 
-      // Deadzone threshold (12px)
-      const deadzone = 12;
-      if (dist < deadzone) {
+      // Direct GPU hardware transform on the knob: 0ms delay, zero React re-renders while steering
+      if (knobRef.current) {
+        knobRef.current.style.transform = `translate3d(${knobX}px, ${knobY}px, 0)`;
+      }
+
+      // Deadzone check (3px threshold)
+      if (currentDist < deadzone) {
         if (activeDirRef.current !== null) {
           activeDirRef.current = null;
           setActiveDir(null);
@@ -66,20 +81,13 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         return;
       }
 
-      // Convert angle to degrees [0, 360)
-      let deg = (angle * 180) / Math.PI;
-      if (deg < 0) deg += 360;
-
-      // 4 Cardinal Directions:
-      // Right: 315° - 45°
-      // Down:  45°  - 135°
-      // Left:  135° - 225°
-      // Up:    225° - 315°
-      let newDir: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT' = 'RIGHT';
-      if (deg >= 45 && deg < 135) newDir = 'DOWN';
-      else if (deg >= 135 && deg < 225) newDir = 'LEFT';
-      else if (deg >= 225 && deg < 315) newDir = 'UP';
-      else newDir = 'RIGHT';
+      // Fast dominant axis detection with 4-way orthogonal steering
+      let newDir: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
+      if (Math.abs(dx) > Math.abs(dy)) {
+        newDir = dx > 0 ? 'RIGHT' : 'LEFT';
+      } else {
+        newDir = dy > 0 ? 'DOWN' : 'UP';
+      }
 
       if (activeDirRef.current !== newDir) {
         activeDirRef.current = newDir;
@@ -93,81 +101,133 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         });
       }
     },
-    [maxKnobDist, onDirectionChange, triggerHaptic]
+    [deadzone, maxKnobDist, onDirectionChange, triggerHaptic]
+  );
+
+  const startJoystick = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      // Distance from pad's physical center
+      const distFromCenter = Math.hypot(clientX - centerX, clientY - centerY);
+
+      // If user tapped outside the inner core (intentional outer compass tap), anchor to center
+      // If user placed thumb near center, anchor to touchdown point so all 4 directions have 100% equal instant sensitivity
+      if (distFromCenter > 22) {
+        originRef.current = { x: centerX, y: centerY };
+      } else {
+        originRef.current = { x: clientX, y: clientY };
+      }
+
+      isDraggingRef.current = true;
+      if (knobRef.current) {
+        knobRef.current.style.transition = 'none';
+      }
+
+      // Process initial position immediately
+      updateJoystick(clientX, clientY);
+    },
+    [updateJoystick]
   );
 
   const resetJoystick = useCallback(() => {
     touchIdRef.current = null;
-    setKnobPos({ x: 0, y: 0 });
-    activeDirRef.current = null;
-    setActiveDir(null);
-    onDirectionChange({ up: false, down: false, left: false, right: false });
+    isDraggingRef.current = false;
+    if (knobRef.current) {
+      knobRef.current.style.transition = 'transform 80ms cubic-bezier(0.1, 0.9, 0.2, 1)';
+      knobRef.current.style.transform = 'translate3d(0px, 0px, 0)';
+    }
+    if (activeDirRef.current !== null) {
+      activeDirRef.current = null;
+      setActiveDir(null);
+      onDirectionChange({ up: false, down: false, left: false, right: false });
+    }
   }, [onDirectionChange]);
 
-  // Touch event handlers
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (touchIdRef.current !== null) return;
-    const touch = e.changedTouches[0];
-    touchIdRef.current = touch.identifier;
-    updateJoystick(touch.clientX, touch.clientY);
-  };
+  // Native non-passive touch and mouse listeners with window tracking
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (touchIdRef.current === null) return;
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      const touch = e.changedTouches[i];
-      if (touch.identifier === touchIdRef.current) {
-        updateJoystick(touch.clientX, touch.clientY);
-        break;
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      if (touchIdRef.current !== null) return;
+      const touch = e.changedTouches[0];
+      touchIdRef.current = touch.identifier;
+      startJoystick(touch.clientX, touch.clientY);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (touchIdRef.current === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        if (touch.identifier === touchIdRef.current) {
+          updateJoystick(touch.clientX, touch.clientY);
+          break;
+        }
       }
-    }
-  };
+    };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (touchIdRef.current === null) return;
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === touchIdRef.current) {
-        resetJoystick();
-        break;
+    const onTouchEnd = (e: TouchEvent) => {
+      if (touchIdRef.current === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === touchIdRef.current) {
+          resetJoystick();
+          break;
+        }
       }
-    }
-  };
+    };
 
-  // Mouse event handlers for desktop testing
-  const isMouseDownRef = useRef(false);
-  const handleMouseDown = (e: React.MouseEvent) => {
-    isMouseDownRef.current = true;
-    updateJoystick(e.clientX, e.clientY);
-  };
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isMouseDownRef.current) {
-      updateJoystick(e.clientX, e.clientY);
-    }
-  };
-  const handleMouseUp = () => {
-    if (isMouseDownRef.current) {
-      isMouseDownRef.current = false;
+    const onTouchCancel = (e: TouchEvent) => {
+      if (touchIdRef.current === null) return;
       resetJoystick();
-    }
-  };
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      startJoystick(e.clientX, e.clientY);
+
+      const onMouseMove = (ev: MouseEvent) => {
+        ev.preventDefault();
+        updateJoystick(ev.clientX, ev.clientY);
+      };
+      const onMouseUp = (ev: MouseEvent) => {
+        ev.preventDefault();
+        resetJoystick();
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd, { passive: false });
+    window.addEventListener('touchcancel', onTouchCancel, { passive: false });
+    el.addEventListener('mousedown', onMouseDown);
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchCancel);
+      el.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [startJoystick, updateJoystick, resetJoystick]);
 
   return (
     <div
       ref={containerRef}
       id="virtual-joystick-pad"
-      className="relative flex items-center justify-center select-none touch-none"
+      className="relative flex items-center justify-center select-none touch-none cursor-pointer"
       style={{ width: `${size}px`, height: `${size}px` }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={resetJoystick}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
     >
       {/* Outer Chassis Base Circle */}
       <div
@@ -201,10 +261,11 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
 
       {/* Floating Joystick Thumbstick Knob */}
       <div
+        ref={knobRef}
         id="joystick-thumbstick-knob"
-        className="absolute w-14 h-14 rounded-full bg-gradient-to-b from-[#4a4a55] via-[#2f2f38] to-[#1e1e24] border-2 border-zinc-400/80 shadow-[0_6px_14px_rgba(0,0,0,0.8),inset_0_2px_4px_rgba(255,255,255,0.3)] flex items-center justify-center pointer-events-none transition-transform duration-75"
+        className="absolute w-14 h-14 rounded-full bg-gradient-to-b from-[#4a4a55] via-[#2f2f38] to-[#1e1e24] border-2 border-zinc-400/80 shadow-[0_6px_14px_rgba(0,0,0,0.8),inset_0_2px_4px_rgba(255,255,255,0.3)] flex items-center justify-center pointer-events-none"
         style={{
-          transform: `translate3d(${knobPos.x}px, ${knobPos.y}px, 0)`,
+          transform: 'translate3d(0px, 0px, 0)',
         }}
       >
         {/* Tactile thumb indent / inner groove */}

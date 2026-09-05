@@ -779,7 +779,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // per-frame input composer (direct engine writes would be stomped).
   const handleTouchInput = (input: Partial<InputState>) => {
     soundManager.unlockAudio();
-    setTouchActive(true);
+    if (!touchActive) setTouchActive(true);
     touchInput.current = { ...touchInput.current, ...input };
   };
 
