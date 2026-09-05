@@ -424,6 +424,14 @@ export default function App() {
           settings={settings}
           onUpdateSettings={handleUpdateSettings}
           onClose={() => setIsSettingsOpen(false)}
+          onExitMatch={
+            currentScreen === 'game'
+              ? () => {
+                  setIsSettingsOpen(false);
+                  handleReturnToMenu();
+                }
+              : undefined
+          }
         />
       )}
     </div>

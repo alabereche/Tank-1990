@@ -44,6 +44,7 @@ import {
   VolumeX,
   Smartphone,
   RotateCcw,
+  LogOut,
 } from 'lucide-react';
 
 interface GameCanvasProps {
@@ -852,7 +853,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           </div>
 
           {/* Header Action Controls */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={toggleMute}
               className="p-1 text-zinc-300 hover:text-white"
@@ -880,6 +881,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 <Settings className="w-3.5 h-3.5" />
               </button>
             )}
+            <button
+              onClick={handleQuitMatch}
+              className="px-2 py-0.5 bg-red-900/90 hover:bg-red-800 border border-red-500 rounded text-[8px] text-white active:scale-95 flex items-center gap-1 font-pixel shadow cursor-pointer"
+              title="Exit Match"
+            >
+              <LogOut className="w-2.5 h-2.5" />
+              <span>EXIT</span>
+            </button>
             <button
               onClick={handleToggleFullscreen}
               className="p-1 text-zinc-300 hover:text-white"
