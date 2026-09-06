@@ -16,12 +16,23 @@ import { StageMap } from './src/types';
 // Optional direct-UDP transport: players connect straight to this server via
 // WebRTC DataChannels (loss-tolerant snapshots, no TCP head-of-line stalls).
 // Missing module or unsupported platform silently falls back to WebSocket.
-const wrtcModule = await import('@roamhq/wrtc').catch((e) => {
-  console.warn('[WRTC] native module failed to load (WebSocket relay only):', e?.message ?? e);
-  return null;
-});
-// Native CJS module: the bindings live on .default after dynamic import
-const wrtc: any = (wrtcModule as any)?.default ?? wrtcModule ?? null;
+// Loaded lazily via a plain async function (NOT top-level await) so the esbuild
+// CJS bundle stays valid.
+let wrtc: any = null;
+let wrtcLoad: Promise<void> | null = null;
+async function ensureWrtc(): Promise<void> {
+  if (wrtc || wrtcLoad) return;
+  wrtcLoad = (async () => {
+    try {
+      const m: any = await import('@roamhq/wrtc');
+      wrtc = m.default ?? m;
+      console.log('[WRTC] native module loaded — P2P DataChannels enabled');
+    } catch (e: any) {
+      console.warn('[WRTC] native module unavailable (WebSocket relay only):', e?.message ?? e);
+    }
+  })();
+  await wrtcLoad;
+}
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -588,6 +599,7 @@ wss.on('connection', (ws: WebSocket) => {
 
 // Vite Middleware & Static Serving setup
 async function startServer() {
+  await ensureWrtc();
   const isProduction =
     process.env.NODE_ENV === 'production' ||
     (typeof __filename !== 'undefined' && __filename.includes('dist'));
