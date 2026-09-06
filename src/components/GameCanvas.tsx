@@ -523,7 +523,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   useEffect(() => {
     let animId: number;
-    const inputLoop = () => {
+    let lastInputTime = 0;
+    const inputLoop = (time: number) => {
+      animId = requestAnimationFrame(inputLoop);
+
+      // Clamp input sampling to 60Hz (~16ms) so 90Hz/120Hz displays do not over-generate sequence numbers
+      if (time && lastInputTime && time - lastInputTime < 14) {
+        return;
+      }
+      lastInputTime = time;
+
       const engine = engineRef.current;
 
       // If Settings Modal is open, match has ended, or game is paused, completely freeze player inputs so tanks don't move
@@ -547,7 +556,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         engine?.updateInput(idleInput);
         engine?.setP2Input(idleInput);
         keysDown.current = {};
-        animId = requestAnimationFrame(inputLoop);
         return;
       }
 
@@ -645,8 +653,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           // Always record local prediction every single frame to prevent reconciliation drift
           const seq = engine?.recordAndSendInput(mySlot, cleanInput);
 
-          // Transmit on state transition (0ms immediate) or 30Hz active heartbeat (% 2) or idle heartbeat (% 10)
-          const shouldSend = hasChanged || (isActive && guestHeartbeatCounter.current % 2 === 0) || (guestHeartbeatCounter.current % 10 === 0);
+          // Transmit immediately on state transition (0ms), every 60Hz tick while active (zero dropped movement), or idle heartbeat (% 15)
+          const shouldSend = hasChanged || isActive || guestHeartbeatCounter.current % 15 === 0;
           if (shouldSend) {
             lastSentInput.current = sig;
             if (seq !== undefined) {
@@ -708,8 +716,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           setTacticalInvP2(undefined);
         }
       }
-
-      animId = requestAnimationFrame(inputLoop);
     };
     animId = requestAnimationFrame(inputLoop);
     return () => cancelAnimationFrame(animId);

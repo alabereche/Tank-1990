@@ -129,4 +129,43 @@ describe('Battle City 1990 - Authoritative Dedicated Server Suite', () => {
 
     engine.stopLoop();
   });
+
+  it('3. Server Input Queue catches up burst inputs without dropping frames or desyncing ack sequence', () => {
+    const stageMap = getStageMapForPresetAndStage(1, 'classic', 'versus');
+    const engine = new GameEngine(null, stageMap, () => {});
+    engine.setMultiplayerMode('versus', 'host');
+    engine.localPlayerSlot = 0;
+    engine.startStage(1, stageMap);
+
+    // Fast-forward spawning phase
+    for (let t = 0; t < 65; t++) engine.tick();
+    (engine as any).gameState = GameState.PLAYING;
+
+    const p2 = engine.playerTanks.get(2)!;
+    assert.ok(p2, 'Player 2 tank should exist');
+    const startX = p2.x;
+
+    const leftInput: InputState = {
+      up: false,
+      down: false,
+      left: true,
+      right: false,
+      fire: false,
+      pause: false,
+    };
+
+    // Client sends two sequential inputs that arrive in the same server tick window
+    engine.enqueuePlayerInput(2, leftInput, 101);
+    engine.enqueuePlayerInput(2, leftInput, 102);
+
+    // Server ticks once
+    engine.tick();
+
+    // The server should have simulated both queued steps
+    const snap = engine.getNetworkSnapshot();
+    assert.equal(snap.ackSeqs[2], 102, 'Server should acknowledge the latest processed input sequence');
+    assert.ok(p2.x < startX - 1.5, `Tank should have advanced leftward by multiple steps, start: ${startX}, current: ${p2.x}`);
+
+    engine.stopLoop();
+  });
 });

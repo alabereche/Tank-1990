@@ -218,9 +218,7 @@ export class MultiplayerClient {
       type: 'sync_state',
       snapshot: state,
     };
-    if (!this.webrtc.sendDirect(payload)) {
-      this.send(payload);
-    }
+    this.send(payload);
   }
 
   public sendInput(input: InputState, slot?: number, seq?: number) {
@@ -230,9 +228,7 @@ export class MultiplayerClient {
       slot: slot ?? this.slot,
       seq,
     };
-    if (!this.webrtc.sendDirect(payload)) {
-      this.send(payload);
-    }
+    this.send(payload);
   }
 
   public sendGameEvent(event: Record<string, unknown>) {
@@ -240,9 +236,7 @@ export class MultiplayerClient {
       type: 'game_event',
       ...event,
     };
-    if (!this.webrtc.sendDirect(payload)) {
-      this.send(payload);
-    }
+    this.send(payload);
   }
 
   public sendTaunt(text: string, sender?: 'P1' | 'P2' | string) {

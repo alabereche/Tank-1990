@@ -166,6 +166,10 @@ export class GameEngine {
   private hostLastProcessedSeq: Map<number, number> = new Map();
   private hostSlotInputSeq: Map<number, number> = new Map();
   private lastSentSeq: number = 0;
+  private slotInputQueues: Map<number, { input: InputState; seq: number }[]> = new Map();
+  private lastLoopTime: number = 0;
+  private timeAccumulator: number = 0;
+  private readonly TICK_DELTA: number = 1000 / 60;
 
   // Versus round flow timers (public ms fields so tests can shorten them)
   public roundIntroMs = 2200;
@@ -413,6 +417,21 @@ export class GameEngine {
     }
     this.setPlayerSlotInput(slot, input, seq);
     return seq;
+  }
+
+  public enqueuePlayerInput(slot: number, input: InputState, seq?: number) {
+    if (seq !== undefined) {
+      let queue = this.slotInputQueues.get(slot);
+      if (!queue) {
+        queue = [];
+        this.slotInputQueues.set(slot, queue);
+      }
+      if (queue.length < 30) {
+        queue.push({ input: { ...input }, seq });
+      }
+    } else {
+      this.setPlayerSlotInput(slot, input);
+    }
   }
 
   public setPlayerSlotInput(slot: number, input: Partial<InputState>, seq?: number) {
@@ -1197,6 +1216,8 @@ export class GameEngine {
     if (this.isRunning) return;
     this.isRunning = true;
     this.lastTimestamp = performance.now();
+    this.lastLoopTime = 0;
+    this.timeAccumulator = 0;
     if (this.localRole === 'host' && typeof Worker !== 'undefined') {
       this.tickWorker = createTickWorker();
       if (this.tickWorker) {
@@ -1224,6 +1245,8 @@ export class GameEngine {
 
   public stopLoop() {
     this.isRunning = false;
+    this.lastLoopTime = 0;
+    this.timeAccumulator = 0;
     this.clearRoundTimer();
     soundManager.stopEngineSound();
     for (const p of this.playerTanks.values()) {
@@ -1257,6 +1280,12 @@ export class GameEngine {
   private loop = (timestamp: number) => {
     if (!this.isRunning) return;
 
+    if (!this.lastLoopTime) {
+      this.lastLoopTime = timestamp;
+    }
+    const elapsed = Math.min(100, Math.max(0, timestamp - this.lastLoopTime));
+    this.lastLoopTime = timestamp;
+
     if (
       this.localRole !== 'host' &&
       !this.isPaused &&
@@ -1264,10 +1293,18 @@ export class GameEngine {
         this.gameState === GameState.ROUND_END ||
         this.gameState === GameState.ROUND_INTRO)
     ) {
-      this.tickCount++;
-      this.update();
+      this.timeAccumulator += elapsed;
+      if (this.timeAccumulator > 100) {
+        this.timeAccumulator = 100;
+      }
+      while (this.timeAccumulator >= this.TICK_DELTA) {
+        this.tickCount++;
+        this.update();
+        this.timeAccumulator -= this.TICK_DELTA;
+      }
     } else if (this.gameState !== GameState.PLAYING) {
       soundManager.stopEngineSound();
+      this.timeAccumulator = 0;
     }
 
     this.render();
@@ -1703,11 +1740,9 @@ export class GameEngine {
       tank.moving = replayTank.moving;
       tank.slideFrames = replayTank.slideFrames;
     } else if (drift > 3.0) {
-      // Soft drift: smooth decay without jarring visual snaps
+      // Soft drift: smooth decay without jarring visual snaps or direction flicker
       tank.x += dx * 0.25;
       tank.y += dy * 0.25;
-      tank.direction = replayTank.direction;
-      tank.moving = replayTank.moving;
     }
     // drift <= 3.0: within sub-pixel corridor tolerance, no correction needed!
   }
@@ -1860,31 +1895,50 @@ export class GameEngine {
       tank.shootCooldown--;
     }
 
-    const slotInput = this.playerInputs.get(slot);
-    const input =
-      slot === 1
-        ? {
-            up: Boolean(this.currentInput.up || slotInput?.up),
-            down: Boolean(this.currentInput.down || slotInput?.down),
-            left: Boolean(this.currentInput.left || slotInput?.left),
-            right: Boolean(this.currentInput.right || slotInput?.right),
-            fire: Boolean(this.currentInput.fire || slotInput?.fire),
-            pause: Boolean(this.currentInput.pause || slotInput?.pause),
-            smoke: Boolean(this.currentInput.smoke || slotInput?.smoke),
-            grenade: Boolean(this.currentInput.grenade || slotInput?.grenade),
-            shield: Boolean(this.currentInput.shield || slotInput?.shield),
-          }
-        : (slotInput || {
-            up: false,
-            down: false,
-            left: false,
-            right: false,
-            fire: false,
-            pause: false,
-            smoke: false,
-            grenade: false,
-            shield: false,
-          });
+    // If queued inputs exist from network, drain and simulate up to 3 frames to smooth jitter
+    const queue = this.slotInputQueues.get(slot);
+    let input: InputState;
+    if (queue && queue.length > 0) {
+      const count = Math.min(queue.length, 3);
+      for (let i = 0; i < count - 1; i++) {
+        const intermediate = queue.shift()!;
+        this.playerInputs.set(slot, intermediate.input);
+        this.hostLastProcessedSeq.set(slot, intermediate.seq);
+        this.hostSlotInputSeq.set(slot, intermediate.seq);
+        this.simulatePlayerMovement(tank, intermediate.input);
+      }
+      const latest = queue.shift()!;
+      this.playerInputs.set(slot, latest.input);
+      this.hostLastProcessedSeq.set(slot, latest.seq);
+      this.hostSlotInputSeq.set(slot, latest.seq);
+      input = latest.input;
+    } else {
+      const slotInput = this.playerInputs.get(slot);
+      input =
+        slot === 1 && this.localRole === 'local'
+          ? {
+              up: Boolean(this.currentInput.up || slotInput?.up),
+              down: Boolean(this.currentInput.down || slotInput?.down),
+              left: Boolean(this.currentInput.left || slotInput?.left),
+              right: Boolean(this.currentInput.right || slotInput?.right),
+              fire: Boolean(this.currentInput.fire || slotInput?.fire),
+              pause: Boolean(this.currentInput.pause || slotInput?.pause),
+              smoke: Boolean(this.currentInput.smoke || slotInput?.smoke),
+              grenade: Boolean(this.currentInput.grenade || slotInput?.grenade),
+              shield: Boolean(this.currentInput.shield || slotInput?.shield),
+            }
+          : (slotInput || {
+              up: false,
+              down: false,
+              left: false,
+              right: false,
+              fire: false,
+              pause: false,
+              smoke: false,
+              grenade: false,
+              shield: false,
+            });
+    }
 
     const prevFire = this.prevPlayerFire.get(slot) || false;
     const fireRequested = input.fire;

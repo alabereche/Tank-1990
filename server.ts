@@ -56,6 +56,7 @@ interface Room {
   lastActivity: number;
   gameEngine?: GameEngine;
   tickInterval?: NodeJS.Timeout;
+  startTimeout?: NodeJS.Timeout;
 }
 
 const rooms = new Map<string, Room>();
@@ -86,6 +87,10 @@ function safeSend(ws: WebSocket, message: Record<string, unknown>) {
 
 // Stop and clean up any running game engine for a room
 function stopRoomGame(room: Room) {
+  if (room.startTimeout) {
+    clearTimeout(room.startTimeout);
+    room.startTimeout = undefined;
+  }
   if (room.tickInterval) {
     clearInterval(room.tickInterval);
     room.tickInterval = undefined;
@@ -344,17 +349,25 @@ wss.on('connection', (ws: WebSocket) => {
         };
         room.clients.forEach((c) => safeSend(c.ws, startPayload));
 
-        // Start Dedicated Server GameEngine
-        startRoomGame(room);
+        // Delay starting authoritative server simulation to perfectly align with 3-second lobby countdown
+        if (room.startTimeout) {
+          clearTimeout(room.startTimeout);
+        }
+        room.startTimeout = setTimeout(() => {
+          room.startTimeout = undefined;
+          if (room.status === 'starting' && room.clients.length > 0) {
+            startRoomGame(room);
+          }
+        }, 3000);
         return;
       }
 
       // Dedicated Server Authoritative Input Channel:
-      // Client sends inputs stamped with sequence number -> Server applies to room engine
+      // Client sends inputs stamped with sequence number -> Server enqueues to room engine
       if (msg.type === 'player_input') {
         const targetSlot = typeof msg.slot === 'number' ? msg.slot : session.slot;
         if (room.gameEngine && msg.input) {
-          room.gameEngine.setPlayerSlotInput(targetSlot, msg.input, msg.seq);
+          room.gameEngine.enqueuePlayerInput(targetSlot, msg.input, msg.seq);
         }
         return;
       }
