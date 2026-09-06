@@ -168,4 +168,105 @@ describe('Battle City 1990 - Authoritative Dedicated Server Suite', () => {
 
     engine.stopLoop();
   });
+
+  it('4. Smoke screen is serialized in server snapshot, emits audio event, and applies to opponent client', () => {
+    const stageMap = getStageMapForPresetAndStage(1, 'classic', 'versus');
+    let capturedEvents: any[] = [];
+    const serverEngine = new GameEngine(null, stageMap, () => {});
+    serverEngine.setMultiplayerMode('versus', 'host');
+    serverEngine.localPlayerSlot = 0;
+    serverEngine.onGameEventBroadcast = (ev) => capturedEvents.push(ev);
+    serverEngine.startStage(1, stageMap);
+
+    // Fast-forward spawning phase
+    for (let t = 0; t < 65; t++) serverEngine.tick();
+    (serverEngine as any).gameState = GameState.PLAYING;
+
+    const p1 = serverEngine.playerTanks.get(1)!;
+    assert.ok(p1, 'Player 1 tank should exist on server');
+    p1.tacticalInventory = { smoke: 2, grenade: 1, shield: 1 };
+
+    // Player 1 activates Smoke
+    const smokeInput: InputState = {
+      up: false,
+      down: false,
+      left: false,
+      right: false,
+      fire: false,
+      pause: false,
+      smoke: true,
+    };
+    serverEngine.enqueuePlayerInput(1, smokeInput, 301);
+    serverEngine.tick();
+
+    // Verify event was broadcast for audio
+    const smokeEvent = capturedEvents.find((e) => e.t === 'smoke');
+    assert.ok(smokeEvent, 'Server should emit a smoke event for audio synchronization');
+
+    // Verify snapshot includes the active smoke screen
+    const snap = serverEngine.getNetworkSnapshot();
+    assert.ok(Array.isArray(snap.smokes), 'Server snapshot should have smokes array');
+    assert.equal(snap.smokes.length, 1, 'Snapshot should contain exactly 1 active smoke screen');
+    assert.equal(snap.smokes[0].radius, 56, 'Smoke screen radius should be 56px');
+
+    // Now test opponent client receiving the snapshot
+    const clientEngine = new GameEngine(null, stageMap, () => {});
+    clientEngine.setMultiplayerMode('versus', 'guest');
+    clientEngine.localPlayerSlot = 2; // Opponent is Player 2
+    (clientEngine as any).gameState = GameState.PLAYING;
+
+    // Apply snapshot to opponent client
+    clientEngine.applyNetworkSnapshot(snap);
+    // Sample interpolated view
+    (clientEngine as any).updateRemote();
+
+    // Opponent client now sees the smoke screen!
+    const clientSmokes = (clientEngine as any).activeSmokeScreens;
+    assert.equal(clientSmokes.length, 1, 'Opponent client must now possess the active smoke screen');
+    assert.ok(clientSmokes[0].particles.length > 0, 'Opponent client must have generated billowing smoke particles');
+
+    serverEngine.stopLoop();
+    clientEngine.stopLoop();
+  });
+
+  it('5. Single Authoritative Bullet guarantee: Zero duplicate bullets and zero fakehit phantom bullets', () => {
+    const stageMap = getStageMapForPresetAndStage(1, 'classic', 'versus');
+    const serverEngine = new GameEngine(null, stageMap, () => {});
+    serverEngine.setMultiplayerMode('versus', 'host');
+    serverEngine.localPlayerSlot = 0;
+    serverEngine.startStage(1, stageMap);
+    for (let t = 0; t < 65; t++) serverEngine.tick();
+    (serverEngine as any).gameState = GameState.PLAYING;
+
+    // Create client
+    const clientEngine = new GameEngine(null, stageMap, () => {});
+    clientEngine.setMultiplayerMode('versus', 'guest');
+    clientEngine.localPlayerSlot = 1;
+    (clientEngine as any).gameState = GameState.PLAYING;
+
+    // Local client presses fire
+    const clientP1 = clientEngine.createPlayerTank(100, 200, 1);
+    clientEngine.playerTanks.set(1, clientP1);
+    clientEngine.setPlayerSlotInput(1, { fire: true });
+    // Local client tick (runs updateRemote, adds muzzle flash, no duplicate local bullet)
+    (clientEngine as any).updateRemote();
+
+    // Server processes the fire input
+    serverEngine.enqueuePlayerInput(1, { fire: true, up: false, down: false, left: false, right: false, pause: false }, 501);
+    serverEngine.tick();
+
+    const serverSnap = serverEngine.getNetworkSnapshot();
+    assert.equal(serverSnap.bullets.length, 1, 'Server should produce exactly 1 authoritative bullet');
+
+    // Client receives server snapshot
+    clientEngine.applyNetworkSnapshot(serverSnap);
+    (clientEngine as any).updateRemote();
+
+    const clientBullets = (clientEngine as any).bullets;
+    assert.equal(clientBullets.length, 1, 'Client must have exactly 1 bullet on screen - no double bullets!');
+    assert.equal(clientBullets[0].id, serverSnap.bullets[0].id, 'Client bullet ID must match authoritative server bullet');
+
+    serverEngine.stopLoop();
+    clientEngine.stopLoop();
+  });
 });

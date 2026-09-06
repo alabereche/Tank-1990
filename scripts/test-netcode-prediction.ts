@@ -51,17 +51,17 @@ describe('Battle City 1990 - Gambetta Netcode Prediction Suite', () => {
   it('1. Adaptive Jitter Buffer calculates correct latency windows', () => {
     // Ultra-low latency LAN/VPS (e.g. 10ms - 20ms ping)
     const lowPing = getAdaptiveDelay(20);
-    // oneWay = 12, jitter = 10, buffer = 12 + 10 + 33 = 55ms
-    assert.equal(lowPing, 55, 'Low ping should adapt buffer to 55ms');
+    // oneWay = 15, jitter = 12, buffer = 15 + 12 + 45 = 72ms
+    assert.equal(lowPing, 72, 'Low ping should adapt buffer to 72ms for mobile jitter safety');
 
     // Moderate internet latency (e.g. 60ms ping)
     const midPing = getAdaptiveDelay(60);
-    // oneWay = 30, jitter = 10, buffer = 30 + 10 + 33 = 73ms
-    assert.equal(midPing, 73, '60ms ping should adapt buffer to 73ms');
+    // oneWay = 30, jitter = 12, buffer = 30 + 12 + 45 = 87ms
+    assert.equal(midPing, 87, '60ms ping should adapt buffer to 87ms');
 
     // High latency / transatlantic (e.g. 250ms ping)
     const highPing = getAdaptiveDelay(250);
-    assert.equal(highPing, 125, 'High ping should clamp to maximum 125ms safety limit');
+    assert.equal(highPing, 130, 'High ping should clamp to maximum 130ms safety limit');
   });
 
   it('2. Client-Side Input Sequencing & Replay converges without backward drag', () => {
@@ -121,7 +121,7 @@ describe('Battle City 1990 - Gambetta Netcode Prediction Suite', () => {
     }
   });
 
-  it('3. Predictive bullet fires instantly at 0ms and matches Host sequence without ghosts', () => {
+  it('3. Firing triggers 0ms muzzle feedback and applies authoritative bullets with zero duplicates', () => {
     const guestEngine = createTestGuestEngine();
 
     try {
@@ -132,13 +132,12 @@ describe('Battle City 1990 - Gambetta Netcode Prediction Suite', () => {
       tank.y = 200;
       tank.direction = 'UP';
 
-      // Guest fires predictive bullet stamped with sequence 42
-      const predBullet = guestEngine.firePredictiveBullet(tank, 42);
-      assert.ok(predBullet, 'Predictive bullet should be created immediately');
-      assert.equal(predBullet.inputSeq, 42, 'Bullet must carry input sequence');
-      assert.equal(predBullet.isPredicted, true, 'Bullet is marked as predicted');
+      // Guest fires: triggers muzzle spark and sound immediately at 0ms
+      guestEngine.firePredictiveBullet(tank, 42);
+      const flashes = (guestEngine as any).muzzleFlashes;
+      assert.ok(flashes.length > 0, 'Muzzle flash should be added immediately for 0ms feedback');
 
-      // Host sends snapshot that confirms bullet 42 from Player 2, plus an enemy bullet
+      // Host sends authoritative snapshot that confirms bullet 42 from Player 2, plus an enemy bullet
       const fakeSnapshot = {
         tick: 100,
         recvAt: performance.now(),

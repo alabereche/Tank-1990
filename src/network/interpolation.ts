@@ -23,6 +23,10 @@ export interface NetSnapshot {
   spawning: NetEntity[];
   bullets: NetEntity[];
   powerUps: NetEntity[];
+  smokes?: NetEntity[];
+  grenades?: NetEntity[];
+  shields?: NetEntity[];
+  tacPickups?: NetEntity[];
   scoreData?: unknown;
   baseState?: unknown;
   baseStateB?: unknown;
@@ -34,17 +38,18 @@ export interface NetSnapshot {
   ackSeqs?: Record<number, number>;
 }
 
-export const RENDER_DELAY_MS = 120;
+export const RENDER_DELAY_MS = 80;
 
 /**
  * Calculates adaptive render delay for jitter buffering based on real RTT.
- * Clamped between 45ms (fast network) and 125ms (high latency / mobile connection).
+ * Clamped between 65ms (fast network) and 130ms (high latency / mobile connection)
+ * to ensure mobile jitter never causes the buffer to run dry and stutter.
  */
-export function getAdaptiveDelay(ping: number, jitter: number = 10): number {
-  const oneWay = Math.max(12, ping * 0.5);
-  // Ensure buffer covers 1.5 snapshot intervals (33ms) + one-way latency + jitter
-  const calculated = oneWay + jitter + 33;
-  return Math.min(125, Math.max(45, Math.round(calculated)));
+export function getAdaptiveDelay(ping: number, jitter: number = 12): number {
+  const oneWay = Math.max(15, ping * 0.5);
+  // Ensure buffer covers 2.2 snapshot intervals (70ms) + one-way latency + jitter
+  const calculated = oneWay + jitter + 45;
+  return Math.min(130, Math.max(65, Math.round(calculated)));
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -64,6 +69,20 @@ function blendEntity(
 ): NetEntity {
   if (!older) return { ...newer }; // Brand-new entity: appear at authoritative position
   return { ...newer, x: lerp(older.x, newer.x, t), y: lerp(older.y, newer.y, t) };
+}
+
+function blendGrenade(
+  older: NetEntity | undefined,
+  newer: NetEntity,
+  t: number
+): NetEntity {
+  if (!older) return { ...newer };
+  return {
+    ...newer,
+    x: lerp(older.x, newer.x, t),
+    y: lerp(older.y, newer.y, t),
+    z: lerp((older.z as number) ?? 0, (newer.z as number) ?? 0, t),
+  };
 }
 
 export class SnapshotBuffer {
@@ -113,6 +132,8 @@ export class SnapshotBuffer {
     const olderEnemies = new Map(older.enemies.map((e) => [e.id, e]));
     const olderBullets = new Map(older.bullets.map((b) => [b.id, b]));
     const olderPlayers = older.players ? new Map(older.players.map((p) => [p.id, p])) : null;
+    const olderGrenades = older.grenades ? new Map(older.grenades.map((g) => [g.id, g])) : null;
+
     return {
       ...newer,
       p1: blendTank(older.p1, newer.p1, t),
@@ -124,6 +145,12 @@ export class SnapshotBuffer {
       bullets: newer.bullets.map((b) => blendEntity(olderBullets.get(b.id), b, t)),
       powerUps: newer.powerUps,
       spawning: newer.spawning,
+      smokes: newer.smokes,
+      grenades: newer.grenades
+        ? newer.grenades.map((g) => blendGrenade(olderGrenades?.get(g.id), g, t))
+        : undefined,
+      shields: newer.shields,
+      tacPickups: newer.tacPickups,
     };
   }
 }

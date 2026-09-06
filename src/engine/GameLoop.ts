@@ -118,6 +118,7 @@ export class GameEngine {
   private activeShields: ActiveDeployableShield[] = [];
   private tacticalPopups: { id: string; x: number; y: number; text: string; timer: number }[] = [];
   private prevTacticalInputs: Map<number, { smoke: boolean; grenade: boolean; shield: boolean }> = new Map();
+  private muzzleFlashes: { x: number; y: number; dir: Direction; frame: number }[] = [];
 
   // Multiplayer Engine State
   public multiMode: MultiplayerMode = 'single';
@@ -1457,60 +1458,12 @@ export class GameEngine {
     const view = this.snapBuffer.sample(adaptiveDelay);
     if (view) this.applyRemoteView(view);
 
-    // Advance local predictive bullets & perform boundary/solid collision check
-    const canvasLimit = this.canvasSize;
-    const toRemoveIndices = new Set<number>();
-    for (let i = 0; i < this.predictiveBullets.length; i++) {
-      const pb = this.predictiveBullets[i];
-      if (pb.direction === 'UP') pb.y -= pb.speed;
-      else if (pb.direction === 'DOWN') pb.y += pb.speed;
-      else if (pb.direction === 'LEFT') pb.x -= pb.speed;
-      else if (pb.direction === 'RIGHT') pb.x += pb.speed;
-
-      // Boundary collision check
-      if (pb.x < 0 || pb.x > canvasLimit || pb.y < 0 || pb.y > canvasLimit) {
-        this.createExplosion(pb.x, pb.y, false);
-        if (pb.inputSeq !== undefined) this.retiredBulletSeqs.add(pb.inputSeq);
-        toRemoveIndices.add(i);
-        continue;
-      }
-
-      // Check solid tile collision (sub-quadrant brick / steel)
-      const subX = Math.floor(pb.x / BLOCK_SIZE);
-      const subY = Math.floor(pb.y / BLOCK_SIZE);
-      const tile = this.grid[subY]?.[subX];
-      if (tile && (tile.type === TileType.STEEL || (tile.type === TileType.BRICK && tile.damageMask !== 0))) {
-        this.createExplosion(pb.x, pb.y, false);
-        if (tile.type === TileType.STEEL) {
-          soundManager.playHitSteel();
-        } else {
-          soundManager.playExplosion();
-          this.applyBrickDamage(tile, pb.direction);
-        }
-        if (pb.inputSeq !== undefined) this.retiredBulletSeqs.add(pb.inputSeq);
-        toRemoveIndices.add(i);
-        continue;
-      }
-
-      // Check collision with opponent player tanks
-      const mySlot = this.localPlayerSlot || 2;
-      for (const [slot, otherTank] of this.playerTanks.entries()) {
-        if (slot !== mySlot && otherTank && otherTank.hp > 0) {
-          if (this.rectIntersect(pb.x - 2, pb.y - 2, 8, 8, otherTank.x, otherTank.y, 32, 32)) {
-            this.createExplosion(pb.x, pb.y, otherTank.shieldTimer <= 0);
-            soundManager.playExplosion();
-            if (pb.inputSeq !== undefined) this.retiredBulletSeqs.add(pb.inputSeq);
-            toRemoveIndices.add(i);
-            break;
-          }
-        }
-      }
-    }
-    if (toRemoveIndices.size > 0) {
-      this.predictiveBullets = this.predictiveBullets.filter((_, idx) => !toRemoveIndices.has(idx));
-    }
-    if (this.retiredBulletSeqs.size > 120) {
-      this.retiredBulletSeqs.clear();
+    // Advance authoritative bullets smoothly forward by speed between snapshot ticks (60fps continuous bullet motion)
+    for (const b of this.bullets) {
+      if (b.direction === 'UP') b.y -= b.speed;
+      else if (b.direction === 'DOWN') b.y += b.speed;
+      else if (b.direction === 'LEFT') b.x -= b.speed;
+      else if (b.direction === 'RIGHT') b.x += b.speed;
     }
 
     // Client-side prediction for the local player's own slot (reconcile is triggered by authoritative snapshots)
@@ -1519,8 +1472,10 @@ export class GameEngine {
       this.updatePlayerSlot(mySlot);
     }
 
-    // Update Explosions, Mud Splatters, and Popups so they animate & cleanly vanish (no stuck sparks!)
+    // Update tactical equipment effects, animations, and muzzle flashes
+    this.updateSmokeScreens();
     this.updateEffects();
+    this.updateMuzzleFlashes();
 
     let driving = false;
     let remoteTerrain: 'normal' | 'mud' | 'ice' = 'normal';
@@ -1550,6 +1505,9 @@ export class GameEngine {
         if (!tank) {
           tank = this.createPlayerTank(p.x as number, p.y as number, slot);
           this.playerTanks.set(slot, tank);
+        }
+        if ((p as any).tactical) {
+          tank.tacticalInventory = { ...(p as any).tactical };
         }
         if (slot !== this.localPlayerSlot) {
           const prevX = tank.x;
@@ -1617,59 +1575,85 @@ export class GameEngine {
       } as Tank;
     });
 
-    // Authoritative bullets from snapshot
-    const mySlot = this.localPlayerSlot || 2;
-    const activePredSeqs = new Set(
-      this.predictiveBullets.map((pb) => pb.inputSeq).filter((seq): seq is number => seq !== undefined)
-    );
+    // Authoritative bullets from snapshot (server is 100% single source of truth)
+    // Completely eliminates duplicate bullets ("يظرب رصاصتين") and phantom hits ("fakehit")!
+    this.bullets = (view.bullets || []).map((b: any) => ({
+      id: b.id,
+      ownerId: b.ownerId || '',
+      isPlayer: Boolean(b.isPlayer),
+      playerIndex: (b.pIdx || b.playerIndex) as 1 | 2 | undefined,
+      team: b.team,
+      x: b.x,
+      y: b.y,
+      direction: b.dir as Direction,
+      speed: 4.5,
+      canDestroySteel: false,
+      size: 4,
+    }));
 
-    const remoteBullets: Bullet[] = [];
-    for (const b of view.bullets) {
-      const bSlot = (b as any).pIdx || (b as any).playerIndex;
-      const bSeq = (b as any).inputSeq;
-
-      // If bullet belongs to local player:
-      if (bSlot === mySlot) {
-        // 1. If actively simulated locally or recently retired by exact inputSeq:
-        if (bSeq !== undefined && (activePredSeqs.has(bSeq) || this.retiredBulletSeqs.has(bSeq))) {
-          continue;
+    // Synchronize Smoke Screens
+    if (Array.isArray(view.smokes)) {
+      const existingMap = new Map(this.activeSmokeScreens.map((s) => [s.id, s]));
+      const nextSmokes: ActiveSmokeScreen[] = [];
+      for (const rs of view.smokes as any[]) {
+        let localS = existingMap.get(rs.id);
+        if (!localS) {
+          localS = this.createSmokeScreenEntity(rs.id, rs.x, rs.y, rs.radius, rs.duration, rs.maxDuration);
+        } else {
+          localS.duration = rs.duration;
         }
-
-        // 2. Spatial reconciliation: If we have an active predictive bullet heading in the same direction nearby,
-        // hand off smoothly to the authoritative host bullet to prevent duplicate phantom bullets!
-        const matchingPredIdx = this.predictiveBullets.findIndex(
-          (pb) => pb.direction === b.dir && Math.hypot(pb.x - b.x, pb.y - b.y) < 96
-        );
-        if (matchingPredIdx !== -1) {
-          const matched = this.predictiveBullets[matchingPredIdx];
-          if (matched.inputSeq !== undefined) this.retiredBulletSeqs.add(matched.inputSeq);
-          this.predictiveBullets.splice(matchingPredIdx, 1);
-        }
+        nextSmokes.push(localS);
       }
-
-      remoteBullets.push({
-        id: b.id,
-        ownerId: '',
-        isPlayer: b.isPlayer as boolean,
-        playerIndex: bSlot as 1 | 2 | undefined,
-        x: b.x,
-        y: b.y,
-        direction: b.dir as Direction,
-        speed: 4.5,
-        canDestroySteel: false,
-        size: 4,
-        inputSeq: bSeq,
-      });
+      this.activeSmokeScreens = nextSmokes;
     }
 
-    // Merge remote bullets with unconfirmed local predictive bullets, strictly enforcing player max bullets
-    const localTank = this.playerTanks.get(mySlot) || (mySlot === 1 ? this.player : this.player2);
-    const maxLocalBullets = (localTank?.tier ?? 0) >= 2 ? 2 : 1;
-    const remoteMyBulletsCount = remoteBullets.filter((b) => b.playerIndex === mySlot).length;
-    const allowedPredBullets = Math.max(0, maxLocalBullets - remoteMyBulletsCount);
-    const trimmedPredictive = this.predictiveBullets.slice(0, allowedPredBullets);
+    // Synchronize Bouncing Grenades
+    if (Array.isArray(view.grenades)) {
+      this.activeGrenades = (view.grenades as any[]).map((g) => ({
+        id: g.id,
+        ownerId: g.ownerId || '',
+        isPlayer: Boolean(g.isPlayer),
+        team: g.team,
+        x: g.x,
+        y: g.y,
+        z: g.z ?? 0,
+        vx: g.vx ?? 0,
+        vy: g.vy ?? 0,
+        vz: g.vz ?? 0,
+        bouncesLeft: g.bouncesLeft ?? 0,
+        life: g.life ?? 180,
+      }));
+    }
 
-    this.bullets = [...remoteBullets, ...trimmedPredictive];
+    // Synchronize Deployable Shields
+    if (Array.isArray(view.shields)) {
+      this.activeShields = (view.shields as any[]).map((s) => ({
+        id: s.id,
+        ownerId: s.ownerId || '',
+        team: s.team,
+        x: s.x,
+        y: s.y,
+        width: s.w ?? 32,
+        height: s.h ?? 32,
+        hp: s.hp ?? 3,
+        maxHp: s.maxHp ?? 3,
+        timer: s.timer ?? 900,
+        maxTimer: 900,
+        direction: (s.dir || 'UP') as Direction,
+      }));
+    }
+
+    // Synchronize Tactical Pickups
+    if (Array.isArray(view.tacPickups)) {
+      this.tacticalPickups = (view.tacPickups as any[]).map((t) => ({
+        id: t.id,
+        type: t.type as TacticalItemType,
+        x: t.x,
+        y: t.y,
+        flashFrame: t.flashFrame ?? 0,
+        duration: 900,
+      }));
+    }
 
     this.powerUps = view.powerUps.map(
       (p) => ({ id: p.id, type: p.type, x: p.x, y: p.y, flashFrame: 0, duration: 900 }) as PowerUp
@@ -1739,12 +1723,12 @@ export class GameEngine {
       tank.direction = replayTank.direction;
       tank.moving = replayTank.moving;
       tank.slideFrames = replayTank.slideFrames;
-    } else if (drift > 3.0) {
-      // Soft drift: smooth decay without jarring visual snaps or direction flicker
-      tank.x += dx * 0.25;
-      tank.y += dy * 0.25;
+    } else if (drift > 2.0) {
+      // Soft drift: smooth exponential damping (prevents jarring visual snaps and micro-twitches)
+      tank.x += dx * 0.12;
+      tank.y += dy * 0.12;
     }
-    // drift <= 3.0: within sub-pixel corridor tolerance, no correction needed!
+    // drift <= 2.0: within sub-pixel corridor tolerance, no correction needed!
   }
 
   public applyBrickDamage(tile: SubTile, dir: Direction) {
@@ -1779,6 +1763,15 @@ export class GameEngine {
         break;
       case 'shoot':
         soundManager.playShoot();
+        break;
+      case 'smoke':
+        soundManager.playSmokeDeploy();
+        break;
+      case 'grenade':
+        soundManager.playGrenadeBounce();
+        break;
+      case 'shield':
+        soundManager.playShieldDeploy();
         break;
       case 'brick':
         soundManager.playHitBrick();
@@ -1944,9 +1937,9 @@ export class GameEngine {
     const fireRequested = input.fire;
     if (fireRequested && (!prevFire || tank.tier >= 2)) {
       if (tank.shootCooldown <= 0) {
-        if (this.isRemoteViewer && slot === this.localPlayerSlot) {
-          this.firePredictiveBullet(tank, this.lastSentSeq);
-        } else {
+        soundManager.playShoot();
+        this.addMuzzleFlash(tank);
+        if (!this.isRemoteViewer) {
           this.fireBullet(tank, this.hostSlotInputSeq.get(slot));
         }
         tank.shootCooldown = tank.tier >= 2 ? 14 : 22;
@@ -2029,42 +2022,30 @@ export class GameEngine {
     }
   }
 
-  public firePredictiveBullet(tank: Tank, seq?: number): Bullet | null {
-    if (!tank || !tank.direction) return null;
-    const maxBullets = tank.tier >= 2 ? 2 : 1;
-    const mySlot = tank.playerIndex ?? this.localPlayerSlot;
-    const currentCount = this.bullets.filter(
-      (b) => b.ownerId === tank.id || b.playerIndex === mySlot
-    ).length;
-    if (currentCount >= maxBullets) return null;
+  private addMuzzleFlash(tank: Tank) {
+    if (!tank || !tank.direction) return;
+    let mx = tank.x + 16;
+    let my = tank.y + 16;
+    if (tank.direction === 'UP') my = tank.y - 2;
+    else if (tank.direction === 'DOWN') my = tank.y + 34;
+    else if (tank.direction === 'LEFT') mx = tank.x - 2;
+    else if (tank.direction === 'RIGHT') mx = tank.x + 34;
+    this.muzzleFlashes.push({ x: mx, y: my, dir: tank.direction, frame: 3 });
+  }
 
-    let bx = tank.x + 16;
-    let by = tank.y + 16;
-    if (tank.direction === 'UP') by = tank.y - 2;
-    else if (tank.direction === 'DOWN') by = tank.y + 34;
-    else if (tank.direction === 'LEFT') bx = tank.x - 2;
-    else if (tank.direction === 'RIGHT') bx = tank.x + 34;
+  private updateMuzzleFlashes() {
+    for (let i = this.muzzleFlashes.length - 1; i >= 0; i--) {
+      this.muzzleFlashes[i].frame--;
+      if (this.muzzleFlashes[i].frame <= 0) {
+        this.muzzleFlashes.splice(i, 1);
+      }
+    }
+  }
 
-    const bullet: Bullet = {
-      id: 'pred_bullet_' + (seq ?? Math.random()),
-      ownerId: tank.id,
-      isPlayer: true,
-      playerIndex: mySlot as 1 | 2 | undefined,
-      team: tank.team,
-      x: bx,
-      y: by,
-      direction: tank.direction,
-      speed: tank.bulletSpeed,
-      canDestroySteel: tank.tier >= 3,
-      size: 4,
-      inputSeq: seq,
-      isPredicted: true,
-    };
-
-    this.predictiveBullets.push(bullet);
-    this.bullets.push(bullet);
+  public firePredictiveBullet(tank: Tank, _seq?: number): Bullet | null {
+    this.addMuzzleFlash(tank);
     soundManager.playShoot();
-    return bullet;
+    return null;
   }
 
   private updatePlayer() {
@@ -3294,19 +3275,22 @@ export class GameEngine {
     });
   }
 
-  private triggerSmokeAction(tank: Tank) {
-    if (!tank.tacticalInventory || tank.tacticalInventory.smoke <= 0) return;
-    tank.tacticalInventory.smoke--;
-    soundManager.playSmokeDeploy();
-
+  public createSmokeScreenEntity(
+    id: string,
+    x: number,
+    y: number,
+    radius: number = 56,
+    duration: number = 480,
+    maxDuration: number = 480
+  ): ActiveSmokeScreen {
     const particles: ActiveSmokeScreen['particles'] = [];
     const colors = ['#282828', '#383838', '#4c4c4c', '#606060', '#747474', '#888888'];
     for (let i = 0; i < 36; i++) {
       const offsetX = (Math.random() - 0.5) * 88;
       const offsetY = (Math.random() - 0.5) * 88;
       particles.push({
-        x: tank.x + 16 + offsetX,
-        y: tank.y + 16 + offsetY,
+        x: x + offsetX,
+        y: y + offsetY,
         vx: (Math.random() - 0.5) * 0.7,
         vy: (Math.random() - 0.5) * 0.7,
         size: Math.random() * 8 + 6,
@@ -3314,21 +3298,38 @@ export class GameEngine {
         color: colors[Math.floor(Math.random() * colors.length)],
       });
     }
-
-    this.activeSmokeScreens.push({
-      id: 'smoke_' + Date.now() + '_' + Math.random(),
-      x: tank.x + 16,
-      y: tank.y + 16,
-      radius: 56, // Square half-size (total size = 112x112px, 7x7 blocks)
-      duration: 480, // ~8 seconds
-      maxDuration: 480,
+    return {
+      id,
+      x,
+      y,
+      radius,
+      duration,
+      maxDuration,
       particles,
-    });
+    };
+  }
+
+  private triggerSmokeAction(tank: Tank) {
+    if (!tank.tacticalInventory || tank.tacticalInventory.smoke <= 0) return;
+    tank.tacticalInventory.smoke--;
+    soundManager.playSmokeDeploy();
+    this.emitNetEvent({ t: 'smoke', x: tank.x + 16, y: tank.y + 16 });
+
+    const smoke = this.createSmokeScreenEntity(
+      'smoke_' + Date.now() + '_' + Math.random(),
+      tank.x + 16,
+      tank.y + 16,
+      56,
+      480,
+      480
+    );
+    this.activeSmokeScreens.push(smoke);
   }
 
   private triggerGrenadeAction(tank: Tank) {
     if (!tank.tacticalInventory || tank.tacticalInventory.grenade <= 0) return;
     tank.tacticalInventory.grenade--;
+    this.emitNetEvent({ t: 'grenade' });
 
     let dirX = 0;
     let dirY = 0;
@@ -3375,6 +3376,7 @@ export class GameEngine {
     if (!tank.tacticalInventory || tank.tacticalInventory.shield <= 0) return;
     tank.tacticalInventory.shield--;
     soundManager.playShieldDeploy();
+    this.emitNetEvent({ t: 'shield' });
 
     let sx = tank.x;
     let sy = tank.y;
@@ -3848,11 +3850,14 @@ export class GameEngine {
       ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
     }
 
-    // 8. Render Bullets
+    // 8. Render Bullets & Instant Muzzle Sparks
     for (const b of this.bullets) {
       if (b && b.direction) {
         SpriteRenderer.renderBullet(ctx, b.x, b.y, b.direction);
       }
+    }
+    for (const mf of this.muzzleFlashes) {
+      SpriteRenderer.renderExplosion(ctx, mf.x, mf.y, 1, 16, false);
     }
 
     // 9. Render Power-Up Pickups & Tactical Pickups
@@ -3976,6 +3981,7 @@ export class GameEngine {
       moving: p.moving,
       tier: p.tier,
       shield: p.shieldTimer,
+      tactical: p.tacticalInventory ? { ...p.tacticalInventory } : undefined,
     }));
 
     return {
@@ -4022,18 +4028,61 @@ export class GameEngine {
       })),
       bullets: this.bullets.map((b) => ({
         id: b.id,
+        ownerId: b.ownerId,
         isPlayer: b.isPlayer,
         pIdx: b.playerIndex,
+        team: b.team,
         x: b.x,
         y: b.y,
         dir: b.direction,
-        inputSeq: b.inputSeq,
       })),
       powerUps: this.powerUps.map((p) => ({
         id: p.id,
         type: p.type,
         x: p.x,
         y: p.y,
+      })),
+      smokes: this.activeSmokeScreens.map((s) => ({
+        id: s.id,
+        x: s.x,
+        y: s.y,
+        radius: s.radius,
+        duration: s.duration,
+        maxDuration: s.maxDuration,
+      })),
+      grenades: this.activeGrenades.map((g) => ({
+        id: g.id,
+        ownerId: g.ownerId,
+        isPlayer: g.isPlayer,
+        team: g.team,
+        x: g.x,
+        y: g.y,
+        z: g.z,
+        vx: g.vx,
+        vy: g.vy,
+        vz: g.vz,
+        life: g.life,
+        bouncesLeft: g.bouncesLeft,
+      })),
+      shields: this.activeShields.map((s) => ({
+        id: s.id,
+        ownerId: s.ownerId,
+        team: s.team,
+        x: s.x,
+        y: s.y,
+        w: s.width,
+        h: s.height,
+        hp: s.hp,
+        maxHp: s.maxHp,
+        timer: s.timer,
+        dir: s.direction,
+      })),
+      tacPickups: this.tacticalPickups.map((t) => ({
+        id: t.id,
+        type: t.type,
+        x: t.x,
+        y: t.y,
+        flashFrame: t.flashFrame,
       })),
       scoreData: this.scoreData,
       baseState: this.baseState,
