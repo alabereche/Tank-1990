@@ -45,12 +45,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
 
-// ---------- VERSUS (host) ----------
+// ---------- VERSUS (local two-player duel) ----------
 {
   const engine = new GameEngine(fakeCanvas, emptyMap, () => {});
   engine.roundIntroMs = 10;
   engine.roundEndMs = 10;
-  engine.setMultiplayerMode('versus', 'host');
+  engine.setMultiplayerMode('versus', 'local');
   engine.startStage(1, emptyMap);
   tick(engine, 60); // let spawn stars finish (round intro running)
   await sleep(40);  // intro elapses -> PLAYING
@@ -85,10 +85,39 @@ async function main() {
   assert('pause freezes P1 movement', engine.player.y === yFrozen);
 }
 
+// ---------- DEDICATED SERVER MODEL (umpire host + sequenced network inputs) ----------
+{
+  const engine = new GameEngine(fakeCanvas, emptyMap, () => {});
+  engine.roundIntroMs = 10;
+  engine.roundEndMs = 10;
+  engine.setMultiplayerMode('versus', 'host'); // server-style umpire
+  engine.localPlayerSlot = 0;
+  engine.startStage(1, emptyMap);
+  tick(engine, 60);
+  await sleep(40);
+
+  assert('umpire: both tanks spawned', Boolean(engine.player && engine.player2));
+
+  // Slot 1 is driven ONLY by sequenced network inputs (ServerPeer path)
+  const y0 = engine.player.y;
+  engine.enqueuePlayerInput(1, { up: true, fire: false, pause: false }, 1);
+  tick(engine, 30);
+  assert('umpire: slot 1 moves via enqueuePlayerInput', engine.player.y < y0);
+
+  // Slot 2 the same
+  const x0 = engine.player2.x;
+  engine.enqueuePlayerInput(2, { left: true, fire: false, pause: false }, 1);
+  tick(engine, 30);
+  assert('umpire: slot 2 moves via enqueuePlayerInput', engine.player2.x < x0);
+
+  // The host's ack must advance so clients can reconcile
+  assert('umpire: processed seq tracked', (engine.hostLastProcessedSeq.get(1) ?? 0) >= 1);
+}
+
 // ---------- COOP (host) ----------
 {
   const engine = new GameEngine(fakeCanvas, emptyMap, () => {});
-  engine.setMultiplayerMode('coop', 'host');
+  engine.setMultiplayerMode('coop', 'local');
   engine.startStage(1, emptyMap);
   tick(engine, 60);
 
@@ -110,7 +139,7 @@ async function main() {
 // ---------- Merge semantics of the composer (host P2 = net OR pad2) ----------
 {
   const engine = new GameEngine(fakeCanvas, emptyMap, () => {});
-  engine.setMultiplayerMode('coop', 'host');
+  engine.setMultiplayerMode('coop', 'local');
   engine.startStage(1, emptyMap);
   tick(engine, 60);
 

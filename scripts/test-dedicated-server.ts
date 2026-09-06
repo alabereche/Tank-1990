@@ -245,7 +245,7 @@ describe('Battle City 1990 - Authoritative Dedicated Server Suite', () => {
     (clientEngine as any).gameState = GameState.PLAYING;
 
     // Local client presses fire
-    const clientP1 = clientEngine.createPlayerTank(100, 200, 1);
+    const clientP1 = (clientEngine as any).createPlayerTank(100, 200, 1);
     clientEngine.playerTanks.set(1, clientP1);
     clientEngine.setPlayerSlotInput(1, { fire: true });
     // Local client tick (runs updateRemote, adds muzzle flash, no duplicate local bullet)

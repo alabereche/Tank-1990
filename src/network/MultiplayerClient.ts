@@ -15,6 +15,7 @@ export class MultiplayerClient {
   private handlers: Map<string, Set<NetworkEventHandler>> = new Map();
   private pingInterval: number | null = null;
   private currentPing: number = 0;
+  private lastSnapshotTick: number = 0;
   private roomCode: string | null = null;
   private role: MultiplayerRole | null = null;
   private mode: MultiplayerMode = 'coop';
@@ -81,45 +82,7 @@ export class MultiplayerClient {
 
         socket.onmessage = (event) => {
           try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'pong') {
-              // Only update ping from VPS server if P2P direct is NOT active
-              if (!this.isP2P()) {
-                const rtt = Math.round(performance.now() - data.timestamp);
-                this.currentPing = Math.max(1, rtt);
-                this.emit('ping_updated', { ping: this.currentPing, transport: 'relay' });
-              }
-              return;
-            }
-
-            if (data.type === 'webrtc_signal') {
-              this.webrtc.handleSignal(data);
-              return;
-            }
-
-            if (data.type === 'room_created') {
-              this.roomCode = data.code;
-              this.role = 'host';
-              this.mode = data.mode;
-              this.slot = data.slot || 1;
-              this.team = data.team || (data.mode === '2v2' ? 'A' : 'FFA');
-              this.webrtc.init('host', 1, 2);
-            } else if (data.type === 'player_joined') {
-              if (this.role === 'host') {
-                const guestSlot = data.slot || 2;
-                this.webrtc.init('host', 1, guestSlot);
-                this.webrtc.startOffer();
-              }
-            } else if (data.type === 'room_joined') {
-              this.roomCode = data.code;
-              this.role = 'guest';
-              this.mode = data.mode;
-              this.slot = data.slot || 2;
-              this.team = data.team || 'FFA';
-              this.webrtc.init('guest', this.slot, 1);
-            }
-
-            this.emit(data.type, data);
+            this.handleIncomingMessage(JSON.parse(event.data));
           } catch {
             // Ignore non-JSON messages
           }
@@ -173,7 +136,21 @@ export class MultiplayerClient {
     }
   }
 
+  /**
+   * Transport-aware send. Game traffic prefers the direct P2P DataChannels
+   * when they are open (loss-tolerant 'fast' for snapshots/events, reliable
+   * 'ctrl' for inputs); control & signaling always go over the WebSocket,
+   * which also remains the automatic fallback for everything.
+   */
   public send(payload: Record<string, unknown>) {
+    const type = payload.type as string | undefined;
+    if (type && this.webrtc?.isConnected) {
+      if (type === 'sync_state' || type === 'game_event') {
+        if (this.webrtc.sendFast(payload)) return;
+      } else if (type === 'player_input' || type === 'ping') {
+        if (this.webrtc.sendCtrl(payload)) return;
+      }
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
         this.ws.send(JSON.stringify(payload));
@@ -274,6 +251,54 @@ export class MultiplayerClient {
 
   private handleIncomingMessage(data: any) {
     if (!data || !data.type) return;
+
+    // Unordered 'fast' channel: drop stale snapshots (tick already applied)
+    if (data.type === 'sync_state' && data.snapshot && typeof data.snapshot.tick === 'number') {
+      if (data.snapshot.tick <= this.lastSnapshotTick) return;
+      this.lastSnapshotTick = data.snapshot.tick;
+    }
+
+    if (data.type === 'pong') {
+      // Only update ping from VPS server if P2P direct is NOT active
+      if (!this.isP2P()) {
+        const rtt = Math.round(performance.now() - data.timestamp);
+        this.currentPing = Math.max(1, rtt);
+        this.emit('ping_updated', { ping: this.currentPing, transport: 'relay' });
+      }
+      return;
+    }
+
+    if (data.type === 'webrtc_signal') {
+      this.webrtc.handleSignal(data);
+      return;
+    }
+
+    if (data.type === 'room_created') {
+      this.roomCode = data.code;
+      this.role = 'host';
+      this.mode = data.mode;
+      this.slot = data.slot || 1;
+      this.team = data.team || (data.mode === '2v2' ? 'A' : 'FFA');
+      // Dedicated-server architecture: every player offers a direct
+      // P2P DataChannel to the server umpire (slot 0).
+      this.webrtc.cleanup();
+      this.webrtc.init('host', this.slot, 0);
+      this.webrtc.startOffer();
+    } else if (data.type === 'room_joined') {
+      this.roomCode = data.code;
+      this.role = 'guest';
+      this.mode = data.mode;
+      this.slot = data.slot || 2;
+      this.team = data.team || 'FFA';
+      this.webrtc.cleanup();
+      this.webrtc.init('host', this.slot, 0);
+      this.webrtc.startOffer();
+    }
+
+    if (data.type === 'room_created' || data.type === 'room_joined') {
+      this.lastSnapshotTick = 0;
+    }
+
     this.emit(data.type, data);
   }
 

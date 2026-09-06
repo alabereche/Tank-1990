@@ -13,6 +13,16 @@ import { GameEngine } from './src/engine/GameLoop';
 import { getStageMapForPresetAndStage } from './src/engine/maps';
 import { StageMap } from './src/types';
 
+// Optional direct-UDP transport: players connect straight to this server via
+// WebRTC DataChannels (loss-tolerant snapshots, no TCP head-of-line stalls).
+// Missing module or unsupported platform silently falls back to WebSocket.
+const wrtcModule = await import('@roamhq/wrtc').catch((e) => {
+  console.warn('[WRTC] native module failed to load (WebSocket relay only):', e?.message ?? e);
+  return null;
+});
+// Native CJS module: the bindings live on .default after dynamic import
+const wrtc: any = (wrtcModule as any)?.default ?? wrtcModule ?? null;
+
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const server = http.createServer(app);
@@ -40,6 +50,7 @@ interface ClientSession {
   slot: number;
   team: 'A' | 'B' | 'FFA';
   lastPing: number;
+  peer?: ServerPeer | null;
 }
 
 interface Room {
@@ -85,6 +96,111 @@ function safeSend(ws: WebSocket, message: Record<string, unknown>) {
   }
 }
 
+/**
+ * Server-side WebRTC peer: one per connected player. The browser offers
+ * (targetSlot 0 = server umpire); this peer answers and exposes the same
+ * two channels the clients use ('tank_ctrl' reliable, 'tank_fast'
+ * loss-tolerant). Game traffic prefers the DataChannels and falls back to
+ * the WebSocket automatically.
+ */
+class ServerPeer {
+  private pc: any = null;
+  private ctrl: any = null;
+  private fast: any = null;
+
+  constructor(private session: ClientSession, private onGameMessage: (raw: string) => void) {
+    this.pc = new wrtc.RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    });
+    this.pc.onicecandidate = (event: any) => {
+      if (event.candidate) {
+        safeSend(this.session.ws, {
+          type: 'webrtc_signal',
+          signalType: 'ice',
+          candidate: {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+          },
+          fromSlot: 0,
+        });
+      }
+    };
+    this.pc.ondatachannel = (event: any) => this.attach(event.channel);
+  }
+
+  private attach(dc: any) {
+    if (dc.label === 'tank_fast') this.fast = dc;
+    else this.ctrl = dc;
+    dc.onmessage = (event: any) => {
+      const raw = typeof event.data === 'string' ? event.data : event.data.toString();
+      let msg: any;
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      if (msg.__p2p_ping !== undefined) {
+        this.send('ctrl', { __p2p_pong: msg.__p2p_ping });
+        return;
+      }
+      // Only game-relevant client traffic travels the DataChannel
+      if (msg.type === 'player_input' || msg.type === 'ping') {
+        this.onGameMessage(raw);
+      }
+    };
+  }
+
+  public send(kind: 'ctrl' | 'fast', payload: Record<string, unknown>): boolean {
+    const dc = kind === 'fast' ? this.fast : this.ctrl;
+    if (dc && dc.readyState === 'open') {
+      try {
+        dc.send(JSON.stringify(payload));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  public async handleSignal(msg: any): Promise<void> {
+    try {
+      if (msg.signalType === 'offer' && msg.sdp) {
+        await this.pc.setRemoteDescription(msg.sdp);
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        safeSend(this.session.ws, {
+          type: 'webrtc_signal',
+          signalType: 'answer',
+          sdp: answer,
+          fromSlot: 0,
+        });
+      } else if (msg.signalType === 'ice' && msg.candidate) {
+        await this.pc.addIceCandidate(msg.candidate);
+      }
+    } catch (err) {
+      console.warn('[ServerPeer] signal error:', err);
+    }
+  }
+
+  public close() {
+    try { this.ctrl?.close(); } catch {}
+    try { this.fast?.close(); } catch {}
+    try { this.pc?.close(); } catch {}
+    this.ctrl = null;
+    this.fast = null;
+    this.pc = null;
+  }
+}
+
+/** Sends a game message over the best available transport for a session. */
+function sendGame(c: ClientSession, payload: Record<string, unknown>) {
+  const fast = payload.type === 'sync_state' || payload.type === 'game_event';
+  if (c.peer && c.peer.send(fast ? 'fast' : 'ctrl', payload)) return;
+  safeSend(c.ws, payload);
+}
+
 // Stop and clean up any running game engine for a room
 function stopRoomGame(room: Room) {
   if (room.startTimeout) {
@@ -118,15 +234,13 @@ function startRoomGame(room: Room) {
   }
 
   const engine = new GameEngine(null, stageMap, (gameState, scoreData) => {
-    // Notify clients of round / stage transitions
+    // Notify clients of round / stage transitions (reliable ctrl channel)
     room.clients.forEach((c) => {
-      if (c.ws.readyState === WebSocket.OPEN) {
-        safeSend(c.ws, {
-          type: 'game_state_change',
-          gameState,
-          scoreData,
-        });
-      }
+      sendGame(c, {
+        type: 'game_state_change',
+        gameState,
+        scoreData,
+      });
     });
   });
 
@@ -137,21 +251,13 @@ function startRoomGame(room: Room) {
   // Broadcast world snapshots to all connected clients
   engine.onNetworkSync = (snapshot) => {
     const syncMsg = { type: 'sync_state', snapshot };
-    room.clients.forEach((c) => {
-      if (c.ws.readyState === WebSocket.OPEN) {
-        safeSend(c.ws, syncMsg);
-      }
-    });
+    room.clients.forEach((c) => sendGame(c, syncMsg));
   };
 
   // Broadcast discrete game events (explosions, gunfire, powerups) for audio/FX
   engine.onGameEventBroadcast = (event) => {
     const eventMsg = { type: 'game_event', ...event };
-    room.clients.forEach((c) => {
-      if (c.ws.readyState === WebSocket.OPEN) {
-        safeSend(c.ws, eventMsg);
-      }
-    });
+    room.clients.forEach((c) => sendGame(c, eventMsg));
   };
 
   engine.startStage(room.stage, stageMap);
@@ -347,7 +453,7 @@ wss.on('connection', (ws: WebSocket) => {
           totalPlayers: room.clients.length,
           players: room.clients.map((c) => ({ slot: c.slot, role: c.role, team: c.team })),
         };
-        room.clients.forEach((c) => safeSend(c.ws, startPayload));
+        room.clients.forEach((c) => sendGame(c, startPayload));
 
         // Delay starting authoritative server simulation to perfectly align with 3-second lobby countdown
         if (room.startTimeout) {
@@ -368,6 +474,49 @@ wss.on('connection', (ws: WebSocket) => {
         const targetSlot = typeof msg.slot === 'number' ? msg.slot : session.slot;
         if (room.gameEngine && msg.input) {
           room.gameEngine.enqueuePlayerInput(targetSlot, msg.input, msg.seq);
+        }
+        return;
+      }
+
+      // Relay WebRTC P2P signaling (SDP offers/answers + ICE candidates)
+      // between room members. Addressed by targetSlot, stamped with fromSlot.
+      if (msg.type === 'webrtc_signal') {
+        // Slot 0 = the server umpire itself: the offering player gets a
+        // server-side peer with direct UDP DataChannels.
+        if (msg.targetSlot === 0) {
+          if (wrtc) {
+            try {
+              if (!session.peer) session.peer = new ServerPeer(session, (raw) => {
+                session.lastPing = Date.now();
+                try {
+                  const m = JSON.parse(raw);
+                  const room = session.roomCode ? rooms.get(session.roomCode) : null;
+                  if (m.type === 'player_input' && room?.gameEngine && m.input) {
+                    const slot = typeof m.slot === 'number' ? m.slot : session.slot;
+                    room.gameEngine.enqueuePlayerInput(slot, m.input, m.seq);
+                  }
+                } catch {
+                  // Ignore malformed payloads
+                }
+              });
+              session.peer.handleSignal(msg).catch((err: unknown) => {
+                console.warn('[ServerPeer] offer handling failed:', err);
+              });
+            } catch (err) {
+              console.warn('[ServerPeer] creation failed:', err);
+            }
+          }
+          return;
+        }
+        const targetSlot = typeof msg.targetSlot === 'number' ? msg.targetSlot : null;
+        const target =
+          targetSlot !== null
+            ? room.clients.find((c) => c.slot === targetSlot)
+            : session.role === 'host'
+            ? room.clients.find((c) => c !== session) ?? null
+            : room.clients.find((c) => c.slot === 1) ?? null;
+        if (target && target !== session && target.ws.readyState === WebSocket.OPEN) {
+          safeSend(target.ws, { ...msg, fromSlot: session.slot });
         }
         return;
       }
@@ -428,6 +577,10 @@ wss.on('connection', (ws: WebSocket) => {
           });
         }
       }
+    }
+    if (currentSession.peer) {
+      currentSession.peer.close();
+      currentSession.peer = null;
     }
     clientSessions.delete(ws);
   });

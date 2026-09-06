@@ -75,13 +75,15 @@ assert('round 2 fight live', engine.gameState === GameState.PLAYING);
 tick(engine, 60);
 assert('arena reset: both tanks back at spawns', Boolean(engine.player && engine.player2) && engine.player.x === p1SpawnX && engine.player2.y === p2SpawnY);
 
-// --- Round 2: mutual destruction -> draw, replay ---
+// --- Round 2: first kill decides instantly; a second kill during the
+// banner is ignored (no draw under the dedicated-server rules) ---
 engine.handlePlayerKilled();
+assert('first kill ends the round', engine.gameState === GameState.ROUND_END);
+assert('opponent takes it 1-1', engine.scoreData.roundWinsP1 === 1 && engine.scoreData.roundWinsP2 === 1);
 engine.handlePlayer2Killed();
-assert('double kill scored as draw', engine.scoreData.roundWinner === 0);
-assert('draw leaves score 1-0', engine.scoreData.roundWinsP1 === 1 && engine.scoreData.roundWinsP2 === 0);
+assert('second kill during banner ignored', engine.scoreData.roundWinner !== 0);
 await sleep(35);
-assert('draw round replays as next intro', engine.gameState === GameState.ROUND_INTRO);
+assert('round replays as next intro', engine.gameState === GameState.ROUND_INTRO);
 
 // --- Fast-forward the match: gold wins every remaining round ---
 let guard = 0;
