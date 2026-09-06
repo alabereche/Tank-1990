@@ -1,13 +1,17 @@
 /**
- * Battle City 1990 - High Performance Real-Time Server
+ * Battle City 1990 - High Performance Authoritative Dedicated Server
  * Express + WebSocket (ws) on Port 3000
- * Low-latency room orchestration, 1v1 PvP & 2P Co-Op state relay
+ * Full server-side physics simulation, 60Hz fixed-tick loop,
+ * client-side prediction, and authoritative snapshot broadcasting.
  */
 
 import express from 'express';
 import http from 'http';
 import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
+import { GameEngine } from './src/engine/GameLoop';
+import { getStageMapForPresetAndStage } from './src/engine/maps';
+import { StageMap } from './src/types';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -21,6 +25,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     game: 'Battle City 1990',
+    architecture: 'authoritative_dedicated_server',
     activeRooms: rooms.size,
     timestamp: Date.now(),
   });
@@ -44,12 +49,13 @@ interface Room {
   stage: number;
   customMapGrid?: number[][];
   host: ClientSession | null;
-  guest: ClientSession | null; // Kept for backward compatibility
   clients: ClientSession[];
   maxPlayers: number;
   status: 'waiting' | 'starting' | 'playing' | 'ended';
   createdAt: number;
   lastActivity: number;
+  gameEngine?: GameEngine;
+  tickInterval?: NodeJS.Timeout;
 }
 
 const rooms = new Map<string, Room>();
@@ -68,29 +74,108 @@ function generateRoomCode(): string {
   return 'CITY' + Math.floor(10 + Math.random() * 90);
 }
 
+function safeSend(ws: WebSocket, message: Record<string, unknown>) {
+  if (ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify(message));
+    } catch {
+      // Socket write error ignored
+    }
+  }
+}
+
+// Stop and clean up any running game engine for a room
+function stopRoomGame(room: Room) {
+  if (room.tickInterval) {
+    clearInterval(room.tickInterval);
+    room.tickInterval = undefined;
+  }
+  if (room.gameEngine) {
+    try {
+      room.gameEngine.stopLoop();
+    } catch {}
+    room.gameEngine = undefined;
+  }
+}
+
+// Start authoritative headless GameEngine for the room
+function startRoomGame(room: Room) {
+  stopRoomGame(room);
+
+  let stageMap: StageMap;
+  if (room.customMapGrid) {
+    stageMap = {
+      name: 'Custom Map',
+      grid: room.customMapGrid,
+    };
+  } else {
+    stageMap = getStageMapForPresetAndStage(room.stage, room.mapSize, room.mode);
+  }
+
+  const engine = new GameEngine(null, stageMap, (gameState, scoreData) => {
+    // Notify clients of round / stage transitions
+    room.clients.forEach((c) => {
+      if (c.ws.readyState === WebSocket.OPEN) {
+        safeSend(c.ws, {
+          type: 'game_state_change',
+          gameState,
+          scoreData,
+        });
+      }
+    });
+  });
+
+  engine.setMultiplayerMode(room.mode, 'host');
+  engine.localPlayerSlot = 0; // Dedicated Server host umpire (not a player)
+  engine.totalFfaPlayers = room.clients.length;
+
+  // Broadcast world snapshots to all connected clients
+  engine.onNetworkSync = (snapshot) => {
+    const syncMsg = { type: 'sync_state', snapshot };
+    room.clients.forEach((c) => {
+      if (c.ws.readyState === WebSocket.OPEN) {
+        safeSend(c.ws, syncMsg);
+      }
+    });
+  };
+
+  // Broadcast discrete game events (explosions, gunfire, powerups) for audio/FX
+  engine.onGameEventBroadcast = (event) => {
+    const eventMsg = { type: 'game_event', ...event };
+    room.clients.forEach((c) => {
+      if (c.ws.readyState === WebSocket.OPEN) {
+        safeSend(c.ws, eventMsg);
+      }
+    });
+  };
+
+  engine.startStage(room.stage, stageMap);
+  room.gameEngine = engine;
+  room.status = 'playing';
+
+  // 60Hz Fixed-Tick loop (16.66ms per tick)
+  room.tickInterval = setInterval(() => {
+    try {
+      engine.tick();
+    } catch (err) {
+      console.error(`[Room ${room.code}] Simulation tick error:`, err);
+    }
+  }, 1000 / 60);
+}
+
 // Clean up dead/abandoned rooms every 30 seconds
 setInterval(() => {
   const now = Date.now();
   for (const [code, room] of rooms.entries()) {
     const anyAlive = room.clients.some((c) => c.ws.readyState === WebSocket.OPEN);
-    // Expire if no players connected or inactive for > 10 minutes
     if (!anyAlive || now - room.lastActivity > 600000) {
+      stopRoomGame(room);
       rooms.delete(code);
     }
   }
 }, 30000);
 
 const wss = new WebSocketServer({ server, path: '/ws' });
-
-function safeSend(ws: WebSocket, message: Record<string, unknown>) {
-  if (ws.readyState === WebSocket.OPEN) {
-    try {
-      ws.send(JSON.stringify(message));
-    } catch {
-      // Ignored
-    }
-  }
-}
 
 wss.on('connection', (ws: WebSocket) => {
   const session: ClientSession = {
@@ -115,7 +200,7 @@ wss.on('connection', (ws: WebSocket) => {
         return;
       }
 
-      // Create Room
+      // Create Room (Session becomes Slot 1 / party leader)
       if (msg.type === 'create_room') {
         const code = generateRoomCode();
         const mode = msg.mode === 'versus' ? 'versus' : msg.mode === '2v2' ? '2v2' : msg.mode === 'ffa' ? 'ffa' : 'coop';
@@ -136,7 +221,6 @@ wss.on('connection', (ws: WebSocket) => {
           stage,
           customMapGrid: msg.customMapGrid,
           host: session,
-          guest: null,
           clients: [session],
           maxPlayers,
           status: 'waiting',
@@ -188,7 +272,6 @@ wss.on('connection', (ws: WebSocket) => {
 
         let assignedTeam: 'A' | 'B' | 'FFA' = 'FFA';
         if (room.mode === '2v2') {
-          // Team assignment: slots 1 & 3 are Team A, slots 2 & 4 are Team B
           assignedTeam = assignedSlot % 2 === 1 ? 'A' : 'B';
         }
 
@@ -198,7 +281,6 @@ wss.on('connection', (ws: WebSocket) => {
         session.team = assignedTeam;
 
         room.clients.push(session);
-        if (!room.guest) room.guest = session;
         room.lastActivity = Date.now();
 
         const playerList = room.clients.map((c) => ({
@@ -245,8 +327,8 @@ wss.on('connection', (ws: WebSocket) => {
       if (!room) return;
       room.lastActivity = Date.now();
 
-      // Start Game Countdown
-      if (msg.type === 'request_start' && session.role === 'host') {
+      // Start Game Countdown & Launch Authoritative Server Simulation
+      if (msg.type === 'request_start' && session.slot === 1) {
         room.status = 'starting';
         const startPayload = {
           type: 'game_countdown',
@@ -261,59 +343,23 @@ wss.on('connection', (ws: WebSocket) => {
           players: room.clients.map((c) => ({ slot: c.slot, role: c.role, team: c.team })),
         };
         room.clients.forEach((c) => safeSend(c.ws, startPayload));
+
+        // Start Dedicated Server GameEngine
+        startRoomGame(room);
         return;
       }
 
-      // Relay State from Host to all Guests
-      if (msg.type === 'sync_state' && session.role === 'host') {
-        room.clients.forEach((c) => {
-          if (c !== session && c.ws.readyState === WebSocket.OPEN) {
-            safeSend(c.ws, msg);
-          }
-        });
-        return;
-      }
-
-      // Relay Input from any Guest to Host (Tagged with the guest's slot or relayed slot)
-      if (msg.type === 'player_input' && session.role === 'guest') {
-        if (room.host && room.host.ws.readyState === WebSocket.OPEN) {
-          const targetSlot = typeof msg.slot === 'number' ? msg.slot : (session.slot || 2);
-          safeSend(room.host.ws, {
-            ...msg,
-            slot: targetSlot,
-          });
+      // Dedicated Server Authoritative Input Channel:
+      // Client sends inputs stamped with sequence number -> Server applies to room engine
+      if (msg.type === 'player_input') {
+        const targetSlot = typeof msg.slot === 'number' ? msg.slot : session.slot;
+        if (room.gameEngine && msg.input) {
+          room.gameEngine.setPlayerSlotInput(targetSlot, msg.input, msg.seq);
         }
         return;
       }
 
-      // Relay Discrete Game Events (Broadcast to other room members)
-      if (msg.type === 'game_event') {
-        room.clients.forEach((c) => {
-          if (c !== session && c.ws.readyState === WebSocket.OPEN) {
-            safeSend(c.ws, msg);
-          }
-        });
-        return;
-      }
-
-      // WebRTC P2P Signaling Relay (Exchanges SDP offers, answers, and ICE candidates)
-      if (msg.type === 'webrtc_signal') {
-        const targetSlot = msg.targetSlot;
-        room.clients.forEach((c) => {
-          if (c !== session && c.ws.readyState === WebSocket.OPEN) {
-            if (typeof targetSlot !== 'number' || c.slot === targetSlot) {
-              safeSend(c.ws, {
-                ...msg,
-                fromSlot: session.slot,
-                fromRole: session.role,
-              });
-            }
-          }
-        });
-        return;
-      }
-
-      // Taunt message (Retro chat popup like "ATTACK!", "DEFEND!", "GG!")
+      // Taunt message (Retro chat popup: "ATTACK!", "DEFEND!", "GG!")
       if (msg.type === 'taunt') {
         const senderLabel = `P${session.slot}`;
         room.clients.forEach((c) => {
@@ -342,8 +388,13 @@ wss.on('connection', (ws: WebSocket) => {
         // Remove from room clients list
         room.clients = room.clients.filter((c) => c !== currentSession);
 
-        if (currentSession.role === 'host') {
-          room.host = null;
+        if (room.clients.length === 0) {
+          // Room completely empty -> terminate game engine and delete room
+          stopRoomGame(room);
+          rooms.delete(room.code);
+        } else if (currentSession.slot === 1 && room.status !== 'playing') {
+          // Party leader left during waiting phase
+          stopRoomGame(room);
           room.clients.forEach((c) => {
             safeSend(c.ws, {
               type: 'peer_disconnected',
@@ -351,11 +402,9 @@ wss.on('connection', (ws: WebSocket) => {
               message: 'HOST HAS DISCONNECTED',
             });
           });
+          rooms.delete(room.code);
         } else {
-          // Guest disconnected
-          if (room.guest === currentSession) {
-            room.guest = room.clients.find((c) => c.role === 'guest') || null;
-          }
+          // A player left the match
           room.clients.forEach((c) => {
             safeSend(c.ws, {
               type: 'player_left',
@@ -393,13 +442,17 @@ async function startServer() {
   }
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Battle City 1990] Server running on http://0.0.0.0:${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
+    console.log(`[Battle City 1990] Dedicated Server running on http://0.0.0.0:${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
   });
 }
 
 // Graceful shutdown handling for Docker, PM2, and systemd
 const gracefulShutdown = (signal: string) => {
   console.log(`[Battle City 1990] Received ${signal}. Closing server gracefully...`);
+  for (const room of rooms.values()) {
+    stopRoomGame(room);
+  }
+  rooms.clear();
   server.close(() => {
     console.log('[Battle City 1990] HTTP/WS server closed.');
     process.exit(0);

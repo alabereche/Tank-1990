@@ -280,8 +280,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     engineRef.current = engine;
 
     if (multiplayerConfig) {
-      engine.setMultiplayerMode(multiplayerConfig.mode, multiplayerConfig.role);
-      engine.localPlayerSlot = multiplayerConfig.slot || (multiplayerConfig.role === 'host' ? 1 : 2);
+      const isOnline = multiplayerConfig.roomCode !== 'LOCAL';
+      if (isOnline) {
+        // Dedicated Server Architecture: Both players act as prediction clients to the Ubuntu VPS
+        engine.setMultiplayerMode(multiplayerConfig.mode, 'guest');
+        engine.localPlayerSlot = multiplayerConfig.slot || (multiplayerConfig.role === 'host' ? 1 : 2);
+      } else {
+        // Local Couch Play: Local browser engine runs the entire game
+        engine.setMultiplayerMode(multiplayerConfig.mode, multiplayerConfig.role);
+        engine.localPlayerSlot = 1;
+      }
     }
 
     if (settings?.playerSpeed) {
@@ -289,17 +297,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     engine.startStage(currentStage, map);
-
-    // Host sends snapshots across the wire to Guest (Online only)
-    if (multiplayerConfig?.role === 'host' && multiplayerConfig?.roomCode !== 'LOCAL') {
-      engine.onNetworkSync = (snapshot) => {
-        multiplayerClient.sendSyncState(snapshot);
-      };
-      // Discrete events (booms, shots, brick hits) relay for guest audio/FX
-      engine.onGameEventBroadcast = (event) => {
-        multiplayerClient.sendGameEvent(event);
-      };
-    }
 
     // Track gamepad connections
     const unsubscribeGamepad = gamepadManager.onConnectionChange((gp) => {
@@ -313,7 +310,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
   }, [currentStage, customMap, handleStateChange, settings?.playerSpeed, multiplayerConfig]);
 
-  // Network Event Handlers for Multiplayer (Online only)
+  // Network Event Handlers for Multiplayer (Online Dedicated Server)
   useEffect(() => {
     if (!multiplayerConfig || multiplayerConfig.roomCode === 'LOCAL') return;
 
@@ -333,29 +330,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
     });
 
-    // Host receives input packets from Guest (Player 2..8) - stored and fed to engine
-    const unsubInput = multiplayerClient.on('player_input', (data) => {
-      if (multiplayerConfig.role === 'host') {
-        const slot = data.slot || 2;
-        if (engineRef.current) {
-          engineRef.current.setPlayerSlotInput(slot, data.input, data.seq);
-        }
-        if (slot === 2) {
-          netP2Input.current = data.input;
-        }
-      }
-    });
-
-    // Guest receives full authoritative snapshots from Host
+    // Dedicated Server: All online players receive authoritative snapshots
     const unsubSync = multiplayerClient.on('sync_state', (data) => {
-      if (engineRef.current && multiplayerConfig.role === 'guest') {
+      if (engineRef.current) {
         engineRef.current.applyNetworkSnapshot(data.snapshot);
       }
     });
 
-    // Guest receives discrete events for sound & explosion effects
+    // Dedicated Server: All online players receive discrete sound & FX events
     const unsubEvent = multiplayerClient.on('game_event', (data) => {
-      if (engineRef.current && multiplayerConfig.role === 'guest') {
+      if (engineRef.current) {
         engineRef.current.handleRemoteEvent(data);
       }
     });
@@ -377,7 +361,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => {
       unsubPing();
       unsubTransport();
-      unsubInput();
       unsubSync();
       unsubEvent();
       unsubTaunt();
@@ -516,9 +499,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const touchInput = useRef<Partial<InputState>>({});
   const lastSentInput = useRef('');
-  const lastSentRelayInput = useRef('');
   const guestHeartbeatCounter = useRef(0);
-  const netP2Input = useRef<Partial<InputState>>({});
   const padTrusted = useRef(false);
   const dbgRef = useRef({ inSig: '00000', sent: '-', p2Sig: '00000', pads: 0 });
   const [inputDebug, setInputDebug] = useState('');
@@ -642,9 +623,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           pads: gamepadManager.getConnectedPads().length,
         };
 
-        if (multiplayerConfig?.role === 'guest') {
-          // Client-side prediction with Sequenced Input Channel (Gambetta model)
-          const mySlot = multiplayerConfig.slot || 2;
+        const isOnline = Boolean(multiplayerConfig && multiplayerConfig.roomCode !== 'LOCAL');
+        if (isOnline) {
+          // Authoritative Dedicated Server: Both players predict locally and stream sequenced inputs to VPS
+          const mySlot = multiplayerConfig.slot || (multiplayerConfig.role === 'host' ? 1 : 2);
           const cleanInput = { ...merged, pause: false };
           const isActive = Boolean(
             cleanInput.up ||
@@ -660,55 +642,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const hasChanged = sig !== lastSentInput.current;
           guestHeartbeatCounter.current++;
 
-          // Send immediately on state transition (e.g. fire pressed, direction change)
-          // or every 4 frames as an active heartbeat to survive UDP packet loss
-          const shouldSend = hasChanged || (isActive && guestHeartbeatCounter.current % 4 === 0);
+          // Always record local prediction every single frame to prevent reconciliation drift
+          const seq = engine?.recordAndSendInput(mySlot, cleanInput);
 
+          // Transmit on state transition (0ms immediate) or 30Hz active heartbeat (% 2) or idle heartbeat (% 10)
+          const shouldSend = hasChanged || (isActive && guestHeartbeatCounter.current % 2 === 0) || (guestHeartbeatCounter.current % 10 === 0);
           if (shouldSend) {
             lastSentInput.current = sig;
-            const seq = engine?.recordAndSendInput(mySlot, cleanInput);
             if (seq !== undefined) {
               multiplayerClient.sendInput(cleanInput, mySlot, seq);
             }
-          } else {
-            engine?.setPlayerSlotInput(mySlot, cleanInput);
-          }
-
-          // Same-machine dual-pad relay: if 2 pads are connected on this PC and guest window is focused,
-          // relay Pad 0 to Host for Slot 1 (P1) so Player 1 isn't frozen by Chromium focus isolation!
-          const connectedPads = gamepadManager.getConnectedPads();
-          if (connectedPads.length >= 2) {
-            const pad0Raw = gamepadManager.pollInputForOrdinal(0)?.input;
-            if (pad0Raw) {
-              const fullPad0 = mergeInput(pad0Raw);
-              const sig0 = inputSig(fullPad0);
-              if (sig0 !== lastSentRelayInput.current) {
-                lastSentRelayInput.current = sig0;
-                multiplayerClient.sendInput({ ...fullPad0, pause: false }, 1);
-              }
-            }
           }
         } else {
-          // Host drives P1 locally (keyboard, gamepad, touch)
+          // Offline Single Player or Local 2P (2 gamepads on same screen)
           engine?.updateInput(merged);
-
-          // P2 input: driven by guest packet over network.
-          // If testing on the same PC with 2 pads plugged into the host, allow Pad 1 to drive P2 locally when guest is idle!
-          let p2 = netP2Input.current ? (netP2Input.current as InputState) : null;
-          const isNetP2Active = Boolean(p2 && (p2.up || p2.down || p2.left || p2.right || p2.fire));
-          if (!isNetP2Active) {
-            const connectedPads = gamepadManager.getConnectedPads();
-            if (connectedPads.length >= 2) {
-              const pad1Raw = gamepadManager.pollInputForOrdinal(1)?.input;
-              if (pad1Raw && (pad1Raw.up || pad1Raw.down || pad1Raw.left || pad1Raw.right || pad1Raw.fire)) {
-                p2 = mergeInput(pad1Raw);
-              }
+          const connectedPads = gamepadManager.getConnectedPads();
+          if (connectedPads.length >= 2) {
+            const pad1Raw = gamepadManager.pollInputForOrdinal(1)?.input;
+            if (pad1Raw) {
+              engine?.setP2Input(mergeInput(pad1Raw));
             }
           }
-          const finalP2 = p2 || { up: false, down: false, left: false, right: false, fire: false, pause: false, smoke: false, grenade: false, shield: false };
-          engine?.setP2Input(finalP2);
-          dbgRef.current.p2Sig = inputSig(finalP2);
-
         }
 
         // Gamepad pause and quit controls (Start or Select on Gamepad)

@@ -57,8 +57,8 @@ interface SpawningTank {
 }
 
 export class GameEngine {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
 
   // Arena Dimensions & Coordinates
   public gridSize: number = 26;
@@ -223,14 +223,15 @@ export class GameEngine {
   private gameState: GameState = GameState.STAGE_START;
 
   constructor(
-    canvas: HTMLCanvasElement,
+    canvas: HTMLCanvasElement | null,
     map: StageMap,
     onStateChange: (state: GameState, score: GameScore) => void
   ) {
     this.canvas = canvas;
-    const context = canvas.getContext('2d', { alpha: false });
-    if (!context) throw new Error('Cannot get 2d context');
-    this.ctx = context;
+    if (canvas) {
+      const context = canvas.getContext('2d', { alpha: false });
+      if (context) this.ctx = context;
+    }
     this.currentMap = map;
     this.hasCustomMap = !!map && !map.name.startsWith('Stage ');
     this.onStateChange = onStateChange;
@@ -239,9 +240,11 @@ export class GameEngine {
 
     // Load High Score from localStorage if available
     try {
-      const saved = localStorage.getItem('battle_city_high_score');
-      if (saved) {
-        this.scoreData.highScore = Math.max(20000, parseInt(saved, 10) || 20000);
+      if (typeof localStorage !== 'undefined') {
+        const saved = localStorage.getItem('battle_city_high_score');
+        if (saved) {
+          this.scoreData.highScore = Math.max(20000, parseInt(saved, 10) || 20000);
+        }
       }
     } catch {}
 
@@ -365,7 +368,7 @@ export class GameEngine {
       { x: (this.gridSize - 2) * BLOCK_SIZE, y: 0 },
     ];
 
-    if (this.canvas.width !== this.canvasSize || this.canvas.height !== this.canvasSize) {
+    if (this.canvas && (this.canvas.width !== this.canvasSize || this.canvas.height !== this.canvasSize)) {
       this.canvas.width = this.canvasSize;
       this.canvas.height = this.canvasSize;
     }
@@ -1194,14 +1197,29 @@ export class GameEngine {
     if (this.isRunning) return;
     this.isRunning = true;
     this.lastTimestamp = performance.now();
-    if (this.localRole === 'host') {
+    if (this.localRole === 'host' && typeof Worker !== 'undefined') {
       this.tickWorker = createTickWorker();
       if (this.tickWorker) {
         this.tickWorker.onmessage = this.onWorkerTick;
         this.tickWorker.postMessage('start');
       }
     }
-    this.animFrameId = requestAnimationFrame(this.loop);
+    if (typeof requestAnimationFrame !== 'undefined' && this.ctx) {
+      this.animFrameId = requestAnimationFrame(this.loop);
+    }
+  }
+
+  public tick() {
+    if (!this.isRunning || this.isPaused) return;
+    if (
+      this.gameState !== GameState.PLAYING &&
+      this.gameState !== GameState.ROUND_END &&
+      this.gameState !== GameState.ROUND_INTRO
+    ) {
+      return;
+    }
+    this.tickCount++;
+    this.update();
   }
 
   public stopLoop() {
@@ -2729,7 +2747,9 @@ export class GameEngine {
               if (this.scoreData.score > this.scoreData.highScore) {
                 this.scoreData.highScore = this.scoreData.score;
                 try {
-                  localStorage.setItem('battle_city_high_score', this.scoreData.highScore.toString());
+                  if (typeof localStorage !== 'undefined') {
+                    localStorage.setItem('battle_city_high_score', this.scoreData.highScore.toString());
+                  }
                 } catch {}
               }
 
@@ -3590,7 +3610,9 @@ export class GameEngine {
           if (this.scoreData.score > this.scoreData.highScore) {
             this.scoreData.highScore = this.scoreData.score;
             try {
-              localStorage.setItem('battle_city_high_score', this.scoreData.highScore.toString());
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('battle_city_high_score', this.scoreData.highScore.toString());
+              }
             } catch {}
           }
           this.createExplosion(enemy.x + 16, enemy.y + 16, true);
@@ -3684,6 +3706,7 @@ export class GameEngine {
   // --- Rendering Pipeline ---
   public render() {
     const ctx = this.ctx;
+    if (!ctx) return;
     ctx.clearRect(0, 0, this.canvasSize, this.canvasSize);
 
     // 1. Black Field Background
