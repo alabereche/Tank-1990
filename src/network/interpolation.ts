@@ -41,15 +41,14 @@ export interface NetSnapshot {
 export const RENDER_DELAY_MS = 80;
 
 /**
- * Calculates adaptive render delay for jitter buffering based on real RTT.
- * Clamped between 65ms (fast network) and 130ms (high latency / mobile connection)
- * to ensure mobile jitter never causes the buffer to run dry and stutter.
+ * Adaptive jitter buffer: one-way latency + jitter + ~1.6 snapshot intervals,
+ * so the buffer survives bursts at any snapshot cadence (15Hz or 30Hz).
+ * Clamped 60-170ms; live measured ping and snapshot interval drive it.
  */
-export function getAdaptiveDelay(ping: number, jitter: number = 12): number {
+export function getAdaptiveDelay(ping: number, jitter: number = 12, snapshotIntervalMs: number = 33): number {
   const oneWay = Math.max(15, ping * 0.5);
-  // Ensure buffer covers 2.2 snapshot intervals (70ms) + one-way latency + jitter
-  const calculated = oneWay + jitter + 45;
-  return Math.min(130, Math.max(65, Math.round(calculated)));
+  const calculated = oneWay + jitter + snapshotIntervalMs * 1.6;
+  return Math.min(170, Math.max(60, Math.round(calculated)));
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -88,9 +87,19 @@ function blendGrenade(
 export class SnapshotBuffer {
   private snaps: NetSnapshot[] = [];
   private readonly limit = 30;
+  private lastPushAt: number = 0;
+
+  /** EWMA of real snapshot arrival gaps (ms) — feeds the adaptive delay. */
+  public avgInterval: number = 33;
 
   public push(s: NetSnapshot): void {
-    s.recvAt = performance.now();
+    const now = performance.now();
+    s.recvAt = now;
+    if (this.lastPushAt) {
+      const delta = now - this.lastPushAt;
+      if (delta > 5 && delta < 500) this.avgInterval = this.avgInterval * 0.75 + delta * 0.25;
+    }
+    this.lastPushAt = now;
     this.snaps.push(s);
     if (this.snaps.length > this.limit) this.snaps.shift();
   }

@@ -1333,7 +1333,7 @@ export class GameEngine {
     if (this.gameState === GameState.ROUND_END) {
       soundManager.stopEngineSound();
       this.updateEffects();
-      if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 2 === 0) {
+      if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 4 === 0) {
         this.onNetworkSync(this.getNetworkSnapshot());
       }
       return;
@@ -1341,7 +1341,7 @@ export class GameEngine {
     if (this.gameState === GameState.ROUND_INTRO) {
       soundManager.stopEngineSound();
       this.updateSpawningTanks();
-      if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 2 === 0) {
+      if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 4 === 0) {
         this.onNetworkSync(this.getNetworkSnapshot());
       }
       return;
@@ -1438,7 +1438,7 @@ export class GameEngine {
     }
 
     // 12. Network State Synchronization (Host broadcasts snapshot)
-    if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 2 === 0) {
+    if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 4 === 0) {
       this.onNetworkSync(this.getNetworkSnapshot());
     }
   }
@@ -1454,7 +1454,7 @@ export class GameEngine {
     }
 
     // Sample view with adaptive jitter delay based on measured ping
-    const adaptiveDelay = getAdaptiveDelay(this.lastPingMs);
+    const adaptiveDelay = getAdaptiveDelay(this.lastPingMs, 12, this.snapBuffer.avgInterval);
     const view = this.snapBuffer.sample(adaptiveDelay);
     if (view) this.applyRemoteView(view);
 
@@ -3971,12 +3971,11 @@ export class GameEngine {
     if (sendGrid) this.lastSentGridVersion = this.gridVersion;
 
     const playersList = Array.from(this.playerTanks.values()).map((p) => ({
-      id: p.id,
+      id: 'p' + p.playerIndex, // short key for interpolation blending
       pIdx: p.playerIndex,
       team: p.team,
-      slot: p.slot,
-      x: p.x,
-      y: p.y,
+      x: Math.round(p.x),
+      y: Math.round(p.y),
       dir: p.direction,
       moving: p.moving,
       tier: p.tier,
@@ -4018,13 +4017,13 @@ export class GameEngine {
         maxHp: e.maxHp,
         isFlashingBonus: e.isFlashingBonus,
       })),
-      spawning: this.spawningTanks.map((s) => ({
-        id: s.id,
+      spawning: this.spawningTanks.map((s, i) => ({
+        id: 's' + i,
         isPlayer: s.isPlayer,
         pIdx: s.playerIndex,
-        x: s.x,
-        y: s.y,
-        progress: s.progress,
+        x: Math.round(s.x),
+        y: Math.round(s.y),
+        progress: Math.round(s.progress * 100) / 100,
       })),
       bullets: this.bullets.map((b) => ({
         id: b.id,
@@ -4032,35 +4031,34 @@ export class GameEngine {
         isPlayer: b.isPlayer,
         pIdx: b.playerIndex,
         team: b.team,
-        x: b.x,
-        y: b.y,
+        x: Math.round(b.x),
+        y: Math.round(b.y),
         dir: b.direction,
       })),
       powerUps: this.powerUps.map((p) => ({
         id: p.id,
         type: p.type,
-        x: p.x,
-        y: p.y,
+        x: Math.round(p.x),
+        y: Math.round(p.y),
       })),
       smokes: this.activeSmokeScreens.map((s) => ({
         id: s.id,
-        x: s.x,
-        y: s.y,
+        x: Math.round(s.x),
+        y: Math.round(s.y),
         radius: s.radius,
         duration: s.duration,
-        maxDuration: s.maxDuration,
       })),
       grenades: this.activeGrenades.map((g) => ({
         id: g.id,
         ownerId: g.ownerId,
         isPlayer: g.isPlayer,
         team: g.team,
-        x: g.x,
-        y: g.y,
-        z: g.z,
-        vx: g.vx,
-        vy: g.vy,
-        vz: g.vz,
+        x: Math.round(g.x),
+        y: Math.round(g.y),
+        z: Math.round(g.z),
+        vx: Math.round(g.vx * 10) / 10,
+        vy: Math.round(g.vy * 10) / 10,
+        vz: Math.round(g.vz * 10) / 10,
         life: g.life,
         bouncesLeft: g.bouncesLeft,
       })),
@@ -4068,8 +4066,8 @@ export class GameEngine {
         id: s.id,
         ownerId: s.ownerId,
         team: s.team,
-        x: s.x,
-        y: s.y,
+        x: Math.round(s.x),
+        y: Math.round(s.y),
         w: s.width,
         h: s.height,
         hp: s.hp,
