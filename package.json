@@ -5,14 +5,13 @@
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "dev": "vite",
+    "build": "vite build",
     "electron:build": "npm run build && electron-builder --win",
-    "start": "node dist/server.cjs",
+    "start": "vite preview",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit",
-    "test:netcode": "node --test --import tsx scripts/test-netcode-prediction.ts"
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

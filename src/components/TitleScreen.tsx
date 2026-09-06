@@ -14,7 +14,6 @@ interface TitleScreenProps {
   mapSizeLabel?: string;
   onStart1Player: () => void;
   onStartLocal2Player: (mode: 'coop' | 'versus') => void;
-  onOpenMultiplayer: () => void;
   onOpenConstruction: () => void;
   onOpenSettings: () => void;
   inCabinet?: boolean;
@@ -26,7 +25,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   mapSizeLabel,
   onStart1Player,
   onStartLocal2Player,
-  onOpenMultiplayer,
   onOpenConstruction,
   onOpenSettings,
   inCabinet = false,
@@ -96,7 +94,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const menuOptions: { label: string; action: () => void; badge?: string }[] = [
     { label: '1 PLAYER', action: onStart1Player },
     { label: '2 PLAYERS (LOCAL)', action: () => setShowLocal2PModal(true) },
-    { label: 'ONLINE MULTIPLAYER', action: onOpenMultiplayer },
     { label: 'CONSTRUCTION', action: onOpenConstruction },
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },

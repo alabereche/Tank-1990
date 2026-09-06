@@ -278,20 +278,36 @@ export interface InputState {
 export type MultiplayerMode = 'single' | 'coop' | 'versus' | '2v2' | 'ffa';
 export type MultiplayerRole = 'host' | 'guest';
 
-export interface MultiplayerPlayerInfo {
-  slot: number;
-  team?: 'A' | 'B' | 'FFA';
-  role: MultiplayerRole;
-  ping?: number;
-  ready?: boolean;
+export interface NetEntity {
+  id: string;
+  x: number;
+  y: number;
+  [key: string]: unknown;
 }
 
-export interface MultiplayerState {
-  roomCode: string;
-  role: MultiplayerRole;
-  mode: MultiplayerMode;
-  peerConnected: boolean;
-  ping: number;
+export interface NetSnapshot {
+  tick: number;
+  recvAt?: number;
+  p1: Record<string, any> | null;
+  p2: Record<string, any> | null;
+  players?: NetEntity[];
+  enemies: NetEntity[];
+  spawning: NetEntity[];
+  bullets: NetEntity[];
+  powerUps: NetEntity[];
+  smokes?: NetEntity[];
+  grenades?: NetEntity[];
+  shields?: NetEntity[];
+  tacPickups?: NetEntity[];
+  scoreData?: unknown;
+  baseState?: unknown;
+  baseStateB?: unknown;
+  bases?: unknown[];
+  vsDefenderSlot?: 1 | 2;
+  gameState?: unknown;
+  gv?: number;
+  grid?: number[];
+  ackSeqs?: Record<number, number>;
 }
 
 declare global {

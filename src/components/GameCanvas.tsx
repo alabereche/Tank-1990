@@ -19,7 +19,6 @@ import {
   MultiplayerRole,
   TacticalInventory,
 } from '../types';
-import { multiplayerClient } from '../network/MultiplayerClient';
 import { gamepadManager, GamepadInfo } from '../engine/GamepadManager';
 import { soundManager } from '../engine/SoundManager';
 import { TouchControls, VirtualJoystick, TouchActionButtons } from './TouchControls';
@@ -35,10 +34,7 @@ import {
   Minimize2,
   Sliders,
   Scaling,
-  Wifi,
-  Radio,
   MessageSquare,
-  AlertTriangle,
   Users,
   Volume2,
   VolumeX,
@@ -133,9 +129,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [gamepad, setGamepad] = useState<GamepadInfo | null>(gamepadManager.getConnectedGamepad());
   const [touchActive, setTouchActive] = useState<boolean>(false);
   const [fullscreenActive, setFullscreenActive] = useState<boolean>(isFullscreen());
-  const [multiplayerPing, setMultiplayerPing] = useState<number>(0);
-  const [transportType, setTransportType] = useState<'p2p' | 'relay'>('relay');
-  const [partnerDisconnected, setPartnerDisconnected] = useState<boolean>(false);
   const [tacticalInv, setTacticalInv] = useState<TacticalInventory>({ smoke: 1, grenade: 0, shield: 1 });
   const [tacticalInvP2, setTacticalInvP2] = useState<TacticalInventory | undefined>(undefined);
   const [isMobile, setIsMobile] = useState<boolean>(false);
@@ -280,16 +273,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     engineRef.current = engine;
 
     if (multiplayerConfig) {
-      const isOnline = multiplayerConfig.roomCode !== 'LOCAL';
-      if (isOnline) {
-        // Dedicated Server Architecture: Both players act as prediction clients to the Ubuntu VPS
-        engine.setMultiplayerMode(multiplayerConfig.mode, 'guest');
-        engine.localPlayerSlot = multiplayerConfig.slot || (multiplayerConfig.role === 'host' ? 1 : 2);
-      } else {
-        // Local Couch Play: Local browser engine runs the entire game
-        engine.setMultiplayerMode(multiplayerConfig.mode, multiplayerConfig.role);
-        engine.localPlayerSlot = 1;
-      }
+      // Local Couch Play: Local browser engine runs the entire game
+      engine.setMultiplayerMode(multiplayerConfig.mode, 'host');
+      engine.localPlayerSlot = 1;
     }
 
     if (settings?.playerSpeed) {
@@ -310,72 +296,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
   }, [currentStage, customMap, handleStateChange, settings?.playerSpeed, multiplayerConfig]);
 
-  // Network Event Handlers for Multiplayer (Online Dedicated Server)
-  useEffect(() => {
-    if (!multiplayerConfig || multiplayerConfig.roomCode === 'LOCAL') return;
-
-    const unsubPing = multiplayerClient.on('ping_updated', (data) => {
-      setMultiplayerPing(data.ping);
-      if (data.transport) {
-        setTransportType(data.transport);
-      }
-      if (engineRef.current) {
-        engineRef.current.lastPingMs = data.ping;
-      }
-    });
-
-    const unsubTransport = multiplayerClient.on('transport_status', (data) => {
-      if (data.transport) {
-        setTransportType(data.transport);
-      }
-    });
-
-    // Dedicated Server: All online players receive authoritative snapshots
-    const unsubSync = multiplayerClient.on('sync_state', (data) => {
-      if (engineRef.current) {
-        engineRef.current.applyNetworkSnapshot(data.snapshot);
-      }
-    });
-
-    // Dedicated Server: All online players receive discrete sound & FX events
-    const unsubEvent = multiplayerClient.on('game_event', (data) => {
-      if (engineRef.current) {
-        engineRef.current.handleRemoteEvent(data);
-      }
-    });
-
-    // Both players receive quick tactical taunts
-    const unsubTaunt = multiplayerClient.on('taunt', (data) => {
-      if (engineRef.current) {
-        soundManager.playPowerUpSpawn();
-        engineRef.current.triggerTaunt(data.text, data.sender);
-      }
-    });
-
-    // Peer disconnection handling
-    const unsubDisconnect = multiplayerClient.on('peer_disconnected', () => {
-      setPartnerDisconnected(true);
-      soundManager.playHitSteel();
-    });
-
-    return () => {
-      unsubPing();
-      unsubTransport();
-      unsubSync();
-      unsubEvent();
-      unsubTaunt();
-      unsubDisconnect();
-    };
-  }, [multiplayerConfig]);
-
   const triggerQuickTaunt = useCallback(
     (phrase: string) => {
       if (!multiplayerConfig || !engineRef.current) return;
-      const sender = multiplayerConfig.role === 'host' ? 'P1' : 'P2';
+      const sender = 'P1';
       soundManager.unlockAudio();
       soundManager.playHitSteel();
       engineRef.current.triggerTaunt(phrase, sender);
-      multiplayerClient.sendTaunt(phrase, sender);
     },
     [multiplayerConfig]
   );
@@ -385,15 +312,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     (focusQuit = false) => {
       soundManager.unlockAudio();
       setInitialPauseFocusQuit(focusQuit);
-      if (multiplayerConfig?.role === 'guest') {
-        setIsGuestPauseOpen((prev) => !prev);
-        return;
-      }
       if (engineRef.current) {
         engineRef.current.togglePause();
       }
     },
-    [multiplayerConfig?.role]
+    []
   );
 
   const triggerPauseRef = useRef(triggerPause);
@@ -418,11 +341,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     soundManager.playMenuSelect();
     soundManager.stopEngineSound();
     setIsGuestPauseOpen(false);
-    if (multiplayerConfig && multiplayerConfig.roomCode !== 'LOCAL') {
-      multiplayerClient.disconnect();
-    }
     onReturnToMenu();
-  }, [multiplayerConfig, onReturnToMenu]);
+  }, [onReturnToMenu]);
 
   // Keyboard Event Handlers
   useEffect(() => {
@@ -498,11 +418,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // that cross-talk.
 
   const touchInput = useRef<Partial<InputState>>({});
-  const lastSentInput = useRef('');
-  const guestHeartbeatCounter = useRef(0);
   const padTrusted = useRef(false);
-  const dbgRef = useRef({ inSig: '00000', sent: '-', p2Sig: '00000', pads: 0 });
-  const [inputDebug, setInputDebug] = useState('');
 
   const mergeInput = (
     ...inputs: (Partial<InputState> | null | undefined)[]
@@ -517,9 +433,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     grenade: inputs.some((i) => Boolean(i?.grenade)),
     shield: inputs.some((i) => Boolean(i?.shield)),
   });
-
-  const inputSig = (i: InputState) =>
-    `${i.up ? 1 : 0}${i.down ? 1 : 0}${i.left ? 1 : 0}${i.right ? 1 : 0}${i.fire ? 1 : 0}${i.smoke ? 1 : 0}${i.grenade ? 1 : 0}${i.shield ? 1 : 0}`;
 
   useEffect(() => {
     let animId: number;
@@ -599,16 +512,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (pad1Poll?.selectPressed || pad2Poll?.selectPressed) {
           triggerPauseRef.current(true);
         }
-        dbgRef.current = {
-          inSig: inputSig(m1),
-          sent: '-',
-          p2Sig: inputSig(m2),
-          pads: gamepadManager.getConnectedPads().length,
-        };
       } else {
-        // Online / single: the local player drives their own tank. With two
-        // pads on one machine, host reads the first and guest the second.
-        const role = multiplayerConfig?.role === 'guest' ? 'guest' : multiplayerConfig?.role === 'host' ? 'host' : 'any';
+        // Single player: local player drives their own tank.
         const kb = {
           up: Boolean(kd['arrowup'] || kd['w']),
           down: Boolean(kd['arrowdown'] || kd['s']),
@@ -619,57 +524,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           grenade: Boolean(kd['e']),
           shield: Boolean(kd['r'] || kd['c']),
         };
-        // Poll the pad exactly ONCE per frame - readPad() consumes button
-        // edges (Start), so a second call would drop them.
-        const padPoll = gamepadManager.pollInputForRole(role);
+        const padPoll = gamepadManager.pollInputForRole('any');
         const pad = padPoll?.input;
         const merged = mergeInput(kb, pad, touchInput.current);
-        dbgRef.current = {
-          inSig: inputSig(merged),
-          sent: lastSentInput.current,
-          p2Sig: '-',
-          pads: gamepadManager.getConnectedPads().length,
-        };
 
-        const isOnline = Boolean(multiplayerConfig && multiplayerConfig.roomCode !== 'LOCAL');
-        if (isOnline) {
-          // Authoritative Dedicated Server: Both players predict locally and stream sequenced inputs to VPS
-          const mySlot = multiplayerConfig.slot || (multiplayerConfig.role === 'host' ? 1 : 2);
-          const cleanInput = { ...merged, pause: false };
-          const isActive = Boolean(
-            cleanInput.up ||
-              cleanInput.down ||
-              cleanInput.left ||
-              cleanInput.right ||
-              cleanInput.fire ||
-              cleanInput.smoke ||
-              cleanInput.grenade ||
-              cleanInput.shield
-          );
-          const sig = inputSig(cleanInput);
-          const hasChanged = sig !== lastSentInput.current;
-          guestHeartbeatCounter.current++;
-
-          // Always record local prediction every single frame to prevent reconciliation drift
-          const seq = engine?.recordAndSendInput(mySlot, cleanInput);
-
-          // Transmit immediately on state transition (0ms), every 60Hz tick while active (zero dropped movement), or idle heartbeat (% 15)
-          const shouldSend = hasChanged || isActive || guestHeartbeatCounter.current % 15 === 0;
-          if (shouldSend) {
-            lastSentInput.current = sig;
-            if (seq !== undefined) {
-              multiplayerClient.sendInput(cleanInput, mySlot, seq);
-            }
-          }
-        } else {
-          // Offline Single Player or Local 2P (2 gamepads on same screen)
-          engine?.updateInput(merged);
-          const connectedPads = gamepadManager.getConnectedPads();
-          if (connectedPads.length >= 2) {
-            const pad1Raw = gamepadManager.pollInputForOrdinal(1)?.input;
-            if (pad1Raw) {
-              engine?.setP2Input(mergeInput(pad1Raw));
-            }
+        engine?.updateInput(merged);
+        const connectedPads = gamepadManager.getConnectedPads();
+        if (connectedPads.length >= 2) {
+          const pad1Raw = gamepadManager.pollInputForOrdinal(1)?.input;
+          if (pad1Raw) {
+            engine?.setP2Input(mergeInput(pad1Raw));
           }
         }
 
@@ -684,7 +548,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Sync tactical inventory for HUD display
       if (engine) {
-        const slot = multiplayerConfig?.slot || (multiplayerConfig?.role === 'guest' ? 2 : 1);
+        const slot = multiplayerConfig?.slot || 1;
         const inv = engine.getTacticalInventory(slot);
         if (inv) {
           setTacticalInv((prev) => {
@@ -719,21 +583,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
     animId = requestAnimationFrame(inputLoop);
     return () => cancelAnimationFrame(animId);
-  }, [multiplayerConfig]);
-
-  // Live input diagnostics (online only): ground truth for "a tank won't
-  // move" - shows pad count, role, local input bits, last sent packet,
-  // pause flag and ping, refreshed 4x per second.
-  useEffect(() => {
-    if (!multiplayerConfig || multiplayerConfig.roomCode === 'LOCAL') return;
-    const id = window.setInterval(() => {
-      const d = dbgRef.current;
-      const netMode = multiplayerClient.isP2P() ? 'P2P-UDP' : 'RELAY-WS';
-      setInputDebug(
-        `NET:${netMode} PADS:${d.pads} ROLE:${multiplayerConfig.role} IN:${d.inSig} SENT:${d.sent} PAUSED:${engineRef.current?.paused ? 1 : 0} PING:${multiplayerClient.getPing()}ms`
-      );
-    }, 250);
-    return () => window.clearInterval(id);
   }, [multiplayerConfig]);
 
   // Touch controls input bridge: stored in a ref and merged by the unified
@@ -777,21 +626,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           <div className="flex items-center gap-2">
             {multiplayerConfig && (
               <>
-                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                  <Radio className="w-3 h-3 animate-pulse" />
-                  <span>{multiplayerConfig.roomCode}</span>
+                <span className="text-amber-400 font-bold flex items-center gap-1 text-[8px]">
+                  <Users className="w-3 h-3" />
+                  <span>LOCAL 2P</span>
                 </span>
                 <span className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[8px] text-amber-300">
-                  {multiplayerConfig.mode === 'versus' ? '1V1' : multiplayerConfig.mode.toUpperCase()}
-                </span>
-                <span
-                  className={`text-[8px] px-1.5 py-0.5 rounded border ${
-                    transportType === 'p2p'
-                      ? 'text-emerald-300 border-emerald-700 bg-emerald-950/40'
-                      : 'text-zinc-400 border-zinc-700'
-                  }`}
-                >
-                  {transportType === 'p2p' ? 'P2P' : 'RELAY'} {multiplayerPing}ms
+                  {multiplayerConfig.mode === 'versus' ? '1V1' : 'CO-OP'}
                 </span>
               </>
             )}
@@ -862,14 +702,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             </button>
           </div>
         </header>
-
-        {/* Partner Disconnected Alert */}
-        {partnerDisconnected && (
-          <div className="w-full bg-red-900/90 text-white px-2 py-0.5 text-center text-[8px] border-b border-red-700 flex items-center justify-center gap-1 shrink-0">
-            <AlertTriangle className="w-3 h-3 text-amber-300" />
-            <span>OPPONENT DISCONNECTED - MATCH PAUSED</span>
-          </div>
-        )}
 
         {/* Main Landscape Body */}
         <div className="flex-1 w-full flex items-center justify-between px-2 min-h-0 overflow-hidden relative">
@@ -1107,76 +939,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         </div>
 
         {/* Multiplayer Status Bar (When in Online Room or Local 2P) */}
+        {/* Active 2P Info Bar */}
         {multiplayerConfig && (
           <div className="w-full bg-[#242424] px-3 py-1.5 border-b-2 border-[#181818] flex items-center justify-between text-[10px] font-pixel text-zinc-300">
             <div className="flex items-center gap-3">
-              {multiplayerConfig.roomCode === 'LOCAL' ? (
-                <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                  <Users className="w-3.5 h-3.5" />
-                  <span>LOCAL 2 PLAYERS</span>
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-emerald-400">
-                  <Radio className="w-3 h-3 animate-pulse" />
-                  <span>ROOM: {multiplayerConfig.roomCode}</span>
-                </span>
-              )}
+              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                <Users className="w-3.5 h-3.5" />
+                <span>LOCAL 2 PLAYERS</span>
+              </span>
               <span className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-600 rounded text-[9px] text-[#f8b800]">
-                {multiplayerConfig.mode === 'coop'
-                  ? '2P CO-OP'
-                  : multiplayerConfig.mode === 'versus'
-                  ? '1V1 VERSUS'
-                  : multiplayerConfig.mode === '2v2'
-                  ? '2V2 TEAMS'
-                  : '8 FREE-FOR-ALL'}
+                {multiplayerConfig.mode === 'versus' ? '1V1 VERSUS' : '2P CO-OP'}
               </span>
               <span className="text-[9px] text-zinc-400 hidden sm:inline">
-                {multiplayerConfig.roomCode === 'LOCAL'
-                  ? 'P1: WASD / P2: ARROWS'
-                  : multiplayerConfig.role === 'host'
-                  ? 'YOU: P1 (GOLD)'
-                  : `YOU: P${multiplayerConfig.slot || 2} (${multiplayerConfig.team === 'A' ? 'TEAM A' : multiplayerConfig.team === 'B' ? 'TEAM B' : 'FFA'})`}
+                P1: WASD / P2: ARROWS
               </span>
             </div>
-
-            {multiplayerConfig.roomCode !== 'LOCAL' && (
-              <div className="flex items-center gap-2">
-                <span
-                  className={`text-[8px] px-1.5 py-0.5 rounded font-pixel transition-colors ${
-                    transportType === 'p2p'
-                      ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/50'
-                      : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                  }`}
-                  title={
-                    transportType === 'p2p'
-                      ? 'WebRTC P2P Direct UDP Connection (Fastest)'
-                      : 'WebSocket Relay through Server'
-                  }
-                >
-                  {transportType === 'p2p' ? 'P2P DIRECT' : 'RELAY'}
-                </span>
-                <div
-                  className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border ${
-                    multiplayerPing <= 50
-                      ? 'text-emerald-400 border-emerald-800 bg-emerald-950/40'
-                      : multiplayerPing <= 120
-                      ? 'text-amber-400 border-amber-800 bg-amber-950/40'
-                      : 'text-red-400 border-red-800 bg-red-950/40'
-                  }`}
-                >
-                  <Wifi className="w-3 h-3" />
-                  <span>{multiplayerPing}ms</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Partner Disconnected Alert */}
-        {partnerDisconnected && (
-          <div className="w-full bg-red-900/90 text-white px-3 py-1 text-center font-pixel text-[9px] border-b border-red-700 flex items-center justify-center gap-2 animate-pulse">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-            <span>OPPONENT DISCONNECTED - MATCH PAUSED</span>
           </div>
         )}
 
@@ -1256,13 +1033,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           />
         </div>
       </div>
-
-      {/* Live Input Diagnostics (online) */}
-      {multiplayerConfig && inputDebug && (
-        <div className="w-full text-center text-[8px] font-mono text-zinc-500 mt-1 tracking-wider select-none">
-          [INPUT] {inputDebug} &nbsp;|&nbsp; IN/SENT bits = U·D·L·R·F
-        </div>
-      )}
 
       {/* Quick Tactical Taunts for Multiplayer */}
       {multiplayerConfig && (

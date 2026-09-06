@@ -12,7 +12,6 @@ import { MapEditorToolbar } from './components/MapEditorToolbar';
 import { StageIntro } from './components/StageIntro';
 import { GameOverModal } from './components/GameOverModal';
 import { SettingsModal } from './components/SettingsModal';
-import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { ArcadeCabinetFrame } from './components/ArcadeCabinetFrame';
 import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './engine/maps';
 import { soundManager } from './engine/SoundManager';
@@ -25,7 +24,6 @@ export default function App() {
   const [customMap, setCustomMap] = useState<StageMap | undefined>(undefined);
   const [finalScoreData, setFinalScoreData] = useState<GameScore | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [isMultiplayerLobbyOpen, setIsMultiplayerLobbyOpen] = useState<boolean>(false);
   const [isMobileDevice, setIsMobileDevice] = useState<boolean>(false);
   const [isPortraitMode, setIsPortraitMode] = useState<boolean>(false);
   const [pwaPrompt, setPwaPrompt] = useState<any>(null);
@@ -262,7 +260,6 @@ export default function App() {
     soundManager.unlockAudio();
     setFinalScoreData(null);
     setMultiplayerConfig(undefined);
-    setIsMultiplayerLobbyOpen(false);
     setCurrentScreen(GameState.MENU);
   };
 
@@ -280,33 +277,6 @@ export default function App() {
     setCustomMap(undefined);
     setCurrentStage(stg);
     setCurrentScreen(GameState.STAGE_START);
-  };
-
-  const handleStartMultiplayerGame = (config: {
-    roomCode: string;
-    role: MultiplayerRole;
-    mode: MultiplayerMode;
-    mapSize: 'classic' | 'large' | 'giant';
-    stage: number;
-    customMapGrid?: number[][];
-    slot?: number;
-    team?: 'A' | 'B' | 'FFA';
-  }) => {
-    soundManager.stopMenuMusic();
-    soundManager.unlockAudio();
-    setMultiplayerConfig(config);
-    setCurrentStage(config.stage || 1);
-    if (config.customMapGrid) {
-      setCustomMap({
-        id: `custom_${config.roomCode}`,
-        name: `Room ${config.roomCode} Map`,
-        grid: config.customMapGrid,
-      });
-    } else {
-      setCustomMap(undefined);
-    }
-    setIsMultiplayerLobbyOpen(false);
-    setCurrentScreen(GameState.PLAYING);
   };
 
   // Active map based on preset or custom.
@@ -362,19 +332,13 @@ export default function App() {
 
       {/* Screen Router */}
       <main className={`w-full flex items-center justify-center ${currentScreen === GameState.MENU ? 'h-full' : ''}`}>
-        {isMultiplayerLobbyOpen ? (
-          <MultiplayerLobby
-            onLaunchGame={handleStartMultiplayerGame}
-            onBack={() => setIsMultiplayerLobbyOpen(false)}
-          />
-        ) : currentScreen === GameState.MENU ? (
+        {currentScreen === GameState.MENU ? (
           <ArcadeCabinetFrame>
             <TitleScreen
               highScore={highScore}
               mapSizeLabel={MAP_SIZE_CONFIGS[settings.mapSize]?.label}
               onStart1Player={handleStartGame}
               onStartLocal2Player={handleStartLocal2Player}
-              onOpenMultiplayer={() => setIsMultiplayerLobbyOpen(true)}
               onOpenConstruction={handleOpenConstruction}
               onOpenSettings={() => setIsSettingsOpen(true)}
               inCabinet={true}

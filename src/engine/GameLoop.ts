@@ -32,11 +32,11 @@ import {
   ActiveBouncingGrenade,
   ActiveDeployableShield,
   MapSizePreset,
+  NetSnapshot,
 } from '../types';
 import { BLOCK_SIZE, cloneGrid, getStageMapForPresetAndStage } from './maps';
 import { soundManager } from './SoundManager';
 import { SpriteRenderer } from './spriteRenderer';
-import { SnapshotBuffer, NetSnapshot, getAdaptiveDelay } from '../network/interpolation';
 import { createTickWorker } from './tickWorker';
 
 // 1v1 versus: first player to win this many rounds takes the match (CS-style)
@@ -149,9 +149,6 @@ export class GameEngine {
   public onNetworkSync?: (snapshot: any) => void;
   public onGameEventBroadcast?: (event: any) => void;
 
-  // Guest thin-client state: authoritative snapshots, own-tank prediction,
-  // and grid versioning so brick destruction syncs to the guest.
-  private snapBuffer = new SnapshotBuffer();
   private p2AuthTarget: { x: number; y: number; dir: Direction; moving: boolean } | null = null;
   private gridVersion = 0;
   private lastSentGridVersion = -1;
@@ -183,7 +180,7 @@ export class GameEngine {
   public isRoundEnding: boolean = false;
 
   public get isRemoteViewer(): boolean {
-    return this.localRole === 'guest';
+    return false;
   }
 
   // Game Loop
@@ -238,7 +235,7 @@ export class GameEngine {
       if (context) this.ctx = context;
     }
     this.currentMap = map;
-    this.hasCustomMap = !!map && !map.name.startsWith('Stage ');
+    this.hasCustomMap = Boolean(map?.name && !map.name.startsWith('Stage '));
     this.onStateChange = onStateChange;
 
     this.setupDimensions(map);
@@ -564,7 +561,7 @@ export class GameEngine {
     soundManager.stopEngineSound();
     if (customMap) {
       this.currentMap = customMap;
-      this.hasCustomMap = !customMap.name.startsWith('Stage ');
+      this.hasCustomMap = Boolean(customMap.name && !customMap.name.startsWith('Stage '));
     } else {
       const preset: MapSizePreset = this.gridSize === 42 ? 'giant' : this.gridSize === 34 ? 'large' : 'classic';
       this.currentMap = getStageMapForPresetAndStage(stageNumber || 1, preset, this.multiMode);
@@ -613,7 +610,6 @@ export class GameEngine {
     this.prevTacticalInputs.clear();
     this.freezeEnemiesTimer = 0;
     this.shovelTimer = 0;
-    this.snapBuffer.clear();
     this.p2AuthTarget = null;
     this.gridVersion++;
     this.lastSentGridVersion = -1;
@@ -1322,28 +1318,16 @@ export class GameEngine {
       }
     }
 
-    // Guest thin-client: render interpolated host snapshots + own-tank prediction
-    if (this.isRemoteViewer) {
-      this.updateRemote();
-      return;
-    }
-
     // Round banners: end-phase keeps explosions/popups animating only;
     // intro-phase lets the spawn stars spin while the duel is frozen.
     if (this.gameState === GameState.ROUND_END) {
       soundManager.stopEngineSound();
       this.updateEffects();
-      if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 4 === 0) {
-        this.onNetworkSync(this.getNetworkSnapshot());
-      }
       return;
     }
     if (this.gameState === GameState.ROUND_INTRO) {
       soundManager.stopEngineSound();
       this.updateSpawningTanks();
-      if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 4 === 0) {
-        this.onNetworkSync(this.getNetworkSnapshot());
-      }
       return;
     }
 
@@ -1436,299 +1420,6 @@ export class GameEngine {
         this.handleVictory();
       }
     }
-
-    // 12. Network State Synchronization (Host broadcasts snapshot)
-    if (this.onNetworkSync && this.localRole === 'host' && this.tickCount % 4 === 0) {
-      this.onNetworkSync(this.getNetworkSnapshot());
-    }
-  }
-
-  // --- Guest Thin-Client: interpolated view + own-tank prediction ---
-  private updateRemote() {
-    if (this.gameState !== GameState.PLAYING) {
-      soundManager.stopEngineSound();
-      for (const p of this.playerTanks.values()) {
-        if (p) p.moving = false;
-      }
-      return;
-    }
-
-    // Sample view with adaptive jitter delay based on measured ping
-    const adaptiveDelay = getAdaptiveDelay(this.lastPingMs, 12, this.snapBuffer.avgInterval);
-    const view = this.snapBuffer.sample(adaptiveDelay);
-    if (view) this.applyRemoteView(view);
-
-    // Advance authoritative bullets smoothly forward by speed between snapshot ticks (60fps continuous bullet motion)
-    for (const b of this.bullets) {
-      if (b.direction === 'UP') b.y -= b.speed;
-      else if (b.direction === 'DOWN') b.y += b.speed;
-      else if (b.direction === 'LEFT') b.x -= b.speed;
-      else if (b.direction === 'RIGHT') b.x += b.speed;
-    }
-
-    // Client-side prediction for the local player's own slot (reconcile is triggered by authoritative snapshots)
-    if (this.gameState === GameState.PLAYING) {
-      const mySlot = this.localPlayerSlot || 2;
-      this.updatePlayerSlot(mySlot);
-    }
-
-    // Update tactical equipment effects, animations, and muzzle flashes
-    this.updateSmokeScreens();
-    this.updateEffects();
-    this.updateMuzzleFlashes();
-
-    let driving = false;
-    let remoteTerrain: 'normal' | 'mud' | 'ice' = 'normal';
-    for (const p of this.playerTanks.values()) {
-      if (p && p.moving) {
-        driving = true;
-        const centerC = Math.floor((p.x + 16) / BLOCK_SIZE);
-        const centerR = Math.floor((p.y + 16) / BLOCK_SIZE);
-        const tile = this.grid[centerR]?.[centerC];
-        if (tile) {
-          if (tile.type === TileType.MUD) remoteTerrain = 'mud';
-          else if (tile.type === TileType.ICE) remoteTerrain = 'ice';
-        }
-        break;
-      }
-    }
-    soundManager.updateEngineSound(driving, remoteTerrain);
-  }
-
-  private applyRemoteView(view: NetSnapshot) {
-    if (Array.isArray(view.players)) {
-      const activeSlots = new Set<number>();
-      for (const p of view.players) {
-        const slot = ((p as any).pIdx || (p as any).slot || 1) as number;
-        activeSlots.add(slot);
-        let tank = this.playerTanks.get(slot);
-        if (!tank) {
-          tank = this.createPlayerTank(p.x as number, p.y as number, slot);
-          this.playerTanks.set(slot, tank);
-        }
-        if ((p as any).tactical) {
-          tank.tacticalInventory = { ...(p as any).tactical };
-        }
-        if (slot !== this.localPlayerSlot) {
-          const prevX = tank.x;
-          const prevY = tank.y;
-          tank.x = p.x as number;
-          tank.y = p.y as number;
-          tank.direction = p.dir as Direction;
-          tank.moving = p.moving as boolean;
-          tank.tier = (p.tier as number) || 0;
-          tank.shieldTimer = (p.shield as number) || 0;
-          tank.distanceTraveled += Math.abs(tank.x - prevX) + Math.abs(tank.y - prevY);
-        }
-      }
-      for (const slot of Array.from(this.playerTanks.keys())) {
-        if (!activeSlots.has(slot)) {
-          this.playerTanks.delete(slot);
-        }
-      }
-    } else {
-      if (view.p1) {
-        if (!this.player) this.player = this.createPlayerTank(view.p1.x as number, view.p1.y as number, 1);
-        const prevX = this.player.x;
-        const prevY = this.player.y;
-        this.player.x = view.p1.x as number;
-        this.player.y = view.p1.y as number;
-        this.player.direction = view.p1.dir as Direction;
-        this.player.moving = view.p1.moving as boolean;
-        this.player.tier = view.p1.tier as number;
-        this.player.shieldTimer = view.p1.shield as number;
-        this.player.distanceTraveled += Math.abs(this.player.x - prevX) + Math.abs(this.player.y - prevY);
-      } else {
-        this.player = null;
-      }
-
-      if (view.p2) {
-        if (!this.player2) this.player2 = this.createPlayerTank(view.p2.x as number, view.p2.y as number, 2);
-      } else {
-        this.player2 = null;
-      }
-    }
-
-    const previous = new Map(this.enemies.map((e) => [e.id, e]));
-    this.enemies = view.enemies.map((e) => {
-      const old = previous.get(e.id);
-      const dist = old ? Math.abs(e.x - old.x) + Math.abs(e.y - old.y) : 0;
-      return {
-        id: e.id,
-        isPlayer: false,
-        type: e.type as EnemyType,
-        x: e.x,
-        y: e.y,
-        direction: e.dir as Direction,
-        desiredDirection: null,
-        speed: 1.2,
-        moving: e.moving as boolean,
-        distanceTraveled: ((old?.distanceTraveled as number) ?? 0) + dist,
-        tier: 0,
-        maxHp: e.maxHp as number,
-        hp: e.hp as number,
-        isFlashingBonus: e.isFlashingBonus as boolean,
-        shieldTimer: 0,
-        slideFrames: 0,
-        shootCooldown: 0,
-        bulletSpeed: 3.5,
-      } as Tank;
-    });
-
-    // Authoritative bullets from snapshot (server is 100% single source of truth)
-    // Completely eliminates duplicate bullets ("يظرب رصاصتين") and phantom hits ("fakehit")!
-    this.bullets = (view.bullets || []).map((b: any) => ({
-      id: b.id,
-      ownerId: b.ownerId || '',
-      isPlayer: Boolean(b.isPlayer),
-      playerIndex: (b.pIdx || b.playerIndex) as 1 | 2 | undefined,
-      team: b.team,
-      x: b.x,
-      y: b.y,
-      direction: b.dir as Direction,
-      speed: 4.5,
-      canDestroySteel: false,
-      size: 4,
-    }));
-
-    // Synchronize Smoke Screens
-    if (Array.isArray(view.smokes)) {
-      const existingMap = new Map(this.activeSmokeScreens.map((s) => [s.id, s]));
-      const nextSmokes: ActiveSmokeScreen[] = [];
-      for (const rs of view.smokes as any[]) {
-        let localS = existingMap.get(rs.id);
-        if (!localS) {
-          localS = this.createSmokeScreenEntity(rs.id, rs.x, rs.y, rs.radius, rs.duration, rs.maxDuration);
-        } else {
-          localS.duration = rs.duration;
-        }
-        nextSmokes.push(localS);
-      }
-      this.activeSmokeScreens = nextSmokes;
-    }
-
-    // Synchronize Bouncing Grenades
-    if (Array.isArray(view.grenades)) {
-      this.activeGrenades = (view.grenades as any[]).map((g) => ({
-        id: g.id,
-        ownerId: g.ownerId || '',
-        isPlayer: Boolean(g.isPlayer),
-        team: g.team,
-        x: g.x,
-        y: g.y,
-        z: g.z ?? 0,
-        vx: g.vx ?? 0,
-        vy: g.vy ?? 0,
-        vz: g.vz ?? 0,
-        bouncesLeft: g.bouncesLeft ?? 0,
-        life: g.life ?? 180,
-      }));
-    }
-
-    // Synchronize Deployable Shields
-    if (Array.isArray(view.shields)) {
-      this.activeShields = (view.shields as any[]).map((s) => ({
-        id: s.id,
-        ownerId: s.ownerId || '',
-        team: s.team,
-        x: s.x,
-        y: s.y,
-        width: s.w ?? 32,
-        height: s.h ?? 32,
-        hp: s.hp ?? 3,
-        maxHp: s.maxHp ?? 3,
-        timer: s.timer ?? 900,
-        maxTimer: 900,
-        direction: (s.dir || 'UP') as Direction,
-      }));
-    }
-
-    // Synchronize Tactical Pickups
-    if (Array.isArray(view.tacPickups)) {
-      this.tacticalPickups = (view.tacPickups as any[]).map((t) => ({
-        id: t.id,
-        type: t.type as TacticalItemType,
-        x: t.x,
-        y: t.y,
-        flashFrame: t.flashFrame ?? 0,
-        duration: 900,
-      }));
-    }
-
-    this.powerUps = view.powerUps.map(
-      (p) => ({ id: p.id, type: p.type, x: p.x, y: p.y, flashFrame: 0, duration: 900 }) as PowerUp
-    );
-
-    this.spawningTanks = (view.spawning || []).map(
-      (s) =>
-        ({
-          id: s.id,
-          isPlayer: s.isPlayer as boolean,
-          playerIndex: s.pIdx as 1 | 2 | undefined,
-          type: 'BASIC' as EnemyType,
-          x: s.x,
-          y: s.y,
-          direction: 'UP' as Direction,
-          progress: s.progress as number,
-        }) as SpawningTank
-    );
-
-    if (view.baseState !== undefined) {
-      this.baseState = view.baseState as BaseState;
-      if (this.bases.get('A')) this.bases.get('A')!.state = this.baseState;
-    }
-    if (view.baseStateB !== undefined) {
-      this.baseStateB = view.baseStateB as BaseState;
-      if (this.bases.get('B')) this.bases.get('B')!.state = this.baseStateB;
-    }
-  }
-
-  public reconcileAndReplay(
-    slot: number,
-    ackSeq: number,
-    auth: { x: number; y: number; dir: Direction; moving?: boolean } | null
-  ) {
-    if (!auth) return;
-    const tank = this.playerTanks.get(slot);
-    if (!tank) return;
-
-    // 1. Discard acknowledged inputs
-    this.pendingInputs = this.pendingInputs.filter((item) => item.seq > ackSeq);
-
-    // 2. Start replay from authoritative state
-    const replayTank: Tank = {
-      ...tank,
-      x: auth.x,
-      y: auth.y,
-      direction: auth.dir,
-      moving: Boolean(auth.moving),
-      slideFrames: 0,
-    };
-
-    // 3. Replay all unacknowledged inputs
-    for (const item of this.pendingInputs) {
-      this.simulatePlayerMovement(replayTank, item.input);
-    }
-
-    // 4. Compare replayed position with current predicted position
-    const dx = replayTank.x - tank.x;
-    const dy = replayTank.y - tank.y;
-    const drift = Math.abs(dx) + Math.abs(dy);
-
-    // Deadzone + Soft decay (Source Engine / Gambetta standard)
-    if (drift > 20.0) {
-      // Hard desync (obstacle/wall collision difference) -> snap to authoritative
-      tank.x = replayTank.x;
-      tank.y = replayTank.y;
-      tank.direction = replayTank.direction;
-      tank.moving = replayTank.moving;
-      tank.slideFrames = replayTank.slideFrames;
-    } else if (drift > 2.0) {
-      // Soft drift: smooth exponential damping (prevents jarring visual snaps and micro-twitches)
-      tank.x += dx * 0.12;
-      tank.y += dy * 0.12;
-    }
-    // drift <= 2.0: within sub-pixel corridor tolerance, no correction needed!
   }
 
   public applyBrickDamage(tile: SubTile, dir: Direction) {
@@ -4097,66 +3788,6 @@ export class GameEngine {
 
   public applyNetworkSnapshot(data: any) {
     if (!data) return;
-
-    if (this.isRemoteViewer) {
-      // Thin client: buffer for interpolation + authoritative bookkeeping.
-      // Entity positions come from the interpolated view, never written raw.
-      this.snapBuffer.push(data);
-      if (Array.isArray(data.players)) {
-        const mySlot = this.localPlayerSlot || 2;
-        const myAuth = data.players.find((p: any) => p.pIdx === mySlot || p.slot === mySlot);
-        this.p2AuthTarget = myAuth
-          ? { x: myAuth.x, y: myAuth.y, dir: myAuth.dir, moving: myAuth.moving }
-          : null;
-      } else {
-        this.p2AuthTarget = data.p2
-          ? { x: data.p2.x, y: data.p2.y, dir: data.p2.dir, moving: data.p2.moving }
-          : null;
-      }
-
-      // Gambetta authoritative reconciliation: reconcile using acknowledged sequence number
-      if (data.ackSeqs && typeof data.ackSeqs === 'object') {
-        const mySlot = this.localPlayerSlot || 2;
-        const ack = data.ackSeqs[mySlot];
-        if (typeof ack === 'number' && this.p2AuthTarget) {
-          this.reconcileAndReplay(mySlot, ack, this.p2AuthTarget);
-        }
-      }
-      if (Array.isArray(data.grid) && typeof data.gv === 'number' && data.gv !== this.gridVersion) {
-        this.decodeGrid(data.grid, data.gv, data.gs);
-      }
-      if (data.scoreData) {
-        const prevRound = this.scoreData.roundNumber;
-        this.scoreData = { ...this.scoreData, ...data.scoreData };
-        if (prevRound !== this.scoreData.roundNumber && !this.hasCustomMap && this.multiMode === 'versus') {
-          const preset: MapSizePreset = this.gridSize === 42 ? 'giant' : this.gridSize === 34 ? 'large' : 'classic';
-          this.currentMap = getStageMapForPresetAndStage(this.scoreData.roundNumber || 1, preset, this.multiMode);
-        }
-        this.onStateChange(this.gameState, this.scoreData);
-      }
-      if (data.vsDefenderSlot !== undefined) {
-        this.vsDefenderSlot = data.vsDefenderSlot;
-      }
-      if (Array.isArray(data.bases)) {
-        this.bases.clear();
-        for (const b of data.bases) {
-          this.bases.set(b.team, b);
-        }
-      }
-      if (data.baseState !== undefined) {
-        this.baseState = data.baseState;
-        if (this.bases.get('A')) this.bases.get('A')!.state = data.baseState;
-      }
-      if (data.baseStateB !== undefined) {
-        this.baseStateB = data.baseStateB;
-        if (this.bases.get('B')) this.bases.get('B')!.state = data.baseStateB;
-      }
-      if (data.gameState && data.gameState !== this.gameState) {
-        this.gameState = data.gameState;
-        this.onStateChange(this.gameState, this.scoreData);
-      }
-      return;
-    }
 
     // Apply Player 1 (Gold Tank)
     if (data.p1) {
