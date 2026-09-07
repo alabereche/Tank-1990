@@ -15,6 +15,8 @@ import {
   createEmptyGrid,
   BADWATER_WAYPOINTS,
   BADWATER_CHECKPOINTS,
+  BadwaterWaypoint,
+  BadwaterCheckpointInfo,
 } from '../engine/maps';
 import { SpriteRenderer } from '../engine/spriteRenderer';
 import { BaseState } from '../types';
@@ -33,9 +35,74 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Plus,
+  Trash2,
+  RefreshCw,
+  Route,
 } from 'lucide-react';
 import { soundManager } from '../engine/SoundManager';
 import { gamepadManager } from '../engine/GamepadManager';
+
+/**
+ * Calculates dynamic checkpoint coordinates and progress along a customized railway track
+ */
+export function calculateCheckpointsForWaypoints(waypoints: BadwaterWaypoint[]): BadwaterCheckpointInfo[] {
+  if (!waypoints || waypoints.length < 2) {
+    return BADWATER_CHECKPOINTS;
+  }
+
+  // If waypoints match standard BADWATER_WAYPOINTS length and coordinates, return default checkpoints
+  if (waypoints.length === BADWATER_WAYPOINTS.length) {
+    const isDefault = waypoints.every(
+      (wp, i) => wp.x === BADWATER_WAYPOINTS[i].x && wp.y === BADWATER_WAYPOINTS[i].y
+    );
+    if (isDefault) return BADWATER_CHECKPOINTS;
+  }
+
+  const segLengths: number[] = [];
+  let totalLength = 0;
+
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const p1 = waypoints[i];
+    const p2 = waypoints[i + 1];
+    const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    segLengths.push(len);
+    totalLength += len;
+  }
+
+  if (totalLength <= 0) return BADWATER_CHECKPOINTS;
+
+  const getPointAtDistance = (dist: number): { x: number; y: number } => {
+    let accumulated = 0;
+    for (let i = 0; i < segLengths.length; i++) {
+      const len = segLengths[i];
+      if (dist <= accumulated + len || i === segLengths.length - 1) {
+        const ratio = len > 0 ? Math.max(0, Math.min(1, (dist - accumulated) / len)) : 0;
+        const p1 = waypoints[i];
+        const p2 = waypoints[i + 1];
+        return {
+          x: Math.round(p1.x + (p2.x - p1.x) * ratio),
+          y: Math.round(p1.y + (p2.y - p1.y) * ratio),
+        };
+      }
+      accumulated += len;
+    }
+    const last = waypoints[waypoints.length - 1];
+    return { x: last.x, y: last.y };
+  };
+
+  const ptA = getPointAtDistance(totalLength * 0.25);
+  const ptB = getPointAtDistance(totalLength * 0.50);
+  const ptC = getPointAtDistance(totalLength * 0.75);
+  const ptFinal = waypoints[waypoints.length - 1];
+
+  return [
+    { id: 'cp1', name: 'POINT 1 (A)', x: ptA.x, y: ptA.y, progress: 0.25, captured: false },
+    { id: 'cp2', name: 'POINT 2 (B)', x: ptB.x, y: ptB.y, progress: 0.50, captured: false },
+    { id: 'cp3', name: 'POINT 3 (C)', x: ptC.x, y: ptC.y, progress: 0.75, captured: false },
+    { id: 'cp_final', name: 'FINAL BLAST PIT', x: ptFinal.x, y: ptFinal.y, progress: 1.0, captured: false },
+  ];
+}
 
 interface MapEditorProps {
   initialMap?: StageMap;
@@ -152,6 +219,18 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
   const [brushSize, setBrushSize] = useState<1 | 2>(2); // 1 = 16x16 sub-tile, 2 = 32x32 NES block
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
 
+  // Track builder state
+  const [editorMode, setEditorMode] = useState<'tiles' | 'track'>('tiles');
+  const [waypoints, setWaypoints] = useState<BadwaterWaypoint[]>(() => {
+    return initialMap?.waypoints && initialMap.waypoints.length >= 2
+      ? initialMap.waypoints.map((w) => ({ ...w }))
+      : BADWATER_WAYPOINTS.map((w) => ({ ...w }));
+  });
+  const [selectedWaypointIndex, setSelectedWaypointIndex] = useState<number | null>(null);
+  const [hoveredWaypointIndex, setHoveredWaypointIndex] = useState<number | null>(null);
+  const [isDraggingWaypoint, setIsDraggingWaypoint] = useState<boolean>(false);
+  const [isAddPointMode, setIsAddPointMode] = useState<boolean>(false);
+
   // Controller state
   const [cursorPos, setCursorPos] = useState<{ r: number; c: number }>({ r: 12, c: 12 });
   const [activeZone, setActiveZone] = useState<'grid' | 'toolbar'>('grid');
@@ -229,10 +308,11 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, currentCanvasSize, currentCanvasSize);
 
-    // If Badwater Basin (34x34): render rail tracks and checkpoints as reference guide
-    if (currentGridSize === 34 || mapName.toLowerCase().includes('badwater')) {
-      SpriteRenderer.renderRailTrack(ctx, BADWATER_WAYPOINTS);
-      SpriteRenderer.renderCheckpoints(ctx, BADWATER_CHECKPOINTS, 0);
+    // If Badwater Basin (34x34) or track has waypoints: render rail tracks and checkpoints
+    if (currentGridSize === 34 || mapName.toLowerCase().includes('badwater') || waypoints.length >= 2) {
+      SpriteRenderer.renderRailTrack(ctx, waypoints);
+      const cps = calculateCheckpointsForWaypoints(waypoints);
+      SpriteRenderer.renderCheckpoints(ctx, cps, 0);
     }
 
     // 1. Ice & Mud
@@ -373,7 +453,70 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
 
       ctx.restore();
     }
-  }, [mapGrid, currentGridSize, currentCanvasSize, baseX, baseY, baseC, activeZone, cursorPos, brushSize, selectedTool]);
+
+    // 9. Interactive Waypoint Pin Handles when in Track Editing Mode
+    if (editorMode === 'track') {
+      ctx.save();
+      for (let i = 0; i < waypoints.length; i++) {
+        const wp = waypoints[i];
+        const isSelected = selectedWaypointIndex === i;
+        const isHovered = hoveredWaypointIndex === i;
+        const isStart = i === 0;
+        const isFinal = i === waypoints.length - 1;
+
+        // Outer glow
+        if (isSelected || isHovered) {
+          ctx.beginPath();
+          ctx.arc(wp.x, wp.y, 14, 0, Math.PI * 2);
+          ctx.fillStyle = isSelected ? 'rgba(248, 184, 0, 0.40)' : 'rgba(0, 229, 255, 0.30)';
+          ctx.fill();
+        }
+
+        // Handle Pin Circle
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, 9, 0, Math.PI * 2);
+        ctx.fillStyle = isStart ? '#0077cc' : isFinal ? '#cc1111' : isSelected ? '#f8b800' : '#1f242d';
+        ctx.fill();
+        ctx.lineWidth = isSelected ? 2.5 : 1.5;
+        ctx.strokeStyle = isSelected ? '#ffffff' : isStart ? '#00e5ff' : isFinal ? '#ff4444' : '#8899aa';
+        ctx.stroke();
+
+        // Node number
+        ctx.fillStyle = isStart || isFinal || isSelected ? '#ffffff' : '#ccddee';
+        ctx.font = 'bold 8px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${i + 1}`, wp.x, wp.y);
+
+        // Badge label
+        if (isStart) {
+          ctx.fillStyle = '#00e5ff';
+          ctx.font = 'bold 7px monospace';
+          ctx.fillText('START', wp.x, wp.y - 13);
+        } else if (isFinal) {
+          ctx.fillStyle = '#ff4444';
+          ctx.font = 'bold 7px monospace';
+          ctx.fillText('PIT', wp.x, wp.y - 13);
+        }
+      }
+      ctx.restore();
+    }
+  }, [
+    mapGrid,
+    currentGridSize,
+    currentCanvasSize,
+    baseX,
+    baseY,
+    baseC,
+    activeZone,
+    cursorPos,
+    brushSize,
+    selectedTool,
+    editorMode,
+    waypoints,
+    selectedWaypointIndex,
+    hoveredWaypointIndex,
+  ]);
 
   useEffect(() => {
     drawEditor();
@@ -418,17 +561,74 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     soundManager.unlockAudio();
+    if (editorMode === 'track') {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = currentCanvasSize / rect.width;
+      const scaleY = currentCanvasSize / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      // 1. Check if clicking an existing waypoint
+      const clickedIdx = waypoints.findIndex((wp) => Math.hypot(wp.x - x, wp.y - y) <= 18);
+      if (clickedIdx !== -1) {
+        setSelectedWaypointIndex(clickedIdx);
+        setIsDraggingWaypoint(true);
+        soundManager.playHitBrick();
+      } else if (isAddPointMode) {
+        // Snap to 8px
+        const snapX = Math.round(Math.max(16, Math.min(currentCanvasSize - 16, x)) / 8) * 8;
+        const snapY = Math.round(Math.max(16, Math.min(currentCanvasSize - 16, y)) / 8) * 8;
+        setWaypoints((prev) => [...prev, { x: snapX, y: snapY }]);
+        setSelectedWaypointIndex(waypoints.length);
+        setIsAddPointMode(false);
+        soundManager.playPowerUpSpawn();
+      } else {
+        setSelectedWaypointIndex(null);
+      }
+      return;
+    }
+
     setIsDrawing(true);
     applyBrush(e);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (editorMode === 'track') {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = currentCanvasSize / rect.width;
+      const scaleY = currentCanvasSize / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      if (isDraggingWaypoint && selectedWaypointIndex !== null) {
+        const snapX = Math.round(Math.max(16, Math.min(currentCanvasSize - 16, x)) / 8) * 8;
+        const snapY = Math.round(Math.max(16, Math.min(currentCanvasSize - 16, y)) / 8) * 8;
+        setWaypoints((prev) => {
+          const next = [...prev];
+          next[selectedWaypointIndex] = { x: snapX, y: snapY };
+          return next;
+        });
+      } else {
+        const hovIdx = waypoints.findIndex((wp) => Math.hypot(wp.x - x, wp.y - y) <= 18);
+        setHoveredWaypointIndex(hovIdx !== -1 ? hovIdx : null);
+      }
+      return;
+    }
+
     if (isDrawing) {
       applyBrush(e);
     }
   };
 
   const handleMouseUp = () => {
+    if (editorMode === 'track') {
+      setIsDraggingWaypoint(false);
+      return;
+    }
     setIsDrawing(false);
   };
 
@@ -446,6 +646,9 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
     if (preset) {
       setMapGrid(cloneGrid(preset.grid));
       setMapName(preset.name);
+      if (presetKey === 'badwaterBasin') {
+        setWaypoints(BADWATER_WAYPOINTS.map((w) => ({ ...w })));
+      }
     }
   }, []);
 
@@ -463,23 +666,55 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
 
   // Open Export Modal
   const handleOpenExport = useCallback(() => {
+    const isPayload = currentGridSize === 34 || mapName.toLowerCase().includes('badwater');
     const payload: StageMap = {
       name: mapName,
       grid: mapGrid,
+      waypoints: isPayload ? waypoints : undefined,
+      checkpoints: isPayload ? calculateCheckpointsForWaypoints(waypoints) : undefined,
     };
     setJsonText(JSON.stringify(payload, null, 2));
     setJsonError(null);
     setCopySuccess(false);
     setShowJsonModal(true);
-  }, [mapName, mapGrid]);
+  }, [mapName, mapGrid, currentGridSize, waypoints]);
 
   const handleTestDrive = useCallback(() => {
     soundManager.playPowerUpCollect();
+    const isPayload = currentGridSize === 34 || mapName.toLowerCase().includes('badwater');
     onStartBattle({
       name: mapName,
       grid: mapGrid,
+      waypoints: isPayload ? waypoints : undefined,
+      checkpoints: isPayload ? calculateCheckpointsForWaypoints(waypoints) : undefined,
     });
-  }, [mapName, mapGrid, onStartBattle]);
+  }, [mapName, mapGrid, currentGridSize, waypoints, onStartBattle]);
+
+  // Track manipulation helpers
+  const handleResetTrackToDefault = useCallback(() => {
+    setWaypoints(BADWATER_WAYPOINTS.map((w) => ({ ...w })));
+    setSelectedWaypointIndex(null);
+    setIsAddPointMode(false);
+    soundManager.playHitBrick();
+  }, []);
+
+  const handleDeleteSelectedWaypoint = useCallback(() => {
+    if (waypoints.length <= 2) return;
+    const targetIdx = selectedWaypointIndex !== null ? selectedWaypointIndex : waypoints.length - 1;
+    setWaypoints((prev) => prev.filter((_, idx) => idx !== targetIdx));
+    setSelectedWaypointIndex(null);
+    soundManager.playHitBrick();
+  }, [waypoints.length, selectedWaypointIndex]);
+
+  const handleClearTrack = useCallback(() => {
+    setWaypoints([
+      { x: 32, y: 32 },
+      { x: currentCanvasSize - 32, y: currentCanvasSize - 32 },
+    ]);
+    setSelectedWaypointIndex(null);
+    setIsAddPointMode(false);
+    soundManager.playHitBrick();
+  }, [currentCanvasSize]);
 
   // Quick cycle palette materials with LB / RB / Select
   const cyclePalette = useCallback((direction: 1 | -1) => {
@@ -931,7 +1166,7 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
   };
 
   return (
-    <div id="construction-mode-container" className="flex flex-col items-center w-full max-w-4xl mx-auto font-pixel p-2 sm:p-4">
+    <div id="construction-mode-container" className="flex flex-col items-center w-full max-w-[1400px] mx-auto font-pixel p-2 sm:p-4">
       {/* Master Harmonious Arcade Frame */}
       <div className="w-full bg-[#242424] border-4 border-[#484848] rounded-xl shadow-2xl p-3 sm:p-4 flex flex-col gap-3.5">
         {/* Editor Header */}
@@ -990,316 +1225,465 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
         </div>
 
         {/* Main Workspace: Toolbar + Canvas */}
-        <div className="w-full flex flex-col md:flex-row gap-3.5 items-start justify-center">
-          {/* Left Toolbar: Tile Palette & Brush Size */}
-          <div className="w-full md:w-52 flex flex-col gap-3 bg-[#181818] p-3 border-2 border-[#383838] rounded-lg shadow-inner text-[10px]">
-            <div className="text-[9px] text-amber-400 font-bold uppercase tracking-wider">
-              Tile Palette
-            </div>
-
-            {/* Palette buttons */}
-            <div className="grid grid-cols-3 md:grid-cols-2 gap-2 w-full">
-              {/* Brick */}
+        <div className="w-full flex flex-col md:flex-row gap-4 items-start justify-center">
+          {/* Left Toolbar: Mode Switcher & Tools */}
+          <div className="w-full md:w-64 lg:w-72 shrink-0 flex flex-col gap-3 bg-[#181818] p-3 border-2 border-[#383838] rounded-lg shadow-inner text-[10px]">
+            {/* Mode Switcher: Tiles vs Rail Track */}
+            <div className="grid grid-cols-2 gap-1 bg-[#121212] p-1 rounded border border-[#303030]">
               <button
-                id="tool-brick"
+                type="button"
+                id="tab-mode-tiles"
                 onClick={() => {
-                  setSelectedTool(TileType.BRICK);
-                  setActiveZone('grid');
+                  setEditorMode('tiles');
+                  setIsAddPointMode(false);
+                  soundManager.playHitBrick();
                 }}
-                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                  selectedTool === TileType.BRICK
-                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
-                } ${isFocus(0, 0)}`}
+                className={`flex items-center justify-center gap-1.5 py-1.5 rounded text-[9px] font-bold tracking-wider transition-all cursor-pointer ${
+                  editorMode === 'tiles'
+                    ? 'bg-amber-600 text-white shadow-sm ring-1 ring-amber-400'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#202020]'
+                }`}
               >
-                <PixelTileIcon type={TileType.BRICK} size={28} />
-                <span className="text-[8px] font-bold tracking-wider">BRICK</span>
+                <Layers className="w-3.5 h-3.5" />
+                <span>TILES</span>
               </button>
-
-              {/* Steel */}
               <button
-                id="tool-steel"
+                type="button"
+                id="tab-mode-track"
                 onClick={() => {
-                  setSelectedTool(TileType.STEEL);
-                  setActiveZone('grid');
+                  setEditorMode('track');
+                  soundManager.playPowerUpSpawn();
                 }}
-                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                  selectedTool === TileType.STEEL
-                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
-                } ${isFocus(0, 1)}`}
+                className={`flex items-center justify-center gap-1.5 py-1.5 rounded text-[9px] font-bold tracking-wider transition-all cursor-pointer ${
+                  editorMode === 'track'
+                    ? 'bg-cyan-600 text-white shadow-sm ring-1 ring-cyan-400'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#202020]'
+                }`}
               >
-                <PixelTileIcon type={TileType.STEEL} size={28} />
-                <span className="text-[8px] font-bold tracking-wider">STEEL</span>
-              </button>
-
-              {/* Water */}
-              <button
-                id="tool-water"
-                onClick={() => {
-                  setSelectedTool(TileType.WATER);
-                  setActiveZone('grid');
-                }}
-                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                  selectedTool === TileType.WATER
-                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
-                } ${isFocus(1, 0)}`}
-              >
-                <PixelTileIcon type={TileType.WATER} size={28} />
-                <span className="text-[8px] font-bold tracking-wider">WATER</span>
-              </button>
-
-              {/* Trees */}
-              <button
-                id="tool-trees"
-                onClick={() => {
-                  setSelectedTool(TileType.TREES);
-                  setActiveZone('grid');
-                }}
-                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                  selectedTool === TileType.TREES
-                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
-                } ${isFocus(1, 1)}`}
-              >
-                <PixelTileIcon type={TileType.TREES} size={28} />
-                <span className="text-[8px] font-bold tracking-wider">TREES</span>
-              </button>
-
-              {/* Ice */}
-              <button
-                id="tool-ice"
-                onClick={() => {
-                  setSelectedTool(TileType.ICE);
-                  setActiveZone('grid');
-                }}
-                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                  selectedTool === TileType.ICE
-                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
-                } ${isFocus(2, 0)}`}
-              >
-                <PixelTileIcon type={TileType.ICE} size={28} />
-                <span className="text-[8px] font-bold tracking-wider">ICE</span>
-              </button>
-
-              {/* Mud */}
-              <button
-                id="tool-mud"
-                onClick={() => {
-                  setSelectedTool(TileType.MUD);
-                  setActiveZone('grid');
-                }}
-                className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                  selectedTool === TileType.MUD
-                    ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
-                } ${isFocus(2, 1)}`}
-              >
-                <PixelTileIcon type={TileType.MUD} size={28} />
-                <span className="text-[8px] font-bold tracking-wider">MUD</span>
-              </button>
-
-              {/* Eraser */}
-              <button
-                id="tool-eraser"
-                onClick={() => {
-                  setSelectedTool(TileType.EMPTY);
-                  setActiveZone('grid');
-                }}
-                className={`col-span-2 p-2 rounded border flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  selectedTool === TileType.EMPTY
-                    ? 'bg-red-950/60 border-red-400 text-red-300 shadow-[0_0_8px_rgba(239,68,68,0.25)]'
-                    : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
-                } ${isFocus(3, 0)}`}
-              >
-                <PixelTileIcon type="ERASE" size={20} />
-                <span className="text-[8px] font-bold tracking-wider">ERASE</span>
+                <Route className="w-3.5 h-3.5" />
+                <span>RAIL TRACK</span>
               </button>
             </div>
 
-            {/* Brush Size */}
-            <div className="pt-2.5 border-t border-[#303030] flex flex-col gap-1.5 w-full">
-              <span className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider">Brush Size</span>
-              <div className="flex gap-2">
-                <button
-                  id="brush-1x1"
-                  onClick={() => {
-                    setBrushSize(1);
-                    setActiveZone('grid');
-                  }}
-                  className={`flex-1 py-1.5 rounded border text-[8px] font-bold transition-all cursor-pointer ${
-                    brushSize === 1
-                      ? 'bg-amber-600 border-amber-300 text-white shadow-sm'
-                      : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e]'
-                  } ${isFocus(4, 0)}`}
-                >
-                  16px Sub
-                </button>
-                <button
-                  id="brush-2x2"
-                  onClick={() => {
-                    setBrushSize(2);
-                    setActiveZone('grid');
-                  }}
-                  className={`flex-1 py-1.5 rounded border text-[8px] font-bold transition-all cursor-pointer ${
-                    brushSize === 2
-                      ? 'bg-amber-600 border-amber-300 text-white shadow-sm'
-                      : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e]'
-                  } ${isFocus(4, 1)}`}
-                >
-                  32px Block
-                </button>
-              </div>
-            </div>
+            {editorMode === 'track' ? (
+              /* Professional Track Builder Panel */
+              <div className="flex flex-col gap-3 w-full">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Route className="w-3.5 h-3.5" />
+                    <span>TRACK BUILDER</span>
+                  </span>
+                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-700 text-cyan-300 font-mono">
+                    {waypoints.length} Nodes
+                  </span>
+                </div>
 
-            {/* Quick Presets & Handcrafted Stages */}
-            <div className="pt-2.5 border-t border-[#303030] flex flex-col gap-2 w-full">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] text-amber-400 uppercase font-bold tracking-wider">
-                  STAGE PRESETS
-                </span>
-                <span className="text-[8px] text-zinc-400 font-sans">10 Maps</span>
-              </div>
-
-              {/* Row 1: Stepper + Custom Styled Dropdown */}
-              <div className="flex items-center gap-1 w-full">
+                {/* Add Point Toggle Button */}
                 <button
                   type="button"
-                  id="preset-prev-btn"
-                  onClick={handlePrevPreset}
-                  className={`p-1.5 rounded bg-[#252525] hover:bg-[#323232] text-amber-400 hover:text-amber-300 border border-[#383838] hover:border-amber-400/60 transition-colors shrink-0 shadow-sm cursor-pointer ${isFocus(
-                    5,
-                    0
-                  )}`}
-                  title="Previous Preset"
+                  id="btn-add-track-node"
+                  onClick={() => {
+                    setIsAddPointMode((prev) => !prev);
+                    soundManager.playHitBrick();
+                  }}
+                  className={`w-full py-2 px-2.5 rounded border text-[9px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    isAddPointMode
+                      ? 'bg-green-600 border-green-300 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)] animate-pulse ring-1 ring-green-300'
+                      : 'bg-[#252525] border-[#383838] text-green-400 hover:bg-[#2e2e2e] hover:border-green-500'
+                  }`}
                 >
-                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isAddPointMode ? 'CLICK MAP TO ADD NODE' : 'ADD TRACK NODE'}</span>
                 </button>
 
-                <div className="relative flex-1 min-w-0">
-                  <select
-                    id="preset-select-dropdown"
-                    value={activePresetKey}
-                    onChange={(e) => loadPreset(e.target.value as keyof typeof PRESET_MAPS)}
-                    className={`w-full bg-[#161616] text-amber-300 border border-[#383838] hover:border-amber-400/80 focus:border-amber-400 rounded px-2 py-1.5 text-[10px] font-sans font-bold cursor-pointer focus:outline-none transition-colors appearance-none pr-6 truncate shadow-inner ${isFocus(
-                      5,
-                      1
-                    )}`}
+                {/* Action Buttons: Remove & Reset */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    id="btn-remove-track-node"
+                    onClick={handleDeleteSelectedWaypoint}
+                    disabled={waypoints.length <= 2}
+                    className={`py-1.5 px-2 rounded border text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                      waypoints.length <= 2
+                        ? 'opacity-40 cursor-not-allowed bg-zinc-900 border-zinc-800 text-zinc-500'
+                        : 'bg-red-950/60 border-red-700/80 text-red-300 hover:bg-red-900 hover:border-red-500'
+                    }`}
+                    title={selectedWaypointIndex !== null ? `Remove Node #${selectedWaypointIndex + 1}` : 'Remove Last Node'}
                   >
-                    <optgroup label="Handcrafted Stages (1-10)" className="bg-[#202020] text-amber-300 font-sans">
-                      {STAGE_PRESETS_LIST.map((s) => (
-                        <option key={s.key} value={s.key}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Special Presets" className="bg-[#202020] text-zinc-300 font-sans">
-                      <option value="tacticalMaze">Tactical Maze (FFA)</option>
-                      <option value="cleanSlate">Clean Slate (Empty)</option>
-                    </optgroup>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1.5 text-amber-400">
-                    <ChevronDown className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3 h-3" />
+                    <span>{selectedWaypointIndex !== null ? `DEL #${selectedWaypointIndex + 1}` : 'DEL LAST'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="btn-reset-track"
+                    onClick={handleResetTrackToDefault}
+                    className="py-1.5 px-2 rounded border border-[#383838] bg-[#252525] text-amber-300 hover:bg-[#2e2e2e] hover:border-amber-400 text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                    title="Reset to Original Badwater Basin Track"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>DEFAULT</span>
+                  </button>
+                </div>
+
+                {/* Clear / New Minimal Track */}
+                <button
+                  type="button"
+                  id="btn-clear-track"
+                  onClick={handleClearTrack}
+                  className="w-full py-1.5 px-2 rounded border border-[#383838] bg-[#202020] text-zinc-400 hover:text-red-300 hover:border-red-500/60 text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>RESET TRACK (START & END ONLY)</span>
+                </button>
+
+                {/* Route Summary & Checkpoints Guide */}
+                <div className="p-2.5 rounded bg-[#10141a] border border-[#233549] flex flex-col gap-1.5 text-[8px] font-mono">
+                  <div className="text-cyan-400 font-bold uppercase tracking-wider text-[8px] pb-1 border-b border-[#233549] flex items-center justify-between">
+                    <span>CHECKPOINTS ROUTE</span>
+                    <span className="text-[7px] text-zinc-400 font-sans">Auto-calculated</span>
+                  </div>
+                  <div className="flex items-center justify-between text-zinc-300 pt-0.5">
+                    <span className="text-blue-400 font-bold">START:</span>
+                    <span>Node 1 ({Math.round(waypoints[0].x)}, {Math.round(waypoints[0].y)})</span>
+                  </div>
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <span className="text-amber-400 font-bold">POINT A:</span>
+                    <span>25% Distance</span>
+                  </div>
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <span className="text-amber-400 font-bold">POINT B:</span>
+                    <span>50% Distance</span>
+                  </div>
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <span className="text-amber-400 font-bold">POINT C:</span>
+                    <span>75% Distance</span>
+                  </div>
+                  <div className="flex items-center justify-between text-zinc-300">
+                    <span className="text-red-400 font-bold">PIT (SILO):</span>
+                    <span>End Node ({Math.round(waypoints[waypoints.length - 1].x)}, {Math.round(waypoints[waypoints.length - 1].y)})</span>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  id="preset-next-btn"
-                  onClick={handleNextPreset}
-                  className={`p-1.5 rounded bg-[#252525] hover:bg-[#323232] text-amber-400 hover:text-amber-300 border border-[#383838] hover:border-amber-400/60 transition-colors shrink-0 shadow-sm cursor-pointer ${isFocus(
-                    5,
-                    2
-                  )}`}
-                  title="Next Preset"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Row 2 & 3: 10 Tactical Stage Number Chips (1 to 10) */}
-              <div className="flex flex-col gap-1 w-full">
-                <div className="grid grid-cols-5 gap-1 w-full">
-                  {STAGE_PRESETS_LIST.slice(0, 5).map((s, idx) => {
-                    const isSelected = activePresetKey === s.key;
-                    return (
-                      <button
-                        key={s.key}
-                        id={`chip-stage-${s.num}`}
-                        type="button"
-                        onClick={() => loadPreset(s.key)}
-                        className={`py-1 rounded text-[9px] font-pixel transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-amber-600 border border-amber-300 text-white font-bold shadow-[0_0_6px_rgba(245,158,11,0.4)] ring-1 ring-amber-400'
-                            : 'bg-[#222222] border border-[#383838] text-zinc-400 hover:text-white hover:bg-[#2d2d2d] hover:border-[#555555]'
-                        } ${isFocus(6, idx)}`}
-                        title={s.label}
-                      >
-                        {s.num}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="grid grid-cols-5 gap-1 w-full">
-                  {STAGE_PRESETS_LIST.slice(5, 10).map((s, idx) => {
-                    const isSelected = activePresetKey === s.key;
-                    return (
-                      <button
-                        key={s.key}
-                        id={`chip-stage-${s.num}`}
-                        type="button"
-                        onClick={() => loadPreset(s.key)}
-                        className={`py-1 rounded text-[9px] font-pixel transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-amber-600 border border-amber-300 text-white font-bold shadow-[0_0_6px_rgba(245,158,11,0.4)] ring-1 ring-amber-400'
-                            : 'bg-[#222222] border border-[#383838] text-zinc-400 hover:text-white hover:bg-[#2d2d2d] hover:border-[#555555]'
-                        } ${isFocus(7, idx)}`}
-                        title={s.label}
-                      >
-                        {s.num}
-                      </button>
-                    );
-                  })}
+                {/* Instructions Box */}
+                <div className="p-2.5 rounded bg-[#151515] border border-[#2c2c2c] text-[8px] text-zinc-400 leading-relaxed flex flex-col gap-1">
+                  <div className="text-amber-400 font-bold">INSTRUCTIONS:</div>
+                  <div>• Drag numbered pins on canvas to reshape track route.</div>
+                  <div>• Toggle [ADD TRACK NODE] then click on canvas to add path points.</div>
+                  <div>• Cart follows your exact route and detonates upon reaching the pit!</div>
                 </div>
               </div>
+            ) : (
+              /* Tile Palette & Brush Size */
+              <>
+                <div className="text-[9px] text-amber-400 font-bold uppercase tracking-wider">
+                  Tile Palette
+                </div>
 
-              {/* Row 4: Utility Presets: Tactical FFA & Clear Grid */}
-              <div className="grid grid-cols-2 gap-1.5 w-full pt-0.5">
-                <button
-                  type="button"
-                  id="btn-load-ffa"
-                  onClick={() => loadPreset('tacticalMaze')}
-                  className={`py-1 px-1 rounded border text-[9px] font-sans font-bold transition-all truncate cursor-pointer ${
-                    activePresetKey === 'tacticalMaze'
-                      ? 'bg-cyan-950/70 border-cyan-400 text-cyan-200 shadow-sm ring-1 ring-cyan-400'
-                      : 'bg-[#222222] border-[#383838] text-zinc-300 hover:text-white hover:bg-[#2d2d2d]'
-                  } ${isFocus(8, 0)}`}
-                  title="Tactical Maze (FFA)"
-                >
-                  FFA MAZE
-                </button>
-                <button
-                  type="button"
-                  id="btn-load-clean"
-                  onClick={() => loadPreset('cleanSlate')}
-                  className={`py-1 px-1 rounded border text-[9px] font-sans font-bold transition-all truncate cursor-pointer ${
-                    activePresetKey === 'cleanSlate'
-                      ? 'bg-red-950/70 border-red-400 text-red-200 shadow-sm ring-1 ring-red-400'
-                      : 'bg-[#222222] border-[#383838] text-red-300/80 hover:text-red-200 hover:bg-[#2d2d2d]'
-                  } ${isFocus(8, 1)}`}
-                  title="Clear Canvas"
-                >
-                  CLEAR GRID
-                </button>
-              </div>
-            </div>
+                {/* Palette buttons */}
+                <div className="grid grid-cols-3 md:grid-cols-2 gap-2 w-full">
+                  {/* Brick */}
+                  <button
+                    id="tool-brick"
+                    onClick={() => {
+                      setSelectedTool(TileType.BRICK);
+                      setActiveZone('grid');
+                    }}
+                    className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      selectedTool === TileType.BRICK
+                        ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                        : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                    } ${isFocus(0, 0)}`}
+                  >
+                    <PixelTileIcon type={TileType.BRICK} size={28} />
+                    <span className="text-[8px] font-bold tracking-wider">BRICK</span>
+                  </button>
+
+                  {/* Steel */}
+                  <button
+                    id="tool-steel"
+                    onClick={() => {
+                      setSelectedTool(TileType.STEEL);
+                      setActiveZone('grid');
+                    }}
+                    className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      selectedTool === TileType.STEEL
+                        ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                        : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                    } ${isFocus(0, 1)}`}
+                  >
+                    <PixelTileIcon type={TileType.STEEL} size={28} />
+                    <span className="text-[8px] font-bold tracking-wider">STEEL</span>
+                  </button>
+
+                  {/* Water */}
+                  <button
+                    id="tool-water"
+                    onClick={() => {
+                      setSelectedTool(TileType.WATER);
+                      setActiveZone('grid');
+                    }}
+                    className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      selectedTool === TileType.WATER
+                        ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                        : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                    } ${isFocus(1, 0)}`}
+                  >
+                    <PixelTileIcon type={TileType.WATER} size={28} />
+                    <span className="text-[8px] font-bold tracking-wider">WATER</span>
+                  </button>
+
+                  {/* Trees */}
+                  <button
+                    id="tool-trees"
+                    onClick={() => {
+                      setSelectedTool(TileType.TREES);
+                      setActiveZone('grid');
+                    }}
+                    className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      selectedTool === TileType.TREES
+                        ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                        : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                    } ${isFocus(1, 1)}`}
+                  >
+                    <PixelTileIcon type={TileType.TREES} size={28} />
+                    <span className="text-[8px] font-bold tracking-wider">TREES</span>
+                  </button>
+
+                  {/* Ice */}
+                  <button
+                    id="tool-ice"
+                    onClick={() => {
+                      setSelectedTool(TileType.ICE);
+                      setActiveZone('grid');
+                    }}
+                    className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      selectedTool === TileType.ICE
+                        ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                        : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                    } ${isFocus(2, 0)}`}
+                  >
+                    <PixelTileIcon type={TileType.ICE} size={28} />
+                    <span className="text-[8px] font-bold tracking-wider">ICE</span>
+                  </button>
+
+                  {/* Mud */}
+                  <button
+                    id="tool-mud"
+                    onClick={() => {
+                      setSelectedTool(TileType.MUD);
+                      setActiveZone('grid');
+                    }}
+                    className={`p-2 rounded border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      selectedTool === TileType.MUD
+                        ? 'bg-amber-950/60 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(239,68,68,0.25)]'
+                        : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                    } ${isFocus(2, 1)}`}
+                  >
+                    <PixelTileIcon type={TileType.MUD} size={28} />
+                    <span className="text-[8px] font-bold tracking-wider">MUD</span>
+                  </button>
+
+                  {/* Eraser */}
+                  <button
+                    id="tool-eraser"
+                    onClick={() => {
+                      setSelectedTool(TileType.EMPTY);
+                      setActiveZone('grid');
+                    }}
+                    className={`col-span-2 p-2 rounded border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      selectedTool === TileType.EMPTY
+                        ? 'bg-red-950/60 border-red-400 text-red-300 shadow-[0_0_8px_rgba(239,68,68,0.25)]'
+                        : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e] hover:border-[#505050]'
+                    } ${isFocus(3, 0)}`}
+                  >
+                    <PixelTileIcon type="ERASE" size={20} />
+                    <span className="text-[8px] font-bold tracking-wider">ERASE</span>
+                  </button>
+                </div>
+
+                {/* Brush Size */}
+                <div className="pt-2.5 border-t border-[#303030] flex flex-col gap-1.5 w-full">
+                  <span className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider">Brush Size</span>
+                  <div className="flex gap-2">
+                    <button
+                      id="brush-1x1"
+                      onClick={() => {
+                        setBrushSize(1);
+                        setActiveZone('grid');
+                      }}
+                      className={`flex-1 py-1.5 rounded border text-[8px] font-bold transition-all cursor-pointer ${
+                        brushSize === 1
+                          ? 'bg-amber-600 border-amber-300 text-white shadow-sm'
+                          : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e]'
+                      } ${isFocus(4, 0)}`}
+                    >
+                      16px Sub
+                    </button>
+                    <button
+                      id="brush-2x2"
+                      onClick={() => {
+                        setBrushSize(2);
+                        setActiveZone('grid');
+                      }}
+                      className={`flex-1 py-1.5 rounded border text-[8px] font-bold transition-all cursor-pointer ${
+                        brushSize === 2
+                          ? 'bg-amber-600 border-amber-300 text-white shadow-sm'
+                          : 'bg-[#252525] border-[#383838] text-zinc-300 hover:bg-[#2e2e2e]'
+                      } ${isFocus(4, 1)}`}
+                    >
+                      32px Block
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Presets & Handcrafted Stages */}
+                <div className="pt-2.5 border-t border-[#303030] flex flex-col gap-2 w-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] text-amber-400 uppercase font-bold tracking-wider">
+                      STAGE PRESETS
+                    </span>
+                    <span className="text-[8px] text-zinc-400 font-sans">10 Maps</span>
+                  </div>
+
+                  {/* Row 1: Stepper + Custom Styled Dropdown */}
+                  <div className="flex items-center gap-1 w-full">
+                    <button
+                      type="button"
+                      id="preset-prev-btn"
+                      onClick={handlePrevPreset}
+                      className={`p-1.5 rounded bg-[#252525] hover:bg-[#323232] text-amber-400 hover:text-amber-300 border border-[#383838] hover:border-amber-400/60 transition-colors shrink-0 shadow-sm cursor-pointer ${isFocus(
+                        5,
+                        0
+                      )}`}
+                      title="Previous Preset"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+
+                    <div className="relative flex-1 min-w-0">
+                      <select
+                        id="preset-select-dropdown"
+                        value={activePresetKey}
+                        onChange={(e) => loadPreset(e.target.value as keyof typeof PRESET_MAPS)}
+                        className={`w-full bg-[#161616] text-amber-300 border border-[#383838] hover:border-amber-400/80 focus:border-amber-400 rounded px-2 py-1.5 text-[10px] font-sans font-bold cursor-pointer focus:outline-none transition-colors appearance-none pr-6 truncate shadow-inner ${isFocus(
+                          5,
+                          1
+                        )}`}
+                      >
+                        <optgroup label="Handcrafted Stages (1-10)" className="bg-[#202020] text-amber-300 font-sans">
+                          {STAGE_PRESETS_LIST.map((preset) => (
+                            <option key={preset.key} value={preset.key}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Arena & Game Modes" className="bg-[#202020] text-amber-300 font-sans">
+                          <option value="tacticalMaze">FFA: Tactical Maze</option>
+                          <option value="badwaterBasin">Payload: Badwater Basin</option>
+                          <option value="cleanSlate">Clean Canvas (Empty)</option>
+                        </optgroup>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-amber-400/70 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+
+                    <button
+                      type="button"
+                      id="preset-next-btn"
+                      onClick={handleNextPreset}
+                      className={`p-1.5 rounded bg-[#252525] hover:bg-[#323232] text-amber-400 hover:text-amber-300 border border-[#383838] hover:border-amber-400/60 transition-colors shrink-0 shadow-sm cursor-pointer ${isFocus(
+                        5,
+                        2
+                      )}`}
+                      title="Next Preset"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Quick Select Preset Stage Buttons */}
+                  <div className="flex flex-col gap-1 w-full pt-1">
+                    <div className="grid grid-cols-5 gap-1 w-full">
+                      {STAGE_PRESETS_LIST.slice(0, 5).map((s, idx) => {
+                        const isSelected = activePresetKey === s.key;
+                        return (
+                          <button
+                            key={s.key}
+                            id={`chip-stage-${s.num}`}
+                            type="button"
+                            onClick={() => loadPreset(s.key)}
+                            className={`py-1 rounded text-[9px] font-pixel transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-amber-600 border border-amber-300 text-white font-bold shadow-[0_0_6px_rgba(245,158,11,0.4)] ring-1 ring-amber-400'
+                                : 'bg-[#222222] border border-[#383838] text-zinc-400 hover:text-white hover:bg-[#2d2d2d] hover:border-[#555555]'
+                            } ${isFocus(6, idx)}`}
+                            title={s.label}
+                          >
+                            {s.num}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="grid grid-cols-5 gap-1 w-full">
+                      {STAGE_PRESETS_LIST.slice(5, 10).map((s, idx) => {
+                        const isSelected = activePresetKey === s.key;
+                        return (
+                          <button
+                            key={s.key}
+                            id={`chip-stage-${s.num}`}
+                            type="button"
+                            onClick={() => loadPreset(s.key)}
+                            className={`py-1 rounded text-[9px] font-pixel transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-amber-600 border border-amber-300 text-white font-bold shadow-[0_0_6px_rgba(245,158,11,0.4)] ring-1 ring-amber-400'
+                                : 'bg-[#222222] border border-[#383838] text-zinc-400 hover:text-white hover:bg-[#2d2d2d] hover:border-[#555555]'
+                            } ${isFocus(7, idx)}`}
+                            title={s.label}
+                          >
+                            {s.num}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Utility Presets */}
+                  <div className="grid grid-cols-2 gap-1.5 w-full pt-0.5">
+                    <button
+                      type="button"
+                      id="btn-load-ffa"
+                      onClick={() => loadPreset('tacticalMaze')}
+                      className={`py-1 px-1 rounded border text-[9px] font-sans font-bold transition-all truncate cursor-pointer ${
+                        activePresetKey === 'tacticalMaze'
+                          ? 'bg-cyan-950/70 border-cyan-400 text-cyan-200 shadow-sm ring-1 ring-cyan-400'
+                          : 'bg-[#222222] border-[#383838] text-zinc-300 hover:text-white hover:bg-[#2d2d2d]'
+                      } ${isFocus(8, 0)}`}
+                      title="Tactical Maze (FFA)"
+                    >
+                      FFA MAZE
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-load-clean"
+                      onClick={() => loadPreset('cleanSlate')}
+                      className={`py-1 px-1 rounded border text-[9px] font-sans font-bold transition-all truncate cursor-pointer ${
+                        activePresetKey === 'cleanSlate'
+                          ? 'bg-red-950/70 border-red-400 text-red-200 shadow-sm ring-1 ring-red-400'
+                          : 'bg-[#222222] border-[#383838] text-red-300/80 hover:text-red-200 hover:bg-[#2d2d2d]'
+                      } ${isFocus(8, 1)}`}
+                      title="Clear Canvas"
+                    >
+                      CLEAR GRID
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Center: Editor Canvas with Drag/Draw */}
-          <div className="flex-1 bg-[#181818] p-3 border-2 border-[#383838] rounded-lg shadow-inner flex flex-col items-center">
-            <div className="bg-black p-1 rounded border-2 border-black shadow-2xl">
+          {/* Center: Large High-Resolution Editor Canvas */}
+          <div className="flex-1 bg-[#181818] p-3 sm:p-4 border-2 border-[#383838] rounded-lg shadow-inner flex flex-col items-center justify-center min-w-0">
+            <div className="bg-black p-1.5 rounded-lg border-2 border-black shadow-2xl flex items-center justify-center max-w-full">
               <canvas
                 ref={canvasRef}
                 id="editor-canvas"
@@ -1315,14 +1699,18 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
                 }}
                 onTouchMove={applyBrush}
                 onTouchEnd={() => setIsDrawing(false)}
-                className="pixelated cursor-crosshair block aspect-square w-[300px] h-[300px] xs:w-[360px] xs:h-[360px] sm:w-[416px] sm:h-[416px] md:w-[480px] md:h-[480px] border border-zinc-900 shadow-inner"
+                className="pixelated cursor-crosshair block aspect-square w-[340px] h-[340px] xs:w-[420px] xs:h-[420px] sm:w-[520px] sm:h-[520px] md:w-[600px] md:h-[600px] lg:w-[680px] lg:h-[680px] xl:w-[760px] xl:h-[760px] 2xl:w-[820px] 2xl:h-[820px] max-w-full max-h-[78vh] border border-zinc-900 shadow-inner"
               />
             </div>
 
             <div className="w-full flex flex-wrap items-center justify-between text-[8px] text-zinc-400 mt-2.5 px-1 font-pixel gap-2">
               <div className="flex items-center gap-1.5">
                 <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                {hasGamepad ? (
+                {editorMode === 'track' ? (
+                  <span className="text-cyan-300 font-bold tracking-wide">
+                    TRACK MODE: DRAG NUMBERED NODES TO RESHAPE • CLICK [ADD TRACK NODE] TO EXTEND ROUTE
+                  </span>
+                ) : hasGamepad ? (
                   <span className="text-amber-300 font-bold tracking-wide">
                     [D-PAD] MOVE • [A] DRAW • [X] ERASE • [LB/RB] TILE • [Y] BRUSH • [START] PLAY • [B] CANCEL
                   </span>

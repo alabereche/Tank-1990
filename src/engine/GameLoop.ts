@@ -213,6 +213,8 @@ export class GameEngine {
   private enemySpawnCooldown: number = 60; // 1 sec between spawns
   private maxActiveEnemies: number = 4;
   private freezeEnemiesTimer: number = 0;
+  private screenShakeTimer: number = 0;
+  private screenShakeIntensity: number = 0;
 
   // Input & Game State
   private currentInput: InputState = {
@@ -681,7 +683,7 @@ export class GameEngine {
       this.enemyPool = [];
       this.scoreData.enemiesRemaining = [];
       if (this.versusSubMode === 'payload') {
-        this.payloadManager = new PayloadManager(1);
+        this.payloadManager = new PayloadManager(1, this.currentMap.waypoints, this.currentMap.checkpoints);
         this.scoreData.playerLives = 99;
         this.scoreData.player2Lives = 99;
         this.scoreData.player2Score = 0;
@@ -858,7 +860,47 @@ export class GameEngine {
     this.scoreData.roundWinner = winner;
 
     if (isDelivery) {
-      soundManager.playEagleExplosion();
+      if (this.payloadManager) {
+        this.payloadManager.setExploded(true);
+      }
+      const cx = this.payloadManager?.cartPosition.x ?? this.canvasSize / 2;
+      const cy = this.payloadManager?.cartPosition.y ?? this.canvasSize / 2;
+
+      // 1. Violent screen shake
+      this.screenShakeTimer = 65;
+      this.screenShakeIntensity = 14;
+
+      // 2. Chained multi-stage mega explosion cluster
+      for (let i = 0; i < 14; i++) {
+        const ox = (Math.random() - 0.5) * 60;
+        const oy = (Math.random() - 0.5) * 60;
+        setTimeout(() => {
+          this.createExplosion(cx + ox, cy + oy, true);
+          if (i % 3 === 0) {
+            soundManager.playEagleExplosion();
+          } else {
+            soundManager.playBigExplosion();
+          }
+        }, i * 65);
+      }
+
+      // 3. Shockwave destroys nearby destructible brick blocks around the blast pit
+      const pitCol = Math.floor(cx / BLOCK_SIZE);
+      const pitRow = Math.floor(cy / BLOCK_SIZE);
+      for (let dr = -3; dr <= 3; dr++) {
+        for (let dc = -3; dc <= 3; dc++) {
+          const r = pitRow + dr;
+          const c = pitCol + dc;
+          if (r >= 0 && r < this.gridSize && c >= 0 && c < this.gridSize) {
+            if (this.grid[r][c] && this.grid[r][c].type === TileType.BRICK) {
+              this.grid[r][c].type = TileType.EMPTY;
+              this.grid[r][c].damageMask = 0;
+            }
+          }
+        }
+      }
+      this.gridVersion++;
+
       this.addTacticalPopup(this.canvasSize / 2, this.canvasSize / 2, `DELIVERY SUCCESSFUL! P${winner} SCORED!`);
     } else {
       // Defender successfully stopped the cart until time expired
@@ -1022,7 +1064,7 @@ export class GameEngine {
       this.playerSpawns.set(1, this.playerSpawn);
       this.playerSpawns.set(2, this.p2Spawn);
       if (this.payloadManager) {
-        this.payloadManager.reset(attackerSlot);
+        this.payloadManager.reset(attackerSlot, this.currentMap.waypoints, this.currentMap.checkpoints);
         this.scoreData.payloadState = { ...this.payloadManager.getState() };
         this.lastReportedPayloadSec = -1;
       }
@@ -3726,13 +3768,24 @@ export class GameEngine {
     if (!ctx) return;
     ctx.clearRect(0, 0, this.canvasSize, this.canvasSize);
 
+    // Screen Shake Effect
+    let isShaking = false;
+    if (this.screenShakeTimer > 0) {
+      this.screenShakeTimer--;
+      isShaking = true;
+      const ox = (Math.random() - 0.5) * this.screenShakeIntensity;
+      const oy = (Math.random() - 0.5) * this.screenShakeIntensity;
+      ctx.save();
+      ctx.translate(ox, oy);
+    }
+
     // 1. Black Field Background
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, this.canvasSize, this.canvasSize);
 
     // 1b. Render Railway Tracks & Checkpoints for Payload Mode
     if (this.multiMode === 'versus' && this.versusSubMode === 'payload' && this.payloadManager) {
-      SpriteRenderer.renderRailTrack(ctx, BADWATER_WAYPOINTS);
+      SpriteRenderer.renderRailTrack(ctx, this.payloadManager.waypoints || BADWATER_WAYPOINTS);
       SpriteRenderer.renderCheckpoints(ctx, this.payloadManager.checkpoints, this.tickCount);
     }
 
@@ -3811,8 +3864,8 @@ export class GameEngine {
       }
     }
 
-    // 7c. Render Payload Armored Bomb Cart and Push Aura
-    if (this.multiMode === 'versus' && this.versusSubMode === 'payload' && this.payloadManager) {
+    // 7c. Render Payload Armored Bomb Cart and Push Aura (unless exploded)
+    if (this.multiMode === 'versus' && this.versusSubMode === 'payload' && this.payloadManager && !this.payloadManager.isExploded) {
       SpriteRenderer.renderPayloadCart(
         ctx,
         this.payloadManager.cartPosition.x,
@@ -3908,6 +3961,10 @@ export class GameEngine {
       ctx.fillStyle = '#e82020';
       ctx.textAlign = 'center';
       ctx.fillText('PAUSE', this.canvasSize / 2, this.canvasSize / 2);
+      ctx.restore();
+    }
+
+    if (isShaking) {
       ctx.restore();
     }
   }

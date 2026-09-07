@@ -1574,12 +1574,7 @@ export class SpriteRenderer {
         ctx.fillStyle = beaconOn ? '#ffffff' : '#440000';
         ctx.fillRect(cx - 1, cy - 1, 2, 2);
 
-        // Warning Label
-        ctx.fillStyle = beaconOn ? '#ff4444' : '#ff8888';
-        ctx.font = 'bold 8px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText('FINAL PIT', cx, cy + half + 4);
+        // Warning Beacon (without text label)
 
       } else {
         // --- TACTICAL CONTROL CHECKPOINTS 1, 2, 3 ---
@@ -1637,11 +1632,6 @@ export class SpriteRenderer {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(letters[i] || `${i + 1}`, cx, cy);
-
-        // Name Banner
-        ctx.fillStyle = cp.captured ? '#00e5ff' : isNextTarget ? '#f8b800' : '#808a98';
-        ctx.font = 'bold 7px monospace';
-        ctx.fillText(cp.name, cx, cy + half + 4);
       }
     }
 

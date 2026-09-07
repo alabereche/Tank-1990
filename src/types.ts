@@ -229,10 +229,17 @@ export enum GameState {
   MATCH_END = 'MATCH_END',
 }
 
+export interface BadwaterWaypoint {
+  x: number;
+  y: number;
+}
+
 export interface StageMap {
   name: string;
   // 26 x 26 grid of sub-tiles (each sub-tile is 16x16 px)
   grid: number[][]; // TileType numbers
+  waypoints?: BadwaterWaypoint[];
+  checkpoints?: PayloadCheckpoint[];
 }
 
 export interface GameScore {
@@ -303,6 +310,7 @@ export interface PayloadState {
   currentCheckpointIdx: number;
   checkpoints: PayloadCheckpoint[];
   winner: 1 | 2 | null;
+  isExploded?: boolean;
 }
 
 export type MultiplayerRole = 'host' | 'guest';

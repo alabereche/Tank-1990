@@ -795,7 +795,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           onClick={() => setShowLocal2PModal(false)}
         >
           <div
-            className="bg-[#141414] border-4 border-[#444] rounded max-w-md w-full p-5 space-y-4 font-pixel shadow-2xl text-white"
+            className="bg-[#141414] border-4 border-[#444] rounded max-w-xl w-full p-5 space-y-4 font-pixel shadow-2xl text-white"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-zinc-700 pb-2">
@@ -803,7 +803,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setShowLocal2PModal(false)}
-                className="text-zinc-400 hover:text-red-400 text-xs px-2 py-1 border border-zinc-700 hover:border-red-500"
+                className="text-zinc-400 hover:text-red-400 text-xs px-2 py-1 border border-zinc-700 hover:border-red-500 cursor-pointer"
               >
                 [X]
               </button>
@@ -814,7 +814,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 SELECT COMBAT RULES:
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('coop')}
@@ -897,11 +897,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 mt-3">
+            <div className="flex items-center gap-2.5 mt-4 pt-3 border-t border-zinc-800">
               <button
                 type="button"
                 onClick={() => setShowLocal2PModal(false)}
-                className="flex-1 min-w-[70px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2 border border-zinc-600 text-xs transition-colors"
+                className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-600 text-[10px] font-pixel transition-colors rounded cursor-pointer whitespace-nowrap text-center shrink-0"
               >
                 CANCEL
               </button>
@@ -916,7 +916,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       grid: createBadwaterBasinGrid(34),
                     });
                   }}
-                  className="flex-1 min-w-[130px] bg-amber-700 hover:bg-amber-600 text-white py-2 border border-amber-500 text-xs font-bold transition-colors"
+                  className="px-3.5 py-2.5 bg-amber-700 hover:bg-amber-600 text-white border border-amber-500 text-[9px] font-pixel font-bold transition-colors rounded cursor-pointer whitespace-nowrap text-center tracking-wide shrink-0 active:scale-[0.98]"
                 >
                   EDIT IN CONSTRUCTION
                 </button>
@@ -932,7 +932,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     onStartLocal2Player(local2PMode, 'classic');
                   }
                 }}
-                className="flex-1 min-w-[110px] bg-emerald-600 hover:bg-emerald-500 text-white py-2 border border-emerald-400 text-xs font-bold shadow-lg transition-colors"
+                className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white border-2 border-emerald-400 text-xs font-pixel font-bold tracking-wider shadow-lg transition-all cursor-pointer rounded whitespace-nowrap text-center active:scale-[0.98]"
               >
                 START BATTLE!
               </button>

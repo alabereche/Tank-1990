@@ -22,6 +22,8 @@ export class PayloadManager {
   public defenderSlot: 1 | 2 = 2;
 
   // Track geometry
+  public waypoints: BadwaterWaypoint[] = BADWATER_WAYPOINTS;
+  private rawCheckpoints: PayloadCheckpoint[] = BADWATER_CHECKPOINTS;
   private segments: Segment[] = [];
   public totalTrackLength: number = 0;
   public currentDistance: number = 0;
@@ -32,6 +34,7 @@ export class PayloadManager {
   public cartWidth: number = 30;
   public cartHeight: number = 30;
   public pushRadius: number = 54; // Pixel aura around cart center
+  public isExploded: boolean = false;
 
   // Speed and timers
   public pushSpeed: number = 0.85; // Pixels per frame (approx 51 px/sec at 60fps)
@@ -52,9 +55,19 @@ export class PayloadManager {
   // Sound throttles
   private chugSoundTimer: number = 0;
 
-  constructor(attackerSlot: 1 | 2 = 1) {
+  constructor(
+    attackerSlot: 1 | 2 = 1,
+    customWaypoints?: BadwaterWaypoint[],
+    customCheckpoints?: PayloadCheckpoint[]
+  ) {
     this.attackerSlot = attackerSlot;
     this.defenderSlot = attackerSlot === 1 ? 2 : 1;
+    if (customWaypoints && customWaypoints.length >= 2) {
+      this.waypoints = customWaypoints;
+    }
+    if (customCheckpoints && customCheckpoints.length >= 2) {
+      this.rawCheckpoints = customCheckpoints;
+    }
     this.initSegments();
     this.initCheckpoints();
     this.updatePositionFromDistance();
@@ -64,9 +77,9 @@ export class PayloadManager {
     this.segments = [];
     this.totalTrackLength = 0;
 
-    for (let i = 0; i < BADWATER_WAYPOINTS.length - 1; i++) {
-      const start = BADWATER_WAYPOINTS[i];
-      const end = BADWATER_WAYPOINTS[i + 1];
+    for (let i = 0; i < this.waypoints.length - 1; i++) {
+      const start = this.waypoints[i];
+      const end = this.waypoints[i + 1];
       const dx = end.x - start.x;
       const dy = end.y - start.y;
       const length = Math.sqrt(dx * dx + dy * dy);
@@ -91,7 +104,7 @@ export class PayloadManager {
   }
 
   private initCheckpoints() {
-    this.checkpoints = BADWATER_CHECKPOINTS.map((cp) => ({
+    this.checkpoints = this.rawCheckpoints.map((cp) => ({
       id: cp.id,
       name: cp.name,
       x: cp.x,
@@ -103,9 +116,23 @@ export class PayloadManager {
     this.minAllowedDistance = 0;
   }
 
-  public reset(attackerSlot: 1 | 2 = 1) {
+  public setExploded(exploded: boolean) {
+    this.isExploded = exploded;
+  }
+
+  public reset(
+    attackerSlot: 1 | 2 = 1,
+    customWaypoints?: BadwaterWaypoint[],
+    customCheckpoints?: PayloadCheckpoint[]
+  ) {
     this.attackerSlot = attackerSlot;
     this.defenderSlot = attackerSlot === 1 ? 2 : 1;
+    if (customWaypoints && customWaypoints.length >= 2) {
+      this.waypoints = customWaypoints;
+    }
+    if (customCheckpoints && customCheckpoints.length >= 2) {
+      this.rawCheckpoints = customCheckpoints;
+    }
     this.currentDistance = 0;
     this.minAllowedDistance = 0;
     this.timeRemainingSec = 150;
@@ -114,6 +141,8 @@ export class PayloadManager {
     this.idleTimer = 0;
     this.winner = null;
     this.matchOver = false;
+    this.isExploded = false;
+    this.initSegments();
     this.initCheckpoints();
     this.updatePositionFromDistance();
   }
@@ -324,6 +353,7 @@ export class PayloadManager {
       currentCheckpointIdx: this.currentCheckpointIdx,
       checkpoints: this.checkpoints.map((cp) => ({ ...cp })),
       winner: this.winner,
+      isExploded: this.isExploded,
     };
   }
 }
