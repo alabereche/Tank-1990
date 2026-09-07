@@ -8,13 +8,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { soundManager } from '../engine/SoundManager';
 import { gamepadManager } from '../engine/GamepadManager';
 import { toggleFullscreen, onFullscreenChange, isElectronApp } from '../utils/fullscreen';
+import { StageMap } from '../types';
+import { createBadwaterBasinGrid } from '../engine/maps';
 
 interface TitleScreenProps {
   highScore: number;
   mapSizeLabel?: string;
   onStart1Player: () => void;
-  onStartLocal2Player: (mode: 'coop' | 'versus') => void;
-  onOpenConstruction: () => void;
+  onStartLocal2Player: (mode: 'coop' | 'versus', subMode?: 'classic' | 'payload') => void;
+  onOpenConstruction: (initialMap?: StageMap) => void;
   onOpenSettings: () => void;
   inCabinet?: boolean;
   disabled?: boolean;
@@ -34,7 +36,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showLocal2PModal, setShowLocal2PModal] = useState<boolean>(false);
-  const [local2PMode, setLocal2PMode] = useState<'coop' | 'versus'>('coop');
+  const [local2PMode, setLocal2PMode] = useState<'coop' | 'versus' | 'payload'>('coop');
   const [fullscreenActive, setFullscreenActive] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [exitConfirmIdx, setExitConfirmIdx] = useState<number>(0); // 0: YES, 1: NO
@@ -181,12 +183,19 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       }
 
       if (showLocal2PModalRef.current) {
-        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowRight' || e.key === 'd') {
-          setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : 'coop'));
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowUp' || e.key === 'w') {
+          setLocal2PMode((prev) => (prev === 'coop' ? 'payload' : prev === 'versus' ? 'coop' : 'versus'));
+          soundManager.playMenuMove();
+        } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'ArrowDown' || e.key === 's') {
+          setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : prev === 'versus' ? 'payload' : 'coop'));
           soundManager.playMenuMove();
         } else if (e.key === 'Enter' || e.key === ' ') {
           setShowLocal2PModal(false);
-          onStartLocal2PlayerRef.current(local2PModeRef.current);
+          if (local2PModeRef.current === 'payload') {
+            onStartLocal2PlayerRef.current('versus', 'payload');
+          } else {
+            onStartLocal2PlayerRef.current(local2PModeRef.current, 'classic');
+          }
           soundManager.playStageStart();
         } else if (e.key === 'Escape') {
           setShowLocal2PModal(false);
@@ -412,9 +421,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             soundManager.playMenuMove();
           }
         } else if (showLocal2PModalRef.current) {
-          const freshHorizontal = (isLeft && !prevLeft) || (isRight && !prevRight) || (isUp && !prevUp) || (isDown && !prevDown);
-          if (freshHorizontal) {
-            setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : 'coop'));
+          const freshLeft = (isLeft && !prevLeft) || (isUp && !prevUp);
+          const freshRight = (isRight && !prevRight) || (isDown && !prevDown);
+          if (freshLeft) {
+            setLocal2PMode((prev) => (prev === 'coop' ? 'payload' : prev === 'versus' ? 'coop' : 'versus'));
+            soundManager.playMenuMove();
+          } else if (freshRight) {
+            setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : prev === 'versus' ? 'payload' : 'coop'));
             soundManager.playMenuMove();
           }
         }
@@ -440,7 +453,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             }
           } else if (showLocal2PModalRef.current) {
             setShowLocal2PModal(false);
-            onStartLocal2PlayerRef.current(local2PModeRef.current);
+            if (local2PModeRef.current === 'payload') {
+              onStartLocal2PlayerRef.current('versus', 'payload');
+            } else {
+              onStartLocal2PlayerRef.current(local2PModeRef.current, 'classic');
+            }
           } else if (showHelpModalRef.current) {
             setShowHelpModal(false);
             soundManager.playMenuMove();
@@ -484,7 +501,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             setExitConfirmIdx((prev) => (prev === 0 ? 1 : 0));
             soundManager.playMenuMove();
           } else if (showLocal2PModalRef.current) {
-            setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : 'coop'));
+            setLocal2PMode((prev) => (prev === 'coop' ? 'versus' : prev === 'versus' ? 'payload' : 'coop'));
             soundManager.playMenuMove();
           } else if (!showHelpModalRef.current && !showLocal2PModalRef.current) {
             setSelectedIdx((prev) => (prev < menuOptionsRef.current.length - 1 ? prev + 1 : 0));
@@ -797,42 +814,80 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 SELECT COMBAT RULES:
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('coop')}
-                  className={`p-3 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                  className={`p-2.5 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
                     local2PMode === 'coop'
                       ? 'border-[#f8b800] bg-amber-950/50 text-white shadow-lg'
                       : 'border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-500'
                   }`}
                 >
                   <span className="font-bold text-[#f8b800] text-xs">CO-OP BATTLE</span>
-                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Team up to defend the eagle base against 20 tanks</span>
+                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Defend eagle base together vs 20 tanks</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('versus')}
-                  className={`p-3 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                  className={`p-2.5 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
                     local2PMode === 'versus'
                       ? 'border-[#58b8d8] bg-sky-950/50 text-white shadow-lg'
                       : 'border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-500'
                   }`}
                 >
                   <span className="font-bold text-[#58b8d8] text-xs">1V1 VERSUS</span>
-                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Duel your friend across rotating battlefields</span>
+                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Classic duel across rotating stages</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLocal2PMode('payload')}
+                  className={`p-2.5 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                    local2PMode === 'payload'
+                      ? 'border-red-500 bg-red-950/60 text-white shadow-lg ring-1 ring-red-400'
+                      : 'border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-red-400 text-xs">1V1 PAYLOAD</span>
+                    <span className="text-[7px] bg-red-600/80 text-white px-1 py-0.5 rounded font-mono font-bold">TF2</span>
+                  </div>
+                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Badwater Basin (34x34). Push bomb cart or defend!</span>
                 </button>
               </div>
+
+              {/* Special rules highlight when Payload is selected */}
+              {local2PMode === 'payload' && (
+                <div className="bg-red-950/30 border border-red-800/80 p-2.5 rounded text-[8.5px] text-zinc-300 space-y-1 font-sans">
+                  <div className="font-pixel text-[9px] text-red-400 font-bold flex items-center justify-between">
+                    <span>TF2 PAYLOAD RULES:</span>
+                    <span className="text-zinc-400 font-mono text-[8px]">MAP: 34x34</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sky-400 font-bold font-pixel text-[8px]">BLUE (P1):</span>
+                    <span>Push cart along rails to 4 checkpoints. Cart absorbs enemy bullets!</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-red-400 font-bold font-pixel text-[8px]">RED (P2):</span>
+                    <span>Contest the cart (stops push) and eliminate Blue until timer expires!</span>
+                  </div>
+                </div>
+              )}
 
               {/* Controls Layout Guide */}
               <div className="bg-black/70 p-3 rounded border border-zinc-800 flex flex-col gap-2 mt-2">
                 <div className="flex items-center justify-between border-b border-zinc-800 pb-1 text-[9px]">
-                  <span className="text-[#f8b800] font-bold">PLAYER 1 (GOLD)</span>
+                  <span className={local2PMode === 'payload' ? 'text-sky-400 font-bold' : 'text-[#f8b800] font-bold'}>
+                    {local2PMode === 'payload' ? 'PLAYER 1 (BLU / PUSHER)' : 'PLAYER 1 (GOLD)'}
+                  </span>
                   <span className="text-zinc-300 font-sans">[W, A, S, D] + [SPACE]</span>
                 </div>
                 <div className="flex items-center justify-between text-[9px]">
-                  <span className="text-[#55f855] font-bold">PLAYER 2 (GREEN)</span>
+                  <span className={local2PMode === 'payload' ? 'text-red-400 font-bold' : 'text-[#55f855] font-bold'}>
+                    {local2PMode === 'payload' ? 'PLAYER 2 (RED / DEFENDER)' : 'PLAYER 2 (GREEN)'}
+                  </span>
                   <span className="text-zinc-300 font-sans">[ARROWS] + [ENTER]</span>
                 </div>
               </div>
@@ -842,21 +897,42 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-3 mt-3">
+            <div className="flex flex-wrap items-center gap-2 mt-3">
               <button
                 type="button"
                 onClick={() => setShowLocal2PModal(false)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2 border border-zinc-600 text-xs transition-colors"
+                className="flex-1 min-w-[70px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2 border border-zinc-600 text-xs transition-colors"
               >
                 CANCEL
               </button>
+
+              {local2PMode === 'payload' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLocal2PModal(false);
+                    onOpenConstruction({
+                      name: 'Badwater Basin (TF2 Payload)',
+                      grid: createBadwaterBasinGrid(34),
+                    });
+                  }}
+                  className="flex-1 min-w-[130px] bg-amber-700 hover:bg-amber-600 text-white py-2 border border-amber-500 text-xs font-bold transition-colors"
+                >
+                  EDIT IN CONSTRUCTION
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
                   setShowLocal2PModal(false);
-                  onStartLocal2Player(local2PMode);
+                  if (local2PMode === 'payload') {
+                    onStartLocal2Player('versus', 'payload');
+                  } else {
+                    onStartLocal2Player(local2PMode, 'classic');
+                  }
                 }}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 border border-emerald-400 text-xs font-bold shadow-lg transition-colors"
+                className="flex-1 min-w-[110px] bg-emerald-600 hover:bg-emerald-500 text-white py-2 border border-emerald-400 text-xs font-bold shadow-lg transition-colors"
               >
                 START BATTLE!
               </button>

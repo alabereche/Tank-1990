@@ -13,6 +13,8 @@ import {
   CANVAS_SIZE,
   cloneGrid,
   createEmptyGrid,
+  BADWATER_WAYPOINTS,
+  BADWATER_CHECKPOINTS,
 } from '../engine/maps';
 import { SpriteRenderer } from '../engine/spriteRenderer';
 import { BaseState } from '../types';
@@ -116,6 +118,7 @@ const STAGE_PRESETS_LIST = [
   { num: 8, key: 'urbanGridlock', label: 'Stage 8: Urban Gridlock' },
   { num: 9, key: 'bunkerComplex', label: 'Stage 9: Bunker Complex' },
   { num: 10, key: 'deathValley', label: 'Stage 10: Death Valley Crater' },
+  { num: 11, key: 'badwaterBasin', label: 'TF2: Badwater Basin (34x34)' },
 ];
 
 const ALL_PRESET_KEYS = [
@@ -226,6 +229,12 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, currentCanvasSize, currentCanvasSize);
 
+    // If Badwater Basin (34x34): render rail tracks and checkpoints as reference guide
+    if (currentGridSize === 34 || mapName.toLowerCase().includes('badwater')) {
+      SpriteRenderer.renderRailTrack(ctx, BADWATER_WAYPOINTS);
+      SpriteRenderer.renderCheckpoints(ctx, BADWATER_CHECKPOINTS, 0);
+    }
+
     // 1. Ice & Mud
     for (let r = 0; r < currentGridSize; r++) {
       for (let c = 0; c < currentGridSize; c++) {
@@ -259,8 +268,10 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
       }
     }
 
-    // 4. Base Eagle
-    SpriteRenderer.renderBase(ctx, baseX, baseY, BaseState.ALIVE);
+    // 4. Base Eagle (Only for maps with a base; never in Badwater Basin / Payload)
+    if (currentGridSize !== 34 && !mapName.toLowerCase().includes('badwater')) {
+      SpriteRenderer.renderBase(ctx, baseX, baseY, BaseState.ALIVE);
+    }
 
     // 5. Trees (Top Layer)
     for (let r = 0; r < currentGridSize; r++) {
@@ -273,16 +284,26 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
 
     // 6. Spawn markers & Player Spawn indicator
     ctx.save();
-    ctx.strokeStyle = '#e82020';
     ctx.lineWidth = 1;
     ctx.setLineDash([2, 2]);
-    ctx.strokeRect(0, 0, 32, 32);
-    ctx.strokeRect(baseX, 0, 32, 32);
-    ctx.strokeRect((currentGridSize - 2) * BLOCK_SIZE, 0, 32, 32);
 
-    // Player spawn
-    ctx.strokeStyle = '#f8b800';
-    ctx.strokeRect(Math.max(0, (baseC - 4) * BLOCK_SIZE), baseY, 32, 32);
+    if (currentGridSize === 34 || mapName.toLowerCase().includes('badwater')) {
+      // BLU Spawn marker (South Canyon, Col 16, Row 31)
+      ctx.strokeStyle = '#58b8d8';
+      ctx.strokeRect(16 * BLOCK_SIZE, 31 * BLOCK_SIZE, 32, 32);
+      // RED Spawn marker (East Citadel, Col 21, Row 17)
+      ctx.strokeStyle = '#d82800';
+      ctx.strokeRect(21 * BLOCK_SIZE, 17 * BLOCK_SIZE, 32, 32);
+    } else {
+      ctx.strokeStyle = '#e82020';
+      ctx.strokeRect(0, 0, 32, 32);
+      ctx.strokeRect(baseX, 0, 32, 32);
+      ctx.strokeRect((currentGridSize - 2) * BLOCK_SIZE, 0, 32, 32);
+
+      // Player spawn
+      ctx.strokeStyle = '#f8b800';
+      ctx.strokeRect(Math.max(0, (baseC - 4) * BLOCK_SIZE), baseY, 32, 32);
+    }
     ctx.restore();
 
     // 7. Subtle Grid lines for precision editing

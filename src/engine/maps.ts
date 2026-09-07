@@ -5,7 +5,7 @@
  * biome profiles, obstacle combinations, and combat signatures.
  */
 
-import { StageMap, TileType, MapSizePreset } from '../types';
+import { StageMap, TileType, MapSizePreset, PayloadCheckpoint } from '../types';
 
 export const BLOCK_SIZE = 16; // 16px per sub-tile
 export const DEFAULT_GRID_SIZE = 26;
@@ -988,6 +988,322 @@ export const STAGES_METADATA: StageMetadata[] = [
 /**
  * Generates preset dictionary for Map Editor with all 10 stages
  */
+export interface BadwaterWaypoint {
+  x: number;
+  y: number;
+}
+
+export interface BadwaterCheckpointInfo extends PayloadCheckpoint {}
+
+/**
+ * High-precision waypoints for Badwater Basin Payload track (34x34 grid, 16px blocks = 544x544 px)
+ */
+export const BADWATER_WAYPOINTS: BadwaterWaypoint[] = [
+  { x: 264, y: 488 }, // 0: BLU Start (col 16.5, row 30.5)
+  { x: 264, y: 408 }, // 1: North to Canyon Turn (col 16.5, row 25.5)
+  { x: 184, y: 408 }, // 2: West to Point 1 Approach (col 11.5, row 25.5)
+  { x: 184, y: 352 }, // 3: POINT 1 (A) (col 11.5, row 22.0)
+  { x: 184, y: 248 }, // 4: Tunnel Exit (col 11.5, row 15.5)
+  { x: 280, y: 248 }, // 5: POINT 2 (B) - Great Warehouse (col 17.5, row 15.5)
+  { x: 408, y: 248 }, // 6: East past warehouse (col 25.5, row 15.5)
+  { x: 408, y: 128 }, // 7: POINT 3 (C) - Twin Silos (col 25.5, row 8.0)
+  { x: 456, y: 128 }, // 8: East over bridge (col 28.5, row 8.0)
+  { x: 456, y: 328 }, // 9: South down Red Road (col 28.5, row 20.5)
+  { x: 344, y: 328 }, // 10: FINAL BLAST PIT (col 21.5, row 20.5)
+];
+
+export const BADWATER_CHECKPOINTS: BadwaterCheckpointInfo[] = [
+  { id: 'cp1', name: 'POINT 1 (A)', x: 184, y: 352, progress: 0.21, waypointIndex: 3, captured: false },
+  { id: 'cp2', name: 'POINT 2 (B)', x: 280, y: 248, progress: 0.41, waypointIndex: 5, captured: false },
+  { id: 'cp3', name: 'POINT 3 (C)', x: 408, y: 128, progress: 0.65, waypointIndex: 7, captured: false },
+  { id: 'cp_final', name: 'FINAL BLAST PIT', x: 344, y: 328, progress: 1.0, waypointIndex: 10, captured: false },
+];
+
+/**
+ * Handcrafted 34x34 Battle City recreation of Team Fortress 2's Badwater Basin (pl_badwater)
+ * High-density tactical map: 4 distinct combat sectors, zero base eagles, zero empty voids.
+ */
+export function createBadwaterBasinGrid(size: number = 34): number[][] {
+  const grid: number[][] = Array(size)
+    .fill(0)
+    .map(() => Array(size).fill(TileType.EMPTY));
+
+  // --- 1. OUTER CANYON BOUNDARY WALLS ---
+  for (let c = 0; c < size; c++) {
+    // Top border with mountain passes
+    if (c !== 7 && c !== 21 && c !== 28) {
+      grid[0][c] = c % 2 === 0 ? TileType.STEEL : TileType.BRICK;
+    }
+    // Bottom border with BLU gate
+    if (c < 14 || c > 18) {
+      grid[size - 1][c] = c % 3 === 0 ? TileType.STEEL : TileType.BRICK;
+    }
+  }
+  for (let r = 0; r < size; r++) {
+    // West mountain cliff
+    grid[r][0] = r % 2 === 0 ? TileType.STEEL : TileType.BRICK;
+    // East mountain cliff
+    grid[r][size - 1] = r % 2 === 0 ? TileType.STEEL : TileType.BRICK;
+  }
+
+  // --- 2. SECTOR 1: NORTHWEST INDUSTRIAL COMPLEX & COOLANT CANAL (Rows 1-13, Cols 1-15) ---
+  // Industrial Power Station (Rows 2-5, Cols 2-6)
+  for (let r = 2; r <= 5; r++) {
+    for (let c = 2; c <= 6; c++) {
+      if (r === 2 || r === 5 || c === 2 || c === 6) {
+        grid[r][c] = TileType.STEEL;
+      } else {
+        grid[r][c] = TileType.BRICK;
+      }
+    }
+  }
+  grid[5][4] = TileType.EMPTY; // Entrance
+
+  // Barracks Complex (Rows 8-11, Cols 2-6)
+  for (let r = 8; r <= 11; r++) {
+    for (let c = 2; c <= 6; c++) {
+      if (r === 8 || r === 11 || c === 2 || c === 6) {
+        grid[r][c] = TileType.BRICK;
+      } else {
+        grid[r][c] = TileType.EMPTY;
+      }
+    }
+  }
+  grid[9][4] = TileType.BRICK;
+  grid[10][4] = TileType.BRICK;
+  grid[8][4] = TileType.EMPTY; // Entrance
+
+  // Coolant Canal (Rows 2-13, Cols 8-9)
+  for (let r = 2; r <= 13; r++) {
+    grid[r][8] = TileType.WATER;
+    grid[r][9] = TileType.WATER;
+  }
+  // Twin crossing bridges over canal
+  grid[6][8] = TileType.BRICK;
+  grid[6][9] = TileType.BRICK;
+  grid[11][8] = TileType.BRICK;
+  grid[11][9] = TileType.BRICK;
+
+  // Ice Refrigeration Bay (Rows 3-6, Cols 11-13)
+  for (let r = 3; r <= 6; r++) {
+    for (let c = 11; c <= 13; c++) {
+      grid[r][c] = TileType.ICE;
+    }
+  }
+  grid[2][11] = TileType.STEEL; grid[2][12] = TileType.STEEL; grid[2][13] = TileType.STEEL;
+  grid[7][11] = TileType.BRICK; grid[7][12] = TileType.BRICK; grid[7][13] = TileType.BRICK;
+  grid[4][14] = TileType.STEEL; grid[5][14] = TileType.STEEL;
+
+  // Pine Forest Cover (Rows 8-12, Cols 11-14)
+  for (let r = 8; r <= 12; r++) {
+    for (let c = 11; c <= 14; c++) {
+      grid[r][c] = TileType.TREES;
+    }
+  }
+
+  // --- 3. SECTOR 2: NORTHEAST TWIN SILOS & BRIDGE (Rows 1-13, Cols 16-32) ---
+  // Silo 1 (Rows 3-6, Cols 18-22)
+  for (let r = 3; r <= 6; r++) {
+    for (let c = 18; c <= 22; c++) {
+      const isEdge = r === 3 || r === 6 || c === 18 || c === 22;
+      grid[r][c] = isEdge ? TileType.STEEL : TileType.BRICK;
+    }
+  }
+  // Silo 2 (Rows 9-12, Cols 18-22)
+  for (let r = 9; r <= 12; r++) {
+    for (let c = 18; c <= 22; c++) {
+      const isEdge = r === 9 || r === 12 || c === 18 || c === 22;
+      grid[r][c] = isEdge ? TileType.STEEL : TileType.BRICK;
+    }
+  }
+  // Catwalk connect (Row 7, Cols 18-22)
+  for (let c = 18; c <= 22; c++) {
+    grid[7][c] = TileType.BRICK;
+  }
+
+  // Northeast RED Defense Headquarters (Rows 2-5, Cols 26-31)
+  for (let r = 2; r <= 5; r++) {
+    grid[r][26] = TileType.BRICK;
+    grid[r][31] = TileType.STEEL;
+  }
+  for (let c = 26; c <= 31; c++) {
+    grid[2][c] = TileType.STEEL;
+  }
+
+  // Industrial Cargo Depot (Rows 9-12, Cols 30-32)
+  for (let r = 9; r <= 12; r++) {
+    grid[r][30] = TileType.BRICK;
+    grid[r][31] = TileType.BRICK;
+  }
+
+  // --- 4. SECTOR 3: TUNNEL CHOKEPOINT & WEST DRAINAGE (Rows 14-22, Cols 1-15) ---
+  // West Mud Silt Passage (Rows 14-21, Cols 1-3)
+  for (let r = 14; r <= 21; r++) {
+    for (let c = 1; c <= 3; c++) {
+      grid[r][c] = TileType.MUD;
+    }
+  }
+  // Canal continuation (Rows 14-22, Cols 4-5)
+  for (let r = 14; r <= 22; r++) {
+    grid[r][4] = TileType.WATER;
+    grid[r][5] = TileType.WATER;
+  }
+  grid[17][4] = TileType.BRICK; // Bridge
+  grid[17][5] = TileType.BRICK;
+
+  // Reinforced Tunnel Wall (Left of track, Rows 14-21, Cols 7-9)
+  for (let r = 14; r <= 21; r++) {
+    grid[r][7] = TileType.STEEL;
+    grid[r][8] = TileType.BRICK;
+    grid[r][9] = TileType.STEEL;
+  }
+
+  // Warehouse dividing wall (Right of track tunnel, Rows 16-21, Cols 13-14)
+  for (let r = 16; r <= 21; r++) {
+    grid[r][13] = TileType.BRICK;
+    grid[r][14] = TileType.STEEL;
+  }
+
+  // --- 5. SECTOR 4: THE GREAT WAREHOUSE & RED CITADEL & FINAL PIT (Rows 13-23, Cols 15-32) ---
+  // Great Warehouse outer shell (Point 2 at Row 15, Col 17)
+  for (let c = 14; c <= 24; c++) {
+    if (c !== 17 && c !== 18) { // Rail door
+      grid[13][c] = TileType.STEEL;
+    }
+  }
+  for (let r = 14; r <= 17; r++) {
+    grid[r][24] = TileType.STEEL;
+  }
+  // Warehouse internal storage bays
+  grid[16][16] = TileType.BRICK;
+  grid[16][17] = TileType.BRICK;
+  grid[16][19] = TileType.BRICK;
+  grid[16][20] = TileType.BRICK;
+
+  // RED Defense Citadel (Rows 16-18, Cols 19-24)
+  // RED spawn is at Col 21, Row 17
+  grid[16][19] = TileType.STEEL; grid[16][20] = TileType.STEEL; grid[16][22] = TileType.STEEL; grid[16][23] = TileType.STEEL;
+  grid[17][19] = TileType.STEEL; grid[17][23] = TileType.STEEL;
+  grid[18][19] = TileType.BRICK; grid[18][23] = TileType.BRICK;
+
+  // Final Blast Pit Surroundings (Point 4 at Row 20, Col 21)
+  // Steel blast barriers
+  grid[21][19] = TileType.STEEL; grid[21][20] = TileType.STEEL; grid[21][22] = TileType.STEEL; grid[21][23] = TileType.STEEL;
+  grid[22][19] = TileType.BRICK; grid[22][20] = TileType.BRICK; grid[22][22] = TileType.BRICK; grid[22][23] = TileType.BRICK;
+  grid[19][18] = TileType.STEEL; grid[20][18] = TileType.STEEL; grid[21][18] = TileType.STEEL;
+  grid[19][24] = TileType.STEEL; grid[20][24] = TileType.STEEL; grid[21][24] = TileType.STEEL;
+
+  // East Pit Approach Walls (Rows 14-22, Cols 30-32)
+  for (let r = 14; r <= 22; r++) {
+    if (r % 2 === 0) {
+      grid[r][30] = TileType.BRICK;
+      grid[r][31] = TileType.STEEL;
+    }
+  }
+
+  // --- 6. SECTOR 5: BLU STAGING, LOWER CANYON & POINT 1 (Rows 22-33, Cols 0-33) ---
+  // Point 1 Guard Bunker (Row 22, Col 8-9)
+  grid[21][8] = TileType.STEEL; grid[21][9] = TileType.BRICK;
+  grid[22][8] = TileType.STEEL; grid[22][9] = TileType.BRICK;
+  grid[23][8] = TileType.STEEL; grid[23][9] = TileType.BRICK;
+  // Ambush foliage east of Point 1
+  grid[22][13] = TileType.TREES; grid[22][14] = TileType.TREES;
+  grid[23][13] = TileType.TREES; grid[23][14] = TileType.TREES;
+
+  // Canyon Ridge Walls
+  for (let r = 24; r <= 28; r++) {
+    grid[r][7] = TileType.STEEL;
+    grid[r][8] = TileType.BRICK;
+    grid[r][19] = TileType.BRICK;
+    grid[r][20] = TileType.STEEL;
+  }
+
+  // Southwest Quarry (Rows 24-32, Cols 1-6)
+  for (let r = 26; r <= 30; r++) {
+    for (let c = 2; c <= 5; c++) {
+      grid[r][c] = TileType.MUD;
+    }
+  }
+  for (let c = 2; c <= 5; c++) {
+    grid[25][c] = TileType.BRICK;
+    grid[31][c] = TileType.BRICK;
+  }
+
+  // Southeast Observation Cliff (Rows 24-32, Cols 22-32)
+  for (let r = 25; r <= 27; r++) {
+    for (let c = 23; c <= 27; c++) {
+      grid[r][c] = TileType.BRICK;
+    }
+  }
+  for (let r = 28; r <= 32; r++) {
+    for (let c = 25; c <= 31; c++) {
+      grid[r][c] = TileType.TREES;
+    }
+  }
+
+  // BLU Armored Staging Hangar (Rows 29-33, Cols 12-21)
+  for (let r = 29; r <= 32; r++) {
+    grid[r][12] = TileType.STEEL;
+    grid[r][21] = TileType.STEEL;
+  }
+  for (let c = 12; c <= 21; c++) {
+    grid[33][c] = TileType.STEEL;
+  }
+  grid[30][19] = TileType.BRICK; grid[30][20] = TileType.BRICK;
+
+  // --- 7. CLEAR RAIL TRACK CORRIDORS (Ensure ZERO solid blocks on rails) ---
+  const clearCorridors = [
+    // WP0 -> WP1: col 16, rows 25..31 (2-tile wide cols 15-17)
+    { r1: 25, r2: 31, c1: 15, c2: 17 },
+    // WP1 -> WP2: row 25, cols 11..16 (2-tile wide rows 24-26)
+    { r1: 24, r2: 26, c1: 10, c2: 17 },
+    // WP2 -> WP3: cols 11, rows 22..25 (2-tile wide cols 10-12)
+    { r1: 21, r2: 25, c1: 10, c2: 12 },
+    // WP3 -> WP4: cols 11, rows 15..22 (2-tile wide cols 10-12)
+    { r1: 14, r2: 22, c1: 10, c2: 12 },
+    // WP4 -> WP5: row 15, cols 11..18 (2-tile wide rows 14-16)
+    { r1: 14, r2: 16, c1: 11, c2: 18 },
+    // WP5 -> WP6: row 15, cols 17..26 (2-tile wide rows 14-16)
+    { r1: 14, r2: 16, c1: 17, c2: 26 },
+    // WP6 -> WP7: col 25, rows 8..15 (2-tile wide cols 24-26)
+    { r1: 7, r2: 15, c1: 24, c2: 26 },
+    // WP7 -> WP8: row 8, cols 25..29 (2-tile wide rows 7-9)
+    { r1: 7, r2: 9, c1: 25, c2: 29 },
+    // WP8 -> WP9: col 28, rows 8..21 (2-tile wide cols 27-29)
+    { r1: 8, r2: 21, c1: 27, c2: 29 },
+    // WP9 -> WP10: row 20, cols 21..29 (2-tile wide rows 19-21)
+    { r1: 19, r2: 21, c1: 20, c2: 29 },
+  ];
+
+  for (const box of clearCorridors) {
+    for (let r = box.r1; r <= box.r2; r++) {
+      for (let c = box.c1; c <= box.c2; c++) {
+        if (r >= 0 && r < size && c >= 0 && c < size) {
+          grid[r][c] = TileType.EMPTY;
+        }
+      }
+    }
+  }
+
+  // Clear Spawn Points
+  // P1 (BLU Attacker) spawn at Col 13, Row 30 (Open staging floor, clear of cart and south wall)
+  for (let r = 29; r <= 32; r++) {
+    for (let c = 13; c <= 15; c++) {
+      grid[r][c] = TileType.EMPTY;
+    }
+  }
+
+  // P2 (RED Defender) spawn at Col 28, Row 4 (Northeast Defense Headquarters)
+  // Far from the starting path, giving BLU space to advance along the track
+  for (let r = 3; r <= 7; r++) {
+    for (let c = 27; c <= 30; c++) {
+      grid[r][c] = TileType.EMPTY;
+    }
+  }
+
+  return grid;
+}
+
 export function getPresetMaps(gridSize: number = 26): Record<string, StageMap> {
   return {
     stage1: {
@@ -1030,6 +1346,10 @@ export function getPresetMaps(gridSize: number = 26): Record<string, StageMap> {
       name: 'Stage 10: Death Valley Crater',
       grid: createDeathValley(gridSize),
     },
+    badwaterBasin: {
+      name: 'Badwater Basin (TF2 Payload)',
+      grid: createBadwaterBasinGrid(34),
+    },
     tacticalMaze: {
       name: 'Tactical Maze (FFA)',
       grid: createTacticalMaze(gridSize),
@@ -1049,9 +1369,16 @@ export const PRESET_MAPS: Record<string, StageMap> = getPresetMaps(26);
 export function getStageMapForPresetAndStage(
   stage: number,
   preset: MapSizePreset = 'classic',
-  mode?: string
+  mode?: string,
+  versusSubMode?: string
 ): StageMap {
   const gridSize = getGridSizeForPreset(preset);
+  if (mode === 'payload' || versusSubMode === 'payload') {
+    return {
+      name: 'Badwater Basin (TF2 Payload)',
+      grid: createBadwaterBasinGrid(34),
+    };
+  }
   if (mode === 'ffa') {
     return {
       name: `Tactical Maze Arena (${MAP_SIZE_CONFIGS[preset]?.name || 'Expanded'})`,

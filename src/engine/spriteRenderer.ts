@@ -14,8 +14,10 @@ import {
   ActiveSmokeScreen,
   ActiveBouncingGrenade,
   ActiveDeployableShield,
+  PayloadStatus,
+  PayloadCheckpoint,
 } from '../types';
-import { BLOCK_SIZE } from './maps';
+import { BLOCK_SIZE, BadwaterWaypoint } from './maps';
 
 export class SpriteRenderer {
   /**
@@ -327,8 +329,49 @@ export class SpriteRenderer {
     let treadColor = '#404040';
 
     if (isPlayer) {
-      const pIdx = tank.playerIndex || 1;
-      if (pIdx === 2) {
+      if (tank.palette === 'blu') {
+        // Team Fortress 2 BLU Team Primary (Attacker / Pusher)
+        if (tank.tier === 0) {
+          bodyColor = '#1e6cc4'; // Deep TF2 BLU Navy
+          darkColor = '#0d3b70';
+          highlightColor = '#60b8ff';
+        } else if (tank.tier === 1) {
+          bodyColor = '#247ce0'; // Bright Cyan-Blue
+          darkColor = '#0e498c';
+          highlightColor = '#7dc8ff';
+        } else if (tank.tier === 2) {
+          bodyColor = '#00a6f0'; // Electric Blue
+          darkColor = '#005d8f';
+          highlightColor = '#9de0ff';
+        } else {
+          bodyColor = '#00c4f8'; // Heavy Overcharged Cyan
+          darkColor = '#007090';
+          highlightColor = '#c4f2ff';
+        }
+        treadColor = '#24303c';
+      } else if (tank.palette === 'red') {
+        // Team Fortress 2 RED Team Primary (Defender)
+        if (tank.tier === 0) {
+          bodyColor = '#c42020'; // Deep TF2 RED Crimson
+          darkColor = '#680a0a';
+          highlightColor = '#ff6868';
+        } else if (tank.tier === 1) {
+          bodyColor = '#dc2626'; // Bright Scarlet Red
+          darkColor = '#7a1010';
+          highlightColor = '#ff8585';
+        } else if (tank.tier === 2) {
+          bodyColor = '#e83428'; // Fiery Flame Red
+          darkColor = '#881810';
+          highlightColor = '#ffa090';
+        } else {
+          bodyColor = '#ff4528'; // Heavy Inferno Red
+          darkColor = '#9a2010';
+          highlightColor = '#ffc0a8';
+        }
+        treadColor = '#342424';
+      } else {
+        const pIdx = tank.playerIndex || 1;
+        if (pIdx === 2) {
         // Player 2 - Authentic NES Battle City Green Tank
         if (tank.tier === 0) {
           bodyColor = '#00a800'; // Forest Green
@@ -397,7 +440,8 @@ export class SpriteRenderer {
           highlightColor = '#ffd088';
         }
       }
-    } else {
+    }
+  } else {
       // Enemy tank palette
       const enemyType = type as EnemyType;
       if (enemyType === 'BASIC') {
@@ -1235,6 +1279,539 @@ export class SpriteRenderer {
         ctx.fillRect(x + w - 3, y + Math.floor(h / 2) - 8 + i * 6, 2, 4);
       }
     }
+
+    ctx.restore();
+  }
+
+  /*    * Renders authentic high-density arcade-grade railway tracks with crushed basalt gravel ballast,
+    * heavy timber sleepers, steel tie plates with spike bolts, and continuous 3D dual steel rails.
+    */
+  public static renderRailTrack(
+    ctx: CanvasRenderingContext2D,
+    waypoints: BadwaterWaypoint[]
+  ) {
+    if (!waypoints || waypoints.length < 2) return;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    const ballastWidth = 26;
+
+    // --- PASS 1: Crushed Basalt Gravel Ballast Bed (Roadbed) ---
+    ctx.lineCap = 'square';
+    ctx.lineJoin = 'miter';
+
+    // 1a. Dark earth excavation trench / outer border
+    ctx.strokeStyle = '#141210';
+    ctx.lineWidth = ballastWidth + 4;
+    ctx.beginPath();
+    ctx.moveTo(waypoints[0].x, waypoints[0].y);
+    for (let i = 1; i < waypoints.length; i++) {
+      ctx.lineTo(waypoints[i].x, waypoints[i].y);
+    }
+    ctx.stroke();
+
+    // 1b. Main compacted basalt crushed stone
+    ctx.strokeStyle = '#25221f';
+    ctx.lineWidth = ballastWidth;
+    ctx.beginPath();
+    ctx.moveTo(waypoints[0].x, waypoints[0].y);
+    for (let i = 1; i < waypoints.length; i++) {
+      ctx.lineTo(waypoints[i].x, waypoints[i].y);
+    }
+    ctx.stroke();
+
+    // 1c. Gravel stone texture speckles along segments
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const p1 = waypoints[i];
+      const p2 = waypoints[i + 1];
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len === 0) continue;
+
+      const angle = Math.atan2(dy, dx);
+      const perpX = -Math.sin(angle);
+      const perpY = Math.cos(angle);
+
+      for (let d = 3; d < len; d += 6) {
+        const cx = p1.x + (dx * d) / len;
+        const cy = p1.y + (dy * d) / len;
+        const seed = Math.floor(cx * 13 + cy * 29);
+        const offset = ((seed % 17) - 8) * 1.2;
+        ctx.fillStyle = seed % 3 === 0 ? '#3c362f' : seed % 3 === 1 ? '#181614' : '#2e2a25';
+        ctx.fillRect(
+          Math.floor(cx + perpX * offset - 1),
+          Math.floor(cy + perpY * offset - 1),
+          2,
+          2
+        );
+      }
+    }
+
+    // --- PASS 2: Heavy Timber Sleepers (Cross-ties) with Tie Plates & Spikes ---
+    const tieSpacing = 10;
+    const tieLength = 22;   // perpendicular to track
+    const tieThickness = 4; // parallel to track
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const p1 = waypoints[i];
+      const p2 = waypoints[i + 1];
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len === 0) continue;
+
+      const angle = Math.atan2(dy, dx);
+      const normX = dx / len;
+      const normY = dy / len;
+      const numTies = Math.floor(len / tieSpacing);
+
+      for (let t = 0; t <= numTies; t++) {
+        const dist = t * tieSpacing;
+        if (dist > len) break;
+        const cx = p1.x + normX * dist;
+        const cy = p1.y + normY * dist;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+
+        // Sleeper shadow beneath
+        ctx.fillStyle = '#180f07';
+        ctx.fillRect(-tieThickness / 2 - 1, -tieLength / 2 - 1, tieThickness + 2, tieLength + 2);
+
+        // Creosote treated wood body
+        ctx.fillStyle = '#3e2614';
+        ctx.fillRect(-tieThickness / 2, -tieLength / 2, tieThickness, tieLength);
+
+        // Top edge bevel highlight
+        ctx.fillStyle = '#5c391e';
+        ctx.fillRect(-tieThickness / 2, -tieLength / 2, 1.5, tieLength);
+
+        // Heavy cast-iron tie plates under each rail seat (offset -6 and +6)
+        ctx.fillStyle = '#1a1d21';
+        ctx.fillRect(-tieThickness / 2 - 0.5, -8.5, tieThickness + 1, 5);
+        ctx.fillRect(-tieThickness / 2 - 0.5, 3.5, tieThickness + 1, 5);
+
+        // Steel railroad spike rivets
+        ctx.fillStyle = '#9cb0c4';
+        ctx.fillRect(-tieThickness / 2 + 1, -7.5, 1.5, 1.5);
+        ctx.fillRect(-tieThickness / 2 + 1, 4.5, 1.5, 1.5);
+
+        ctx.restore();
+      }
+    }
+
+    // --- PASS 3: Corner Junction Steel Switchplates (Under rails) ---
+    for (let i = 1; i < waypoints.length - 1; i++) {
+      const wp = waypoints[i];
+      ctx.fillStyle = '#181b20';
+      ctx.fillRect(wp.x - 8, wp.y - 8, 16, 16);
+      ctx.fillStyle = '#282f38';
+      ctx.fillRect(wp.x - 7, wp.y - 7, 14, 14);
+
+      // Corner industrial bolt studs
+      ctx.fillStyle = '#8a9cb0';
+      ctx.fillRect(wp.x - 6, wp.y - 6, 2, 2);
+      ctx.fillRect(wp.x + 4, wp.y - 6, 2, 2);
+      ctx.fillRect(wp.x - 6, wp.y + 4, 2, 2);
+      ctx.fillRect(wp.x + 4, wp.y + 4, 2, 2);
+    }
+
+    // --- PASS 4: Orthogonal Parallel Dual Steel Rails (Gauge = 12px, offset +/- 6px) ---
+    // Pure segment-by-segment straight parallel rails with 6px extension at corners
+    // Guarantees zero diagonal skewing and perfect 90-degree right angle joints!
+    const railOffset = 6;
+    interface RailSegment {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    }
+    const rails: RailSegment[] = [];
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const p1 = waypoints[i];
+      const p2 = waypoints[i + 1];
+
+      if (p1.x === p2.x) {
+        // Vertical segment: rails run straight vertically at cx - 6 and cx + 6
+        const cx = p1.x;
+        const minY = Math.min(p1.y, p2.y) - railOffset;
+        const maxY = Math.max(p1.y, p2.y) + railOffset;
+        rails.push({ x1: cx - railOffset, y1: minY, x2: cx - railOffset, y2: maxY });
+        rails.push({ x1: cx + railOffset, y1: minY, x2: cx + railOffset, y2: maxY });
+      } else if (p1.y === p2.y) {
+        // Horizontal segment: rails run straight horizontally at cy - 6 and cy + 6
+        const cy = p1.y;
+        const minX = Math.min(p1.x, p2.x) - railOffset;
+        const maxX = Math.max(p1.x, p2.x) + railOffset;
+        rails.push({ x1: minX, y1: cy - railOffset, x2: maxX, y2: cy - railOffset });
+        rails.push({ x1: minX, y1: cy + railOffset, x2: maxX, y2: cy + railOffset });
+      } else {
+        // General non-orthogonal fallback with normalized perpendicular offsets
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const perpX = (-dy / len) * railOffset;
+        const perpY = (dx / len) * railOffset;
+        rails.push({ x1: p1.x - perpX, y1: p1.y - perpY, x2: p2.x - perpX, y2: p2.y - perpY });
+        rails.push({ x1: p1.x + perpX, y1: p1.y + perpY, x2: p2.x + perpX, y2: p2.y + perpY });
+      }
+    }
+
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+
+    // 4a. Heavy dark steel base & flange shadow
+    ctx.strokeStyle = '#101316';
+    ctx.lineWidth = 4.0;
+    ctx.beginPath();
+    for (const r of rails) {
+      ctx.moveTo(r.x1, r.y1);
+      ctx.lineTo(r.x2, r.y2);
+    }
+    ctx.stroke();
+
+    // 4b. Rolled steel rail body profile
+    ctx.strokeStyle = '#5a6676';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    for (const r of rails) {
+      ctx.moveTo(r.x1, r.y1);
+      ctx.lineTo(r.x2, r.y2);
+    }
+    ctx.stroke();
+
+    // 4c. Specular polished chrome railhead highlight
+    ctx.strokeStyle = '#edf4fc';
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    for (const r of rails) {
+      ctx.moveTo(r.x1, r.y1);
+      ctx.lineTo(r.x2, r.y2);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders Badwater tactical control checkpoints with illuminated platforms and the Final Blast Pit Silo
+   */
+  public static renderCheckpoints(
+    ctx: CanvasRenderingContext2D,
+    checkpoints: PayloadCheckpoint[],
+    tick: number = 0
+  ) {
+    if (!checkpoints) return;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    for (let i = 0; i < checkpoints.length; i++) {
+      const cp = checkpoints[i];
+      const cx = cp.x;
+      const cy = cp.y;
+      const isFinal = i === checkpoints.length - 1;
+
+      if (isFinal) {
+        // --- FINAL POINT: THE MASSIVE SUBTERRANEAN BLAST PIT SILO ---
+        const size = 42;
+        const half = size / 2;
+        const bx = cx - half;
+        const by = cy - half;
+
+        // Concrete & titanium silo rim
+        ctx.fillStyle = '#14161a';
+        ctx.fillRect(bx - 2, by - 2, size + 4, size + 4);
+        ctx.fillStyle = '#2a2e36';
+        ctx.fillRect(bx, by, size, size);
+
+        // Outer Red/White Hazard Chevron Border
+        for (let s = 0; s < size; s += 7) {
+          ctx.fillStyle = '#d82800';
+          ctx.fillRect(bx + s, by, 4, 3);
+          ctx.fillRect(bx + s, by + size - 3, 4, 3);
+          ctx.fillRect(bx, by + s, 3, 4);
+          ctx.fillRect(bx + size - 3, by + s, 3, 4);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(bx + s + 4, by, 3, 3);
+          ctx.fillRect(bx + s + 4, by + size - 3, 3, 3);
+          ctx.fillRect(bx, by + s + 4, 3, 3);
+          ctx.fillRect(bx + size - 3, by + s + 4, 3, 3);
+        }
+
+        // Inner Subterranean Abyss Pit
+        ctx.fillStyle = '#0a0808';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Pulsing Core Nuclear Red Glow
+        const pulse = Math.sin(tick * 0.1) * 0.3 + 0.7;
+        ctx.fillStyle = `rgba(220, 30, 20, ${0.4 * pulse})`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Steel blast hatch grating cross
+        ctx.strokeStyle = '#3e4450';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - 14, cy);
+        ctx.lineTo(cx + 14, cy);
+        ctx.moveTo(cx, cy - 14);
+        ctx.lineTo(cx, cy + 14);
+        ctx.stroke();
+
+        // Red Flashing Warning Beacon
+        const beaconOn = tick % 30 < 15;
+        ctx.fillStyle = beaconOn ? '#ff2222' : '#881111';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = beaconOn ? '#ffffff' : '#440000';
+        ctx.fillRect(cx - 1, cy - 1, 2, 2);
+
+        // Warning Label
+        ctx.fillStyle = beaconOn ? '#ff4444' : '#ff8888';
+        ctx.font = 'bold 8px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('FINAL PIT', cx, cy + half + 4);
+
+      } else {
+        // --- TACTICAL CONTROL CHECKPOINTS 1, 2, 3 ---
+        const size = 32;
+        const half = size / 2;
+        const bx = cx - half;
+        const by = cy - half;
+
+        // Heavy industrial steel deck base
+        ctx.fillStyle = '#16191d';
+        ctx.fillRect(bx - 1, by - 1, size + 2, size + 2);
+        ctx.fillStyle = '#262b33';
+        ctx.fillRect(bx, by, size, size);
+
+        // Yellow & Black Hazard Chevron Border
+        for (let s = 0; s < size; s += 6) {
+          ctx.fillStyle = '#f8b800';
+          ctx.fillRect(bx + s, by, 3, 2.5);
+          ctx.fillRect(bx + s, by + size - 2.5, 3, 2.5);
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(bx + s + 3, by, 3, 2.5);
+          ctx.fillRect(bx + s + 3, by + size - 2.5, 3, 2.5);
+        }
+
+        // Circular Recessed Pad
+        ctx.fillStyle = '#15171b';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Status Glow Ring
+        const isNextTarget = !cp.captured && (i === 0 || checkpoints[i - 1].captured);
+        let ringColor = '#3c4450';
+        let badgeColor = '#606a78';
+
+        if (cp.captured) {
+          ringColor = '#00e5ff';
+          badgeColor = '#00e5ff';
+        } else if (isNextTarget) {
+          const pulse = Math.sin(tick * 0.12) > 0;
+          ringColor = pulse ? '#ffb800' : '#885800';
+          badgeColor = '#ffb800';
+        }
+
+        ctx.strokeStyle = ringColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Checkpoint Alphanumeric Letter: "A", "B", "C"
+        const letters = ['A', 'B', 'C'];
+        ctx.fillStyle = badgeColor;
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(letters[i] || `${i + 1}`, cx, cy);
+
+        // Name Banner
+        ctx.fillStyle = cp.captured ? '#00e5ff' : isNextTarget ? '#f8b800' : '#808a98';
+        ctx.font = 'bold 7px monospace';
+        ctx.fillText(cp.name, cx, cy + half + 4);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders the Armored Payload Bomb Cart and subtle holographic push aura
+   */
+  public static renderPayloadCart(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    dir: Direction,
+    status: PayloadStatus,
+    tick: number = 0,
+    pushRadius: number = 54
+  ) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // 1. SUBTLE HOLOGRAPHIC TACTICAL PUSH AURA
+    let auraField = 'rgba(0, 180, 255, 0.04)';
+    let ringColor = 'rgba(0, 190, 255, 0.70)';
+    let innerDashColor = 'rgba(0, 190, 255, 0.35)';
+
+    if (status === 'PUSHING') {
+      auraField = 'rgba(0, 255, 130, 0.07)';
+      ringColor = 'rgba(0, 255, 130, 0.85)';
+      innerDashColor = 'rgba(0, 255, 130, 0.45)';
+    } else if (status === 'CONTESTED') {
+      const flash = tick % 16 < 8;
+      auraField = flash ? 'rgba(255, 40, 40, 0.10)' : 'rgba(255, 180, 0, 0.10)';
+      ringColor = flash ? '#ff3333' : '#f8b800';
+      innerDashColor = flash ? 'rgba(255, 60, 60, 0.5)' : 'rgba(248, 184, 0, 0.5)';
+    } else if (status === 'ROLLBACK') {
+      auraField = 'rgba(248, 184, 0, 0.06)';
+      ringColor = 'rgba(248, 184, 0, 0.80)';
+      innerDashColor = 'rgba(248, 184, 0, 0.40)';
+    }
+
+    // Gentle translucent ground aura
+    ctx.fillStyle = auraField;
+    ctx.beginPath();
+    ctx.arc(x, y, pushRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rotating inner holographic dotted ring
+    ctx.strokeStyle = innerDashColor;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.lineDashOffset = -tick * 0.6;
+    ctx.beginPath();
+    ctx.arc(x, y, pushRadius - 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Solid perimeter ring
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(x, y, pushRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 4 Corner Tactical Bracket Accents
+    const bracketDist = pushRadius * 0.72;
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 1.5;
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        const bx = x + sx * bracketDist;
+        const by = y + sy * bracketDist;
+        ctx.beginPath();
+        ctx.moveTo(bx, by - sy * 6);
+        ctx.lineTo(bx, by);
+        ctx.lineTo(bx - sx * 6, by);
+        ctx.stroke();
+      }
+    }
+
+    // 2. ARMORED BOMB CART (32x32 heavy military rail wagon)
+    const bx = Math.floor(x - 16);
+    const by = Math.floor(y - 16);
+
+    // Flanged Steel Railway Wheels (Aligned with rails at offset +/- 6px)
+    ctx.fillStyle = '#14171a';
+    ctx.fillRect(bx + 2, by + 1, 5, 8);
+    ctx.fillRect(bx + 25, by + 1, 5, 8);
+    ctx.fillRect(bx + 2, by + 23, 5, 8);
+    ctx.fillRect(bx + 25, by + 23, 5, 8);
+
+    // Wheel steel rims
+    ctx.fillStyle = '#647282';
+    ctx.fillRect(bx + 3, by + 2, 3, 6);
+    ctx.fillRect(bx + 26, by + 2, 3, 6);
+    ctx.fillRect(bx + 3, by + 24, 3, 6);
+    ctx.fillRect(bx + 26, by + 24, 3, 6);
+
+    // Cart Heavy Armored Chassis (32x32)
+    ctx.fillStyle = '#2a3038';
+    ctx.fillRect(bx + 2, by + 2, 28, 28);
+
+    // Bevel highlights & shadow rims
+    ctx.fillStyle = '#505c6c';
+    ctx.fillRect(bx + 2, by + 2, 28, 2);
+    ctx.fillRect(bx + 2, by + 2, 2, 28);
+    ctx.fillStyle = '#14181c';
+    ctx.fillRect(bx + 2, by + 28, 28, 2);
+    ctx.fillRect(bx + 28, by + 2, 2, 28);
+
+    // Front and Rear Hazard Chevron Bumpers
+    for (let c = 0; c < 28; c += 6) {
+      ctx.fillStyle = '#f8b800';
+      ctx.fillRect(bx + 2 + c, by + 2, 3, 3);
+      ctx.fillRect(bx + 2 + c, by + 27, 3, 3);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(bx + 5 + c, by + 2, 3, 3);
+      ctx.fillRect(bx + 5 + c, by + 27, 3, 3);
+    }
+
+    // 3. THE ATOMIC BOMB CARGO (Large spherical tactical warhead in cradle)
+    // Shadow under bomb
+    ctx.fillStyle = '#101215';
+    ctx.beginPath();
+    ctx.arc(x, y, 11, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dark iron bomb casing
+    ctx.fillStyle = '#20242a';
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Specular light reflection on casing
+    ctx.fillStyle = '#44505e';
+    ctx.beginPath();
+    ctx.arc(x - 3, y - 3, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Central Olive-Drab Titanium Reinforcement Belt
+    ctx.fillStyle = '#3a4436';
+    ctx.fillRect(x - 9, y - 2, 18, 4);
+
+    // Yellow Radiation Trefoil Stencil in center
+    ctx.fillStyle = '#f8b800';
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#20242a';
+    ctx.beginPath();
+    ctx.arc(x, y, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Blinking Digital Detonation Timer LED Display
+    const ledFlash = status === 'CONTESTED' ? tick % 10 < 5 : (status === 'PUSHING' ? tick % 18 < 9 : tick % 36 < 18);
+    ctx.fillStyle = '#121416';
+    ctx.fillRect(x - 4, y - 13, 8, 4);
+    ctx.fillStyle = ledFlash ? '#ff2020' : '#600808';
+    ctx.fillRect(x - 3, y - 12, 6, 2);
+    if (ledFlash) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x - 1, y - 12, 2, 2);
+    }
+
+    // Corner heavy armor rivets
+    ctx.fillStyle = '#8e9eaf';
+    ctx.fillRect(bx + 4, by + 7, 2, 2);
+    ctx.fillRect(bx + 26, by + 7, 2, 2);
+    ctx.fillRect(bx + 4, by + 23, 2, 2);
+    ctx.fillRect(bx + 26, by + 23, 2, 2);
 
     ctx.restore();
   }

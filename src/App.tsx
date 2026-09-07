@@ -22,6 +22,7 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<GameState>(GameState.MENU);
   const [currentStage, setCurrentStage] = useState<number>(1);
   const [customMap, setCustomMap] = useState<StageMap | undefined>(undefined);
+  const [editorInitialMap, setEditorInitialMap] = useState<StageMap | undefined>(undefined);
   const [finalScoreData, setFinalScoreData] = useState<GameScore | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isMobileDevice, setIsMobileDevice] = useState<boolean>(false);
@@ -32,6 +33,7 @@ export default function App() {
     roomCode: string;
     role: MultiplayerRole;
     mode: MultiplayerMode;
+    versusSubMode?: 'classic' | 'payload';
     mapSize: 'classic' | 'large' | 'giant';
     stage: number;
     customMapGrid?: number[][];
@@ -206,9 +208,10 @@ export default function App() {
     setCurrentScreen(GameState.STAGE_START);
   };
 
-  const handleOpenConstruction = () => {
+  const handleOpenConstruction = (initialMap?: StageMap) => {
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
+    setEditorInitialMap(initialMap);
     setCurrentScreen(GameState.BUILDING);
   };
 
@@ -217,6 +220,17 @@ export default function App() {
     soundManager.unlockAudio();
     setCustomMap(map);
     setCurrentStage(1);
+    const isPayload = map.grid.length === 34 || map.name.toLowerCase().includes('badwater');
+    if (isPayload) {
+      setMultiplayerConfig({
+        roomCode: 'LOCAL',
+        role: 'host',
+        mode: 'versus',
+        versusSubMode: 'payload',
+        mapSize: 'large',
+        stage: 1,
+      });
+    }
     setCurrentScreen(GameState.STAGE_START);
   };
 
@@ -260,18 +274,25 @@ export default function App() {
     soundManager.unlockAudio();
     setFinalScoreData(null);
     setMultiplayerConfig(undefined);
+    setEditorInitialMap(undefined);
     setCurrentScreen(GameState.MENU);
   };
 
-  const handleStartLocal2Player = (mode: 'coop' | 'versus', stageOverride?: number) => {
+  const handleStartLocal2Player = (
+    mode: 'coop' | 'versus',
+    subMode: 'classic' | 'payload' = 'classic',
+    stageOverride?: number
+  ) => {
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     const stg = stageOverride ?? currentStage ?? 1;
+    const effectiveSize = subMode === 'payload' ? 'large' : settings.mapSize;
     setMultiplayerConfig({
       roomCode: 'LOCAL',
       role: 'host',
       mode,
-      mapSize: settings.mapSize,
+      versusSubMode: subMode,
+      mapSize: effectiveSize,
       stage: stg,
     });
     setCustomMap(undefined);
@@ -280,13 +301,20 @@ export default function App() {
   };
 
   // Active map based on preset or custom.
-  // Multiplayer rooms use the room's mapSize; 8-Player FFA strictly enforces large (34x34) or giant (42x42).
+  // Multiplayer rooms use the room's mapSize; 8-Player FFA & Payload strictly enforce large (34x34).
   const effectiveMapSize = multiplayerConfig
-    ? (multiplayerConfig.mode === 'ffa'
+    ? (multiplayerConfig.versusSubMode === 'payload'
+        ? 'large'
+        : multiplayerConfig.mode === 'ffa'
         ? (multiplayerConfig.mapSize === 'classic' ? 'large' : multiplayerConfig.mapSize)
         : multiplayerConfig.mapSize)
     : settings.mapSize;
-  const currentActiveMap = customMap || getStageMapForPresetAndStage(currentStage, effectiveMapSize, multiplayerConfig?.mode);
+  const currentActiveMap = customMap || getStageMapForPresetAndStage(
+    currentStage,
+    effectiveMapSize,
+    multiplayerConfig?.mode,
+    multiplayerConfig?.versusSubMode
+  );
 
   return (
     <div
@@ -367,7 +395,7 @@ export default function App() {
           />
         ) : currentScreen === GameState.BUILDING ? (
           <MapEditorToolbar
-            initialMap={customMap || getStageMapForPresetAndStage(1, settings.mapSize)}
+            initialMap={editorInitialMap || customMap || getStageMapForPresetAndStage(1, settings.mapSize)}
             onStartBattle={handlePlayCustomMap}
             onCancel={handleReturnToMenu}
           />

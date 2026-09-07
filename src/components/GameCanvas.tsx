@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GameEngine } from '../engine/GameLoop';
 import { Hud } from './Hud';
-import { BLOCK_SIZE, PRESET_MAPS } from '../engine/maps';
+import { BLOCK_SIZE, PRESET_MAPS, getStageMapForPresetAndStage } from '../engine/maps';
 import {
   GameScore,
   GameSettings,
@@ -17,6 +17,7 @@ import {
   WindowScalePreset,
   MultiplayerMode,
   MultiplayerRole,
+  VersusSubMode,
   TacticalInventory,
 } from '../types';
 import { gamepadManager, GamepadInfo } from '../engine/GamepadManager';
@@ -41,6 +42,7 @@ import {
   Smartphone,
   RotateCcw,
   LogOut,
+  Clock,
 } from 'lucide-react';
 
 interface GameCanvasProps {
@@ -51,6 +53,7 @@ interface GameCanvasProps {
     roomCode: string;
     role: MultiplayerRole;
     mode: MultiplayerMode;
+    versusSubMode?: VersusSubMode;
     mapSize: 'classic' | 'large' | 'giant';
     stage: number;
     customMapGrid?: number[][];
@@ -268,13 +271,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const map = customMap || PRESET_MAPS.stage1;
+    const defaultMap = multiplayerConfig?.versusSubMode === 'payload'
+      ? getStageMapForPresetAndStage(1, 'large', 'versus', 'payload')
+      : PRESET_MAPS.stage1;
+    const map = customMap || defaultMap;
     const engine = new GameEngine(canvasRef.current, map, handleStateChange);
     engineRef.current = engine;
 
     if (multiplayerConfig) {
       // Local Couch Play: Local browser engine runs the entire game
-      engine.setMultiplayerMode(multiplayerConfig.mode, 'host');
+      engine.setMultiplayerMode(
+        multiplayerConfig.mode,
+        'host',
+        multiplayerConfig.versusSubMode || 'classic'
+      );
       engine.localPlayerSlot = 1;
     }
 
@@ -502,6 +512,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const pad2 = pad2Poll?.input;
         const m1 = mergeInput(kbP1, pad1, touchInput.current);
         const m2 = mergeInput(kbP2, pad2);
+        engine?.setPlayerSlotInput(1, m1);
         engine?.updateInput(m1);
         engine?.setP2Input(m2);
 
@@ -604,7 +615,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const handleRestartStage = () => {
     if (engineRef.current) {
-      engineRef.current.startStage(currentStage, customMap || PRESET_MAPS.stage1);
+      const defaultMap = multiplayerConfig?.versusSubMode === 'payload'
+        ? getStageMapForPresetAndStage(1, 'large', 'versus', 'payload')
+        : PRESET_MAPS.stage1;
+      engineRef.current.startStage(currentStage, customMap || defaultMap);
     }
   };
 
@@ -644,11 +658,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               HI- {scoreData.highScore.toString().padStart(6, '0')}
             </span>
             {(multiplayerConfig?.mode === 'versus' || scoreData.roundWinsP1 !== undefined) && (
-              <span className="bg-[#242432] px-2 py-0.5 rounded border border-[#3e3e52] text-white text-[8px]">
-                ROUNDS: <b className="text-amber-300">{scoreData.roundWinsP1 || 0}</b> -{' '}
-                <b className="text-emerald-400">{scoreData.roundWinsP2 || 0}</b> (R
-                {scoreData.roundNumber || 1})
-              </span>
+              <div className="flex items-center gap-1.5 bg-[#121218] px-2 py-0.5 rounded border border-[#2a2a38] text-[8px] font-mono font-bold">
+                <span className="text-[#4a9eff]">P1 {scoreData.roundWinsP1 || 0}</span>
+                <span className="text-zinc-500 font-pixel text-[7px]">FT7</span>
+                <span className="text-[#ff4a4a]">{scoreData.roundWinsP2 || 0} P2</span>
+                <span className="text-zinc-400 font-pixel text-[7px]">(R{scoreData.roundNumber || 1})</span>
+              </div>
             )}
           </div>
 
@@ -940,20 +955,73 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         {/* Multiplayer Status Bar (When in Online Room or Local 2P) */}
         {/* Active 2P Info Bar */}
+        {/* Active Multiplayer Match Header Bar (Versus / Payload / 2v2) */}
         {multiplayerConfig && (
-          <div className="w-full bg-[#242424] px-3 py-1.5 border-b-2 border-[#181818] flex items-center justify-between text-[10px] font-pixel text-zinc-300">
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                <Users className="w-3.5 h-3.5" />
-                <span>LOCAL 2 PLAYERS</span>
+          <div className="w-full bg-[#181820] px-3 py-1.5 border-b-2 border-[#101018] flex items-center justify-between text-[10px] font-pixel text-zinc-300">
+            {/* Left: Mode Badge & Current Round */}
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[9px] font-bold text-[#f8b800] tracking-wide">
+                {multiplayerConfig.mode === 'versus'
+                  ? (multiplayerConfig.versusSubMode === 'payload' ? 'TF2 PAYLOAD' : '1V1 VERSUS')
+                  : multiplayerConfig.mode === '2v2' ? '2V2 BATTLE' : '2P CO-OP'}
               </span>
-              <span className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-600 rounded text-[9px] text-[#f8b800]">
-                {multiplayerConfig.mode === 'versus' ? '1V1 VERSUS' : '2P CO-OP'}
-              </span>
-              <span className="text-[9px] text-zinc-400 hidden sm:inline">
-                P1: WASD / P2: ARROWS
+              <span className="px-2 py-0.5 bg-[#252535] border border-[#3e3e55] rounded text-[9px] text-zinc-300 font-mono font-bold">
+                ROUND {scoreData.roundNumber || 1}
               </span>
             </div>
+
+            {/* Center: Tournament Scoreboard (First to 7 Wins) */}
+            {(multiplayerConfig.mode === 'versus' || scoreData.roundWinsP1 !== undefined) && (
+              <div className="flex items-center gap-2 bg-[#101016] px-3 py-1 rounded border border-[#2e2e40] shadow-inner">
+                {/* Player 1 Score */}
+                <div className="flex items-center gap-1.5 font-mono font-bold text-sm text-[#4a9eff]">
+                  <span className="text-[9px] font-pixel text-sky-400">P1</span>
+                  <span className="bg-[#18253a] px-2 py-0.5 rounded border border-[#254575] text-white">
+                    {scoreData.roundWinsP1 ?? 0}
+                  </span>
+                </div>
+
+                {/* Separator / Target */}
+                <span className="text-[8px] font-pixel text-zinc-500 px-1">
+                  FT7
+                </span>
+
+                {/* Player 2 Score */}
+                <div className="flex items-center gap-1.5 font-mono font-bold text-sm text-[#ff4a4a]">
+                  <span className="bg-[#3a1818] px-2 py-0.5 rounded border border-[#752525] text-white">
+                    {scoreData.roundWinsP2 ?? 0}
+                  </span>
+                  <span className="text-[9px] font-pixel text-red-400">P2</span>
+                </div>
+              </div>
+            )}
+
+            {/* Right: The ONLY Match Countdown Clock */}
+            {scoreData.payloadState ? (
+              (() => {
+                const totalSec = Math.max(0, Math.floor(scoreData.payloadState.timeRemainingSec ?? 150));
+                const mins = Math.floor(totalSec / 60).toString().padStart(2, '0');
+                const secs = (totalSec % 60).toString().padStart(2, '0');
+                const isCritical = totalSec <= 30;
+                return (
+                  <div
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded border font-mono font-bold text-sm tracking-widest shadow-md transition-all ${
+                      isCritical
+                        ? 'bg-red-950/90 text-red-300 border-red-500 shadow-red-900/50 animate-pulse'
+                        : 'bg-[#121218] text-[#ffe050] border-amber-500/60 shadow-black'
+                    }`}
+                    title="Match Time Remaining"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{mins}:{secs}</span>
+                  </div>
+                );
+              })()
+            ) : (
+              <span className="text-[9px] text-zinc-400 hidden sm:inline font-mono">
+                P1: WASD / P2: ARROWS
+              </span>
+            )}
           </div>
         )}
 

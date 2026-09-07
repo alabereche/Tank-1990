@@ -26,6 +26,26 @@ const TankIcon: React.FC<{ color: string; core: string; size?: number }> = ({ co
 );
 
 const Scoreline: React.FC<{ scoreData: GameScore; big?: boolean; is2v2?: boolean }> = ({ scoreData, big, is2v2 }) => {
+  if (scoreData.payloadState) {
+    const w1 = scoreData.roundWinsP1 ?? 0;
+    const w2 = scoreData.roundWinsP2 ?? 0;
+    return (
+      <div className="flex flex-col items-center gap-1.5">
+        <div className={`flex items-center gap-3 font-mono font-bold ${big ? 'text-2xl' : 'text-xl'}`}>
+          <div className="flex items-center gap-2 text-[#4a9eff] bg-[#101826] px-3 py-1 rounded border border-[#25406b]">
+            <TankIcon color={BLUE} core="#ffffff" size={big ? 10 : 8} />
+            <span>P1: {w1}</span>
+          </div>
+          <span className="text-zinc-400 font-pixel text-xs px-1">VS</span>
+          <div className="flex items-center gap-2 text-[#ff4a4a] bg-[#261010] px-3 py-1 rounded border border-[#6b2525]">
+            <TankIcon color={RED} core="#ffffff" size={big ? 10 : 8} />
+            <span>P2: {w2}</span>
+          </div>
+        </div>
+        <span className="text-[9px] text-zinc-400 font-pixel tracking-wider">FIRST TO 7 WINS</span>
+      </div>
+    );
+  }
   if (is2v2) {
     return (
       <div className={`flex items-center gap-4 font-mono font-bold ${big ? 'text-3xl' : 'text-xl'}`}>
@@ -59,11 +79,15 @@ const Scoreline: React.FC<{ scoreData: GameScore; big?: boolean; is2v2?: boolean
 export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mode?: MultiplayerMode; defenderSlot?: number; mySlot?: number }> = ({ state, scoreData, mode, defenderSlot, mySlot }) => {
   const isIntro = state === GameState.ROUND_INTRO;
   const is2v2 = mode === '2v2' || scoreData.teamWinsA !== undefined;
+  const isPayload = Boolean(scoreData.payloadState);
   const winner = scoreData.roundWinner ?? 0;
   const teamWinner = scoreData.teamWinner;
+  const payloadAttacker = ((scoreData.roundNumber ?? 1) % 2 === 1) ? 1 : 2;
+  const isAttacker = mySlot ? mySlot === payloadAttacker : payloadAttacker === 1;
+
   // 1v1 alternating eagle: personal objective for this round
   const myRole =
-    mode === 'versus' && defenderSlot && mySlot
+    mode === 'versus' && defenderSlot && mySlot && !isPayload
       ? mySlot === defenderSlot
         ? 'DEFEND'
         : 'ATTACK'
@@ -79,21 +103,51 @@ export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mod
               ROUND {scoreData.roundNumber ?? 1}
             </div>
             <Scoreline scoreData={scoreData} is2v2={is2v2} />
-            {myRole && (
+            {isPayload ? (
+              <>
+                <div
+                  className="flex items-center gap-2 text-xs tracking-widest font-bold"
+                  style={{ color: isAttacker ? BLUE : RED }}
+                >
+                  {isAttacker ? '[BLU PUSHER] PUSH THE BOMB CART TO BASE' : '[RED DEFENDER] STOP THE CART UNTIL TIME EXPIRES'}
+                </div>
+                <div className="text-[9px] text-zinc-500 tracking-widest animate-pulse">
+                  TF2 PAYLOAD — FIRST TO 7 DELIVERIES WINS
+                </div>
+              </>
+            ) : myRole ? (
               <div
                 className="flex items-center gap-2 text-xs tracking-widest"
                 style={{ color: myRole === 'DEFEND' ? '#58b8d8' : '#f87858' }}
               >
                 {myRole === 'DEFEND' ? '[DEFEND] YOUR EAGLE' : '[DESTROY] THE ENEMY EAGLE'}
               </div>
+            ) : null}
+            {!isPayload && (
+              <div className="text-[9px] text-zinc-500 tracking-widest animate-pulse">
+                {is2v2 ? '2V2 TEAM BATTLE — FIRST TO 5 WINS' : 'GET READY — FIRST TO 7 WINS'}
+              </div>
             )}
-            <div className="text-[9px] text-zinc-500 tracking-widest animate-pulse">
-              {is2v2 ? '2V2 TEAM BATTLE — FIRST TO 5 WINS' : 'GET READY — FIRST TO 7 WINS'}
-            </div>
           </>
         ) : (
           <>
-            {is2v2 ? (
+            {isPayload ? (
+              winner === payloadAttacker ? (
+                <div
+                  className="text-base tracking-widest font-bold"
+                  style={{ color: winner === 1 ? BLUE : RED, textShadow: '0 0 12px currentColor' }}
+                >
+                  DELIVERY SUCCESSFUL! PLAYER {winner} SCORES!
+                </div>
+              ) : (
+                <div
+                  className="text-base tracking-widest font-bold text-amber-300"
+                  style={{ textShadow: '0 0 12px currentColor' }}
+                >
+                  TIME EXPIRED — DEFENSE HELD!
+                </div>
+              )
+            ) : is2v2 ? (
               teamWinner === 'DRAW' ? (
                 <div className="text-amber-300 text-sm tracking-widest">ROUND DRAW!</div>
               ) : (
@@ -116,7 +170,11 @@ export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mod
             )}
             <Scoreline scoreData={scoreData} is2v2={is2v2} />
             <div className="text-[9px] text-zinc-500 tracking-widest">
-              {(is2v2 ? teamWinner === 'DRAW' : winner === 0) ? 'ROUND WILL BE REPLAYED' : 'NEXT ROUND STARTING...'}
+              {isPayload
+                ? 'SWITCHING ROLES — NEXT ROUND STARTING...'
+                : (is2v2 ? teamWinner === 'DRAW' : winner === 0)
+                ? 'ROUND WILL BE REPLAYED'
+                : 'NEXT ROUND STARTING...'}
             </div>
           </>
         )}

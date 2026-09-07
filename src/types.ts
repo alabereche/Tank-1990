@@ -133,6 +133,7 @@ export interface Tank {
   aiShootTimer?: number;
   tacticalInventory?: TacticalInventory;
   inSmoke?: boolean;
+  palette?: string; // 'blu' | 'red' | 'gold' | 'green' etc.
 }
 
 export interface Bullet {
@@ -261,6 +262,8 @@ export interface GameScore {
   teamWinner?: 'A' | 'B' | 'DRAW';
   playerStats?: Record<number, { kills: number; deaths: number; score: number; lives: number }>;
   ffaWinner?: number; // winning player slot when the FFA kill target is reached
+  payloadState?: PayloadState;
+  versusSubMode?: VersusSubMode;
 }
 
 export interface InputState {
@@ -276,6 +279,32 @@ export interface InputState {
 }
 
 export type MultiplayerMode = 'single' | 'coop' | 'versus' | '2v2' | 'ffa';
+export type VersusSubMode = 'classic' | 'payload';
+export type PayloadStatus = 'IDLE' | 'PUSHING' | 'CONTESTED' | 'ROLLBACK';
+
+export interface PayloadCheckpoint {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  captured: boolean;
+  progress: number;
+  waypointIndex?: number;
+}
+
+export interface PayloadState {
+  cartPosition: Position;
+  cartDirection: Direction;
+  progress: number; // 0 to 1
+  status: PayloadStatus;
+  attackerSlot: 1 | 2;
+  defenderSlot: 1 | 2;
+  timeRemainingSec: number;
+  currentCheckpointIdx: number;
+  checkpoints: PayloadCheckpoint[];
+  winner: 1 | 2 | null;
+}
+
 export type MultiplayerRole = 'host' | 'guest';
 
 export interface NetEntity {

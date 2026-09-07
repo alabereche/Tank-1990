@@ -253,7 +253,27 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
 
       {/* Main Title Banner */}
       <div className="my-5 text-center">
-        {isVictory ? (
+        {scoreData.versusSubMode === 'payload' ? (
+          scoreData.payloadState?.isCompleted ? (
+            <>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#58b8d8] tracking-widest animate-pulse drop-shadow-[0_4px_0_#003888]">
+                PAYLOAD DETONATED!
+              </h2>
+              <div className="text-[11px] text-sky-300 font-pixel mt-1">
+                BLUE ATTACKERS VICTORIOUS! ALL 4 CHECKPOINTS CLEARED!
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-red-500 tracking-widest drop-shadow-[0_4px_0_#400000]">
+                DEFENSE PREVAILED!
+              </h2>
+              <div className="text-[11px] text-red-400 font-pixel mt-1">
+                TIME EXPIRED! RED DEFENDERS PRESERVED THE BASE!
+              </div>
+            </>
+          )
+        ) : isVictory ? (
           <h2 className="text-2xl sm:text-3xl font-extrabold text-[#f8b800] tracking-widest animate-pulse drop-shadow-[0_4px_0_#704000]">
             STAGE CLEAR!
           </h2>
@@ -262,66 +282,89 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             GAME OVER
           </h2>
         )}
-        <div className="text-[10px] text-zinc-400 mt-1">
-          {isVictory ? 'ALL ENEMY TANKS DESTROYED!' : 'THE BASE EAGLE FELL IN BATTLE'}
-        </div>
+        {scoreData.versusSubMode !== 'payload' && (
+          <div className="text-[10px] text-zinc-400 mt-1">
+            {isVictory ? 'ALL ENEMY TANKS DESTROYED!' : 'THE BASE EAGLE FELL IN BATTLE'}
+          </div>
+        )}
       </div>
 
-      {/* Score Breakdown Table */}
-      <div className="w-full bg-[#181818] border border-zinc-700 p-4 rounded flex flex-col gap-3 text-xs mb-4">
-        <div className="text-center text-[10px] text-zinc-400 border-b border-zinc-800 pb-1">
-          -- SCORE BREAKDOWN --
+      {scoreData.versusSubMode === 'payload' ? (
+        <div className="w-full bg-[#181818] border border-zinc-700 p-4 rounded flex flex-col gap-3 text-xs mb-4">
+          <div className="text-center text-[10px] text-zinc-400 border-b border-zinc-800 pb-1">
+            -- TF2 BADWATER MISSION REPORT --
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-300">CHECKPOINTS SECURED</span>
+            <span className="text-[#f8b800] font-bold font-mono text-sm">{scoreData.payloadState?.checkpointsCaptured || 0} / 4</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-300">CART PROGRESS</span>
+            <span className="text-sky-400 font-bold font-mono text-sm">{Math.floor((scoreData.payloadState?.progress || 0) * 100)}%</span>
+          </div>
+          <div className="flex items-center justify-between text-xs border-t border-zinc-800 pt-2">
+            <span className="text-zinc-300">TACTICAL OUTCOME</span>
+            <span className={scoreData.payloadState?.isCompleted ? 'text-emerald-400 font-bold font-pixel text-[10px]' : 'text-red-400 font-bold font-pixel text-[10px]'}>
+              {scoreData.payloadState?.isCompleted ? 'BLU BOMB DETONATED' : 'RED DEFENSE HELD'}
+            </span>
+          </div>
         </div>
+      ) : (
+        <div className="w-full bg-[#181818] border border-zinc-700 p-4 rounded flex flex-col gap-3 text-xs mb-4">
+          <div className="text-center text-[10px] text-zinc-400 border-b border-zinc-800 pb-1">
+            -- SCORE BREAKDOWN --
+          </div>
 
-        {breakdown.map((item, idx) => {
-          const isRevealed = idx < revealedIdx;
-          const totalPoints = item.count * item.pts;
+          {breakdown.map((item, idx) => {
+            const isRevealed = idx < revealedIdx;
+            const totalPoints = item.count * item.pts;
 
-          return (
-            <div
-              key={item.type}
-              className={`flex items-center justify-between transition-opacity duration-200 ${
-                isRevealed ? 'opacity-100' : 'opacity-0'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-white font-bold w-6 text-right">
-                  {item.count}
-                </span>
-                <span className="text-zinc-400 text-[10px]">PTS</span>
-                <div
-                  className="w-3 h-3 rounded-xs border border-white/40"
-                  style={{ backgroundColor: item.color }}
-                />
-                <span className="text-zinc-300 text-[10px] tracking-wider">
-                  {item.name}
-                </span>
+            return (
+              <div
+                key={item.type}
+                className={`flex items-center justify-between transition-opacity duration-200 ${
+                  isRevealed ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-white font-bold w-6 text-right">
+                    {item.count}
+                  </span>
+                  <span className="text-zinc-400 text-[10px]">PTS</span>
+                  <div
+                    className="w-3 h-3 rounded-xs border border-white/40"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="text-zinc-300 text-[10px] tracking-wider">
+                    {item.name}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-red-500">
+                    <path d="M8 2 L10 6 L14 7 L11 10 L12 14 L8 12 L4 14 L5 10 L2 7 L6 6 Z" />
+                  </svg>
+                </div>
+
+                <div className="text-right text-[#f8b800] font-bold w-20">
+                  {totalPoints}
+                </div>
               </div>
+            );
+          })}
 
-              <div className="flex items-center gap-2">
-                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-red-500">
-                  <path d="M8 2 L10 6 L14 7 L11 10 L12 14 L8 12 L4 14 L5 10 L2 7 L6 6 Z" />
-                </svg>
-              </div>
+          {/* Total Summary Row */}
+          <div className="border-t border-zinc-700 pt-2 flex items-center justify-between text-xs mt-1">
+            <span className="text-zinc-300">TOTAL KILLS</span>
+            <span className="text-white font-bold">{totalKills}</span>
+          </div>
 
-              <div className="text-right text-[#f8b800] font-bold w-20">
-                {totalPoints}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Total Summary Row */}
-        <div className="border-t border-zinc-700 pt-2 flex items-center justify-between text-xs mt-1">
-          <span className="text-zinc-300">TOTAL KILLS</span>
-          <span className="text-white font-bold">{totalKills}</span>
+          <div className="flex items-center justify-between text-sm border-t border-zinc-800 pt-2">
+            <span className="text-[#f8b800] font-bold">TOTAL SCORE</span>
+            <span className="text-white font-extrabold tracking-wider">{scoreData.score}</span>
+          </div>
         </div>
-
-        <div className="flex items-center justify-between text-sm border-t border-zinc-800 pt-2">
-          <span className="text-[#f8b800] font-bold">TOTAL SCORE</span>
-          <span className="text-white font-extrabold tracking-wider">{scoreData.score}</span>
-        </div>
-      </div>
+      )}
 
       {/* Action Buttons */}
       <div className="w-full flex flex-wrap gap-2 items-center justify-center pt-2">

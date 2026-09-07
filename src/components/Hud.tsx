@@ -96,9 +96,107 @@ export const Hud: React.FC<HudProps> = ({
                 })}
             </div>
           </div>
+        ) : scoreData.versusSubMode === 'payload' || scoreData.payloadState ? (
+          <div className="w-full flex flex-col items-center mb-3">
+            {/* Mode Title */}
+            <div className="text-[8px] text-amber-300 mb-1 tracking-wider uppercase font-bold text-center">
+              TF2 PAYLOAD
+            </div>
+
+            {/* Deliveries Score (First to 7) */}
+            <div className="w-full bg-[#2a2a35] rounded border border-[#444458] shadow-inner p-1.5 flex items-center justify-between mb-1.5">
+              <span className="flex items-center gap-1 font-mono font-bold text-xs text-[#4a9eff]">
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-[#4a9eff]">
+                  <rect x="1" y="2" width="3" height="12" />
+                  <rect x="12" y="2" width="3" height="12" />
+                  <rect x="4" y="4" width="8" height="8" />
+                  <rect x="7" y="0" width="2" height="5" />
+                  <rect x="6" y="6" width="4" height="4" fill="#ffffff" />
+                </svg>
+                P1: {scoreData.roundWinsP1 ?? 0}
+              </span>
+              <span className="text-[7px] font-pixel text-zinc-400">FT7</span>
+              <span className="flex items-center gap-1 font-mono font-bold text-xs text-[#ff4a4a]">
+                {scoreData.roundWinsP2 ?? 0} :P2
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-[#ff4a4a]">
+                  <rect x="1" y="2" width="3" height="12" />
+                  <rect x="12" y="2" width="3" height="12" />
+                  <rect x="4" y="4" width="8" height="8" />
+                  <rect x="7" y="0" width="2" height="5" />
+                  <rect x="6" y="6" width="4" height="4" fill="#ffffff" />
+                </svg>
+              </span>
+            </div>
+
+
+
+            {/* Cart Status & Checkpoints Card */}
+            <div className="w-full bg-[#30303c] rounded border border-[#48485a] shadow-inner p-2 flex flex-col gap-1.5">
+              {/* Checkpoints Status */}
+              <div className="flex items-center justify-between gap-1">
+                {scoreData.payloadState?.checkpoints.map((cp, idx) => {
+                  const isFinal = idx === scoreData.payloadState!.checkpoints.length - 1;
+                  return (
+                    <div
+                      key={cp.id}
+                      className={`flex-1 py-1 text-center rounded text-[7px] font-bold border transition-colors ${
+                        cp.captured
+                          ? 'bg-sky-950/90 border-sky-400 text-sky-300'
+                          : isFinal
+                          ? 'bg-red-950/80 border-red-500 text-red-300'
+                          : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                      }`}
+                      title={cp.name}
+                    >
+                      {isFinal ? 'GOAL' : `P${idx + 1}`}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Progress Bar with Percentage */}
+              <div className="w-full flex flex-col gap-0.5">
+                <div className="w-full bg-black/70 rounded-full h-2.5 overflow-hidden border border-zinc-700">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 via-sky-400 to-emerald-400 transition-all duration-150"
+                    style={{ width: `${Math.round((scoreData.payloadState?.progress ?? 0) * 100)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[6px] text-zinc-400 font-mono px-0.5">
+                  <span>CART</span>
+                  <span>{Math.round((scoreData.payloadState?.progress ?? 0) * 100)}%</span>
+                </div>
+              </div>
+
+              {/* Status Badge */}
+              <div className="text-center pt-0.5">
+                <span
+                  className={`text-[7px] font-bold px-2 py-0.5 rounded tracking-wider uppercase inline-block ${
+                    scoreData.payloadState?.status === 'PUSHING'
+                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60 animate-pulse'
+                      : scoreData.payloadState?.status === 'CONTESTED'
+                      ? 'bg-rose-950 text-rose-300 border border-rose-500/80 animate-bounce'
+                      : scoreData.payloadState?.status === 'ROLLBACK'
+                      ? 'bg-amber-950 text-amber-300 border border-amber-500/60'
+                      : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                  }`}
+                >
+                  {scoreData.payloadState?.status === 'PUSHING'
+                    ? 'PUSHING >>'
+                    : scoreData.payloadState?.status === 'CONTESTED'
+                    ? 'CONTESTED !'
+                    : scoreData.payloadState?.status === 'ROLLBACK'
+                    ? 'ROLLBACK <<'
+                    : 'CART IDLE'}
+                </span>
+              </div>
+            </div>
+          </div>
         ) : versus ? (
           <div className="w-full flex flex-col items-center mb-3">
-            <div className="text-[8px] text-zinc-900 mb-1 tracking-wider uppercase font-bold">ROUNDS</div>
+            <div className="text-[8px] text-zinc-900 mb-1 tracking-wider uppercase font-bold">
+              {scoreData.payloadState ? 'DELIVERIES' : 'ROUNDS'}
+            </div>
             <div className="w-full bg-[#505050] rounded border border-[#383838] shadow-inner p-2 flex items-center justify-between">
               <span className="flex items-center gap-1 font-mono font-bold text-base text-[#f8b800]">
                 <svg viewBox="0 0 16 16" className="w-4 h-4 fill-[#d89000]">

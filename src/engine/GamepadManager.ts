@@ -106,7 +106,7 @@ class GamepadManager {
     const out: Gamepad[] = [];
     for (let i = 0; i < raw.length; i++) {
       const gp = raw[i];
-      if (gp && gp.connected && gp.buttons && gp.buttons.length >= 4) {
+      if (gp && (gp.connected !== false) && gp.buttons && gp.buttons.length >= 2) {
         out.push(gp);
       }
     }
@@ -133,10 +133,7 @@ class GamepadManager {
    */
   private isButtonPressed(btn: GamepadButton | undefined): boolean {
     if (!btn) return false;
-    if (typeof btn.value === 'number') {
-      return btn.value > 0.5;
-    }
-    return Boolean(btn.pressed);
+    return Boolean(btn.pressed) || (typeof btn.value === 'number' && btn.value > 0.4);
   }
 
   /**
@@ -150,7 +147,7 @@ class GamepadManager {
 
   /**
    * Polls the Nth connected pad regardless of its raw slot index
-   * (0 = Player 1 -> Gold Tank, 1 = Player 2 -> Green Tank).
+   * (0 = Player 1 -> Gold/BLU Tank, 1 = Player 2 -> Green/RED Tank).
    * Complete hardware separation ensures zero cross-interference.
    */
   public pollInputForOrdinal(ordinal: number): { input: Partial<InputState>; selectPressed: boolean } | null {
@@ -171,39 +168,68 @@ class GamepadManager {
   }
 
   /**
-   * Pure in-game input decoder with dedicated 0.45 deadzone and safe trigger filtering.
+   * Universal in-game input decoder:
+   * Supports XInput, DirectInput, DualShock, DualSense, Switch Pro, 8BitDo, and retro USB gamepads.
    */
   private readPad(pad: Gamepad): { input: Partial<InputState>; selectPressed: boolean } {
-    const axisX = pad.axes[0] || 0;
-    const axisY = pad.axes[1] || 0;
-    const deadzone = 0.45;
+    const deadzone = 0.22;
 
-    const dpadUp = this.isButtonPressed(pad.buttons[12]);
-    const dpadDown = this.isButtonPressed(pad.buttons[13]);
-    const dpadLeft = this.isButtonPressed(pad.buttons[14]);
-    const dpadRight = this.isButtonPressed(pad.buttons[15]);
+    // 1. Check all analog sticks & secondary axis pairs
+    const stick0X = pad.axes[0] ?? 0;
+    const stick0Y = pad.axes[1] ?? 0;
+    const stick1X = pad.axes[2] ?? 0;
+    const stick1Y = pad.axes[3] ?? 0;
+    const stick2X = pad.axes[4] ?? 0;
+    const stick2Y = pad.axes[5] ?? 0;
 
-    const up = dpadUp || axisY < -deadzone;
-    const down = dpadDown || axisY > deadzone;
-    const left = dpadLeft || axisX < -deadzone;
-    const right = dpadRight || axisX > deadzone;
+    const axisUp = stick0Y < -deadzone || stick1Y < -deadzone || stick2Y < -deadzone;
+    const axisDown = stick0Y > deadzone || stick1Y > deadzone || stick2Y > deadzone;
+    const axisLeft = stick0X < -deadzone || stick1X < -deadzone || stick2X < -deadzone;
+    const axisRight = stick0X > deadzone || stick1X > deadzone || stick2X > deadzone;
 
-    // Fire: Button 0 (A/Cross), Button 1 (B/Circle), Button 2 (X/Square)
-    // For Button 7 (R2), only fire if clearly pulled > 0.5 (prevents analog trigger autofire)
+    // 2. DirectInput / PS POV Hat Switch (axes[9], axes[6], axes[4])
+    let hatUp = false, hatDown = false, hatLeft = false, hatRight = false;
+    const hatCandidates = [9, 6, 4];
+    for (const hIdx of hatCandidates) {
+      if (pad.axes.length > hIdx && typeof pad.axes[hIdx] === 'number') {
+        const hat = pad.axes[hIdx];
+        if (hat >= -1.05 && hat <= 1.05 && Math.abs(hat) > 0.05) {
+          if ((hat >= -1.05 && hat <= -0.65) || (hat >= 0.85 && hat <= 1.05)) hatUp = true;
+          if (hat >= -0.78 && hat <= -0.10) hatRight = true;
+          if (hat >= -0.22 && hat <= 0.48) hatDown = true;
+          if (hat >= 0.35 && hat <= 1.05) hatLeft = true;
+          break;
+        }
+      }
+    }
+
+    // 3. Digital D-Pad buttons (Standard XInput buttons 12-15)
+    const dpadUp = this.isButtonPressed(pad.buttons[12]) || hatUp;
+    const dpadDown = this.isButtonPressed(pad.buttons[13]) || hatDown;
+    const dpadLeft = this.isButtonPressed(pad.buttons[14]) || hatLeft;
+    const dpadRight = this.isButtonPressed(pad.buttons[15]) || hatRight;
+
+    const up = dpadUp || axisUp;
+    const down = dpadDown || axisDown;
+    const left = dpadLeft || axisLeft;
+    const right = dpadRight || axisRight;
+
+    // 4. Fire: Primary Action Buttons (0: A/Cross, 1: B/Circle, 2: X/Square, 5: RB, 7: RT)
     const fire = Boolean(
       this.isButtonPressed(pad.buttons[0]) ||
       this.isButtonPressed(pad.buttons[1]) ||
       this.isButtonPressed(pad.buttons[2]) ||
+      this.isButtonPressed(pad.buttons[5]) ||
       this.isButtonPressed(pad.buttons[7])
     );
 
-    // Tactical weapons: L1 = Smoke, R1 = Grenade, L2 / Y = Shield
+    // 5. Tactical weapons: L1/LB = Smoke, RB = Grenade, L2/LT / Y = Shield
     const smoke = Boolean(this.isButtonPressed(pad.buttons[4]));
-    const grenade = Boolean(this.isButtonPressed(pad.buttons[5]));
+    const grenade = Boolean(this.isButtonPressed(pad.buttons[5]) && this.isButtonPressed(pad.buttons[4]));
     const shield = Boolean(this.isButtonPressed(pad.buttons[3]) || this.isButtonPressed(pad.buttons[6]));
 
     // Button 9: Start (Pause) - edge trigger, tracked per pad
-    const startCurrent = Boolean(this.isButtonPressed(pad.buttons[9]));
+    const startCurrent = Boolean(this.isButtonPressed(pad.buttons[9]) || this.isButtonPressed(pad.buttons[8]));
     const pauseTrigger = startCurrent && !(this.prevStartByPad.get(pad.index) ?? false);
     this.prevStartByPad.set(pad.index, startCurrent);
 
