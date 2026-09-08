@@ -33,7 +33,6 @@ import {
   EyeOff,
   Maximize2,
   Minimize2,
-  Sliders,
   Scaling,
   MessageSquare,
   Users,
@@ -43,6 +42,7 @@ import {
   RotateCcw,
   LogOut,
   Clock,
+  Hammer,
 } from 'lucide-react';
 
 interface GameCanvasProps {
@@ -84,6 +84,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
+  const activeSessionKeyRef = useRef<string | null>(null);
 
   const handleCanvasRef = useCallback((node: HTMLCanvasElement | null) => {
     canvasRef.current = node;
@@ -267,6 +268,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const currentGridSize = mapToLoad?.grid?.length || 26;
   const currentCanvasSize = currentGridSize * BLOCK_SIZE;
 
+  // Monitor Gamepad connections independently so engine is not restarted on controller connect/disconnect
+  useEffect(() => {
+    const unsubscribeGamepad = gamepadManager.onConnectionChange((gp) => {
+      setGamepad(gp);
+    });
+    const current = gamepadManager.getConnectedGamepad();
+    if (current) setGamepad(current);
+    return unsubscribeGamepad;
+  }, []);
+
   // Initialize Canvas & Engine
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -275,6 +286,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ? getStageMapForPresetAndStage(1, 'large', 'versus', 'payload')
       : PRESET_MAPS.stage1;
     const map = customMap || defaultMap;
+
+    // Detect actual gameplay transitions (e.g. stage progression, map change, or mode change)
+    const sessionKey = `${currentStage}_${map.name || 'map'}_${map.grid?.length || 26}_${multiplayerConfig?.mode || 'solo'}_${multiplayerConfig?.versusSubMode || 'classic'}`;
+
+    if (engineRef.current && activeSessionKeyRef.current === sessionKey) {
+      return;
+    }
+
+    activeSessionKeyRef.current = sessionKey;
+
     const engine = new GameEngine(canvasRef.current, map, handleStateChange);
     engineRef.current = engine;
 
@@ -294,17 +315,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     engine.startStage(currentStage, map);
 
-    // Track gamepad connections
-    const unsubscribeGamepad = gamepadManager.onConnectionChange((gp) => {
-      setGamepad(gp);
-    });
-
     return () => {
       engine.stopLoop();
       soundManager.stopEngineSound();
-      unsubscribeGamepad();
+      activeSessionKeyRef.current = null;
     };
-  }, [currentStage, customMap, handleStateChange, settings?.playerSpeed, multiplayerConfig]);
+  }, [currentStage, customMap, handleStateChange, multiplayerConfig]);
 
   const triggerQuickTaunt = useCallback(
     (phrase: string) => {
@@ -937,7 +953,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 className="text-zinc-300 hover:text-amber-400 p-1 rounded hover:bg-zinc-700/50 transition-colors"
                 title="Game Settings"
               >
-                <Sliders className="w-3.5 h-3.5" />
+                <Settings className="w-3.5 h-3.5" />
               </button>
             )}
 
@@ -948,7 +964,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               className="text-zinc-300 hover:text-yellow-400 p-1 rounded hover:bg-zinc-700/50 transition-colors"
               title="Construction Mode (Map Editor)"
             >
-              <Settings className="w-3.5 h-3.5" />
+              <Hammer className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

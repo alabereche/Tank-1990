@@ -4,7 +4,7 @@
  * Stage Curtain Intro, 60 FPS Canvas Battle, and Victory / Game Over Score Screens.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { GameState, GameScore, StageMap, GameSettings, MultiplayerMode, MultiplayerRole } from './types';
 import { TitleScreen } from './components/TitleScreen';
 import { GameCanvas } from './components/GameCanvas';
@@ -302,19 +302,33 @@ export default function App() {
 
   // Active map based on preset or custom.
   // Multiplayer rooms use the room's mapSize; 8-Player FFA & Payload strictly enforce large (34x34).
-  const effectiveMapSize = multiplayerConfig
-    ? (multiplayerConfig.versusSubMode === 'payload'
-        ? 'large'
-        : multiplayerConfig.mode === 'ffa'
-        ? (multiplayerConfig.mapSize === 'classic' ? 'large' : multiplayerConfig.mapSize)
-        : multiplayerConfig.mapSize)
-    : settings.mapSize;
-  const currentActiveMap = customMap || getStageMapForPresetAndStage(
+  const effectiveMapSize = useMemo(() => {
+    return multiplayerConfig
+      ? (multiplayerConfig.versusSubMode === 'payload'
+          ? 'large'
+          : multiplayerConfig.mode === 'ffa'
+          ? (multiplayerConfig.mapSize === 'classic' ? 'large' : multiplayerConfig.mapSize)
+          : multiplayerConfig.mapSize)
+      : settings.mapSize;
+  }, [multiplayerConfig?.versusSubMode, multiplayerConfig?.mode, multiplayerConfig?.mapSize, settings.mapSize]);
+
+  const currentActiveMap = useMemo(() => {
+    return (
+      customMap ||
+      getStageMapForPresetAndStage(
+        currentStage,
+        effectiveMapSize,
+        multiplayerConfig?.mode,
+        multiplayerConfig?.versusSubMode
+      )
+    );
+  }, [
+    customMap,
     currentStage,
     effectiveMapSize,
     multiplayerConfig?.mode,
-    multiplayerConfig?.versusSubMode
-  );
+    multiplayerConfig?.versusSubMode,
+  ]);
 
   return (
     <div
@@ -417,7 +431,7 @@ export default function App() {
           onUpdateSettings={handleUpdateSettings}
           onClose={() => setIsSettingsOpen(false)}
           onExitMatch={
-            currentScreen === 'game'
+            currentScreen === GameState.PLAYING || currentScreen === GameState.PAUSED
               ? () => {
                   setIsSettingsOpen(false);
                   handleReturnToMenu();

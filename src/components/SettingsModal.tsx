@@ -361,7 +361,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   return (
     <div
       id="settings-modal-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
