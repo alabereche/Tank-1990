@@ -20,6 +20,7 @@ scripts/.*.cjs
 scratch/
 *.apk
 *.exe
+*.zip
 android/app/build/
 android/.gradle/
 android/build/

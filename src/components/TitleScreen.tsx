@@ -1028,7 +1028,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               <a
-                href="/battle-city-1990.apk"
+                href="https://api-tank.nosfir.online/battle-city-1990.apk"
                 download="Battle City 1990.apk"
                 onClick={() => soundManager.playPowerUpCollect()}
                 className="block w-full py-1.5 sm:py-2 px-2 text-[8px] sm:text-[9px] font-pixel border-2 border-emerald-400 bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
@@ -1036,7 +1036,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 [ ANDROID APK ]
               </a>
               <a
-                href="/battle-city-1990.exe"
+                href="https://api-tank.nosfir.online/battle-city-1990.exe"
                 download="Battle City 1990.exe"
                 onClick={() => soundManager.playPowerUpCollect()}
                 className="block w-full py-1.5 sm:py-2 px-2 text-[8px] sm:text-[9px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
@@ -1079,7 +1079,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </p>
 
             <a
-              href="/battle-city-1990.exe"
+              href="https://api-tank.nosfir.online/battle-city-1990.exe"
               download="Battle City 1990.exe"
               onClick={() => soundManager.playPowerUpCollect()}
               className="block w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
