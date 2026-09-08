@@ -39,9 +39,37 @@ import {
   Trash2,
   RefreshCw,
   Route,
+  PenTool,
+  Move,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { soundManager } from '../engine/SoundManager';
 import { gamepadManager } from '../engine/GamepadManager';
+
+/**
+ * Snap coordinate value to a given grid step while keeping inside bounds
+ */
+export const snapCoord = (val: number, snap: number, maxVal: number): number => {
+  const clamped = Math.max(16, Math.min(maxVal - 16, val));
+  return Math.round(clamped / snap) * snap;
+};
+
+/**
+ * Calculates distance from a point to a line segment
+ */
+export function getDistToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) {
+    return { dist: Math.hypot(px - x1, py - y1), projX: x1, projY: y1, t: 0 };
+  }
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  return { dist: Math.hypot(px - projX, py - projY), projX, projY, t };
+}
 
 /**
  * Calculates dynamic checkpoint coordinates and progress along a customized railway track
@@ -221,6 +249,10 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
 
   // Track builder state
   const [editorMode, setEditorMode] = useState<'tiles' | 'track'>('tiles');
+  const [trackTool, setTrackTool] = useState<'draw' | 'move'>('draw');
+  const [trackSnap, setTrackSnap] = useState<16 | 8 | 4>(16);
+  const [mouseTrackPos, setMouseTrackPos] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredSegmentIndex, setHoveredSegmentIndex] = useState<number | null>(null);
   const [waypoints, setWaypoints] = useState<BadwaterWaypoint[]>(() => {
     return initialMap?.waypoints && initialMap.waypoints.length >= 2
       ? initialMap.waypoints.map((w) => ({ ...w }))
@@ -229,7 +261,17 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
   const [selectedWaypointIndex, setSelectedWaypointIndex] = useState<number | null>(null);
   const [hoveredWaypointIndex, setHoveredWaypointIndex] = useState<number | null>(null);
   const [isDraggingWaypoint, setIsDraggingWaypoint] = useState<boolean>(false);
-  const [isAddPointMode, setIsAddPointMode] = useState<boolean>(false);
+
+  const trackStats = React.useMemo(() => {
+    let totalLen = 0;
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      totalLen += Math.hypot(waypoints[i + 1].x - waypoints[i].x, waypoints[i + 1].y - waypoints[i].y);
+    }
+    return {
+      totalLength: Math.round(totalLen),
+      nodeCount: waypoints.length,
+    };
+  }, [waypoints]);
 
   // Controller state
   const [cursorPos, setCursorPos] = useState<{ r: number; c: number }>({ r: 12, c: 12 });
@@ -454,9 +496,81 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
       ctx.restore();
     }
 
-    // 9. Interactive Waypoint Pin Handles when in Track Editing Mode
+    // 9. Interactive Waypoint Pin Handles & Live Preview when in Track Editing Mode
     if (editorMode === 'track') {
       ctx.save();
+
+      // 9a. Highlight hovered segment in Move mode
+      if (trackTool === 'move' && hoveredSegmentIndex !== null && waypoints[hoveredSegmentIndex] && waypoints[hoveredSegmentIndex + 1]) {
+        const p1 = waypoints[hoveredSegmentIndex];
+        const p2 = waypoints[hoveredSegmentIndex + 1];
+        ctx.strokeStyle = '#f8b800';
+        ctx.lineWidth = 3.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        if (mouseTrackPos) {
+          ctx.beginPath();
+          ctx.arc(mouseTrackPos.x, mouseTrackPos.y, 8, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(248, 184, 0, 0.45)';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#f8b800';
+          ctx.font = 'bold 8px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('+ SPLIT', mouseTrackPos.x, mouseTrackPos.y - 12);
+        }
+      }
+
+      // 9b. Guide line to mouse cursor in Draw mode
+      if (trackTool === 'draw' && mouseTrackPos) {
+        const lastWp = selectedWaypointIndex !== null && selectedWaypointIndex < waypoints.length
+          ? waypoints[selectedWaypointIndex]
+          : waypoints[waypoints.length - 1];
+
+        if (lastWp) {
+          // Outer halo
+          ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.moveTo(lastWp.x, lastWp.y);
+          ctx.lineTo(mouseTrackPos.x, mouseTrackPos.y);
+          ctx.stroke();
+
+          // Dashed inner core
+          ctx.strokeStyle = '#00e5ff';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(lastWp.x, lastWp.y);
+          ctx.lineTo(mouseTrackPos.x, mouseTrackPos.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Cursor preview node
+          ctx.beginPath();
+          ctx.arc(mouseTrackPos.x, mouseTrackPos.y, 8, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(0, 229, 255, 0.6)';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#00e5ff';
+          ctx.font = 'bold 8px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`+ NODE ${waypoints.length + 1}`, mouseTrackPos.x, mouseTrackPos.y - 12);
+        }
+      }
+
+      // 9c. Numbered Node Pins
       for (let i = 0; i < waypoints.length; i++) {
         const wp = waypoints[i];
         const isSelected = selectedWaypointIndex === i;
@@ -467,14 +581,14 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
         // Outer glow
         if (isSelected || isHovered) {
           ctx.beginPath();
-          ctx.arc(wp.x, wp.y, 14, 0, Math.PI * 2);
-          ctx.fillStyle = isSelected ? 'rgba(248, 184, 0, 0.40)' : 'rgba(0, 229, 255, 0.30)';
+          ctx.arc(wp.x, wp.y, 15, 0, Math.PI * 2);
+          ctx.fillStyle = isSelected ? 'rgba(248, 184, 0, 0.45)' : 'rgba(0, 229, 255, 0.35)';
           ctx.fill();
         }
 
         // Handle Pin Circle
         ctx.beginPath();
-        ctx.arc(wp.x, wp.y, 9, 0, Math.PI * 2);
+        ctx.arc(wp.x, wp.y, 9.5, 0, Math.PI * 2);
         ctx.fillStyle = isStart ? '#0077cc' : isFinal ? '#cc1111' : isSelected ? '#f8b800' : '#1f242d';
         ctx.fill();
         ctx.lineWidth = isSelected ? 2.5 : 1.5;
@@ -516,6 +630,9 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
     waypoints,
     selectedWaypointIndex,
     hoveredWaypointIndex,
+    hoveredSegmentIndex,
+    trackTool,
+    mouseTrackPos,
   ]);
 
   useEffect(() => {
@@ -567,26 +684,65 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
       const rect = canvas.getBoundingClientRect();
       const scaleX = currentCanvasSize / rect.width;
       const scaleY = currentCanvasSize / rect.height;
-      const x = (e.clientX - rect.left) * scaleX;
-      const y = (e.clientY - rect.top) * scaleY;
+      const rawX = (e.clientX - rect.left) * scaleX;
+      const rawY = (e.clientY - rect.top) * scaleY;
+      const snapX = snapCoord(rawX, trackSnap, currentCanvasSize);
+      const snapY = snapCoord(rawY, trackSnap, currentCanvasSize);
 
-      // 1. Check if clicking an existing waypoint
-      const clickedIdx = waypoints.findIndex((wp) => Math.hypot(wp.x - x, wp.y - y) <= 18);
+      // 1. Did user click on an existing waypoint pin?
+      const clickedIdx = waypoints.findIndex((wp) => Math.hypot(wp.x - rawX, wp.y - rawY) <= 18);
       if (clickedIdx !== -1) {
         setSelectedWaypointIndex(clickedIdx);
         setIsDraggingWaypoint(true);
         soundManager.playHitBrick();
-      } else if (isAddPointMode) {
-        // Snap to 8px
-        const snapX = Math.round(Math.max(16, Math.min(currentCanvasSize - 16, x)) / 8) * 8;
-        const snapY = Math.round(Math.max(16, Math.min(currentCanvasSize - 16, y)) / 8) * 8;
-        setWaypoints((prev) => [...prev, { x: snapX, y: snapY }]);
-        setSelectedWaypointIndex(waypoints.length);
-        setIsAddPointMode(false);
-        soundManager.playPowerUpSpawn();
-      } else {
-        setSelectedWaypointIndex(null);
+        return;
       }
+
+      // 2. In Move mode, did user click near an existing track segment to split and insert a node?
+      if (trackTool === 'move' && waypoints.length >= 2) {
+        let bestSeg = -1;
+        let bestDist = 16;
+        for (let i = 0; i < waypoints.length - 1; i++) {
+          const p1 = waypoints[i];
+          const p2 = waypoints[i + 1];
+          const res = getDistToSegment(rawX, rawY, p1.x, p1.y, p2.x, p2.y);
+          if (res.dist < bestDist) {
+            bestDist = res.dist;
+            bestSeg = i;
+          }
+        }
+        if (bestSeg !== -1) {
+          const insertIdx = bestSeg + 1;
+          setWaypoints((prev) => {
+            const next = [...prev];
+            next.splice(insertIdx, 0, { x: snapX, y: snapY });
+            return next;
+          });
+          setSelectedWaypointIndex(insertIdx);
+          setIsDraggingWaypoint(true);
+          soundManager.playPowerUpSpawn();
+          return;
+        }
+      }
+
+      // 3. In Draw mode: continuously append (or insert after selected node)
+      if (trackTool === 'draw') {
+        const targetIdx = selectedWaypointIndex !== null && selectedWaypointIndex < waypoints.length - 1
+          ? selectedWaypointIndex + 1
+          : waypoints.length;
+
+        setWaypoints((prev) => {
+          const next = [...prev];
+          next.splice(targetIdx, 0, { x: snapX, y: snapY });
+          return next;
+        });
+        setSelectedWaypointIndex(targetIdx);
+        soundManager.playPowerUpSpawn();
+        return;
+      }
+
+      // Clicked empty space in move mode -> deselect
+      setSelectedWaypointIndex(null);
       return;
     }
 
@@ -601,20 +757,39 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
       const rect = canvas.getBoundingClientRect();
       const scaleX = currentCanvasSize / rect.width;
       const scaleY = currentCanvasSize / rect.height;
-      const x = (e.clientX - rect.left) * scaleX;
-      const y = (e.clientY - rect.top) * scaleY;
+      const rawX = (e.clientX - rect.left) * scaleX;
+      const rawY = (e.clientY - rect.top) * scaleY;
+      const snapX = snapCoord(rawX, trackSnap, currentCanvasSize);
+      const snapY = snapCoord(rawY, trackSnap, currentCanvasSize);
+
+      setMouseTrackPos({ x: snapX, y: snapY });
 
       if (isDraggingWaypoint && selectedWaypointIndex !== null) {
-        const snapX = Math.round(Math.max(16, Math.min(currentCanvasSize - 16, x)) / 8) * 8;
-        const snapY = Math.round(Math.max(16, Math.min(currentCanvasSize - 16, y)) / 8) * 8;
         setWaypoints((prev) => {
           const next = [...prev];
           next[selectedWaypointIndex] = { x: snapX, y: snapY };
           return next;
         });
       } else {
-        const hovIdx = waypoints.findIndex((wp) => Math.hypot(wp.x - x, wp.y - y) <= 18);
+        const hovIdx = waypoints.findIndex((wp) => Math.hypot(wp.x - rawX, wp.y - rawY) <= 18);
         setHoveredWaypointIndex(hovIdx !== -1 ? hovIdx : null);
+
+        if (hovIdx === -1 && trackTool === 'move') {
+          let bestSeg = -1;
+          let bestDist = 14;
+          for (let i = 0; i < waypoints.length - 1; i++) {
+            const p1 = waypoints[i];
+            const p2 = waypoints[i + 1];
+            const res = getDistToSegment(rawX, rawY, p1.x, p1.y, p2.x, p2.y);
+            if (res.dist < bestDist) {
+              bestDist = res.dist;
+              bestSeg = i;
+            }
+          }
+          setHoveredSegmentIndex(bestSeg !== -1 ? bestSeg : null);
+        } else {
+          setHoveredSegmentIndex(null);
+        }
       }
       return;
     }
@@ -629,6 +804,38 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
       setIsDraggingWaypoint(false);
       return;
     }
+    setIsDrawing(false);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (editorMode === 'track') {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = currentCanvasSize / rect.width;
+      const scaleY = currentCanvasSize / rect.height;
+      const rawX = (e.clientX - rect.left) * scaleX;
+      const rawY = (e.clientY - rect.top) * scaleY;
+
+      const clickedIdx = waypoints.findIndex((wp) => Math.hypot(wp.x - rawX, wp.y - rawY) <= 18);
+      if (clickedIdx !== -1) {
+        if (waypoints.length > 2) {
+          setWaypoints((prev) => prev.filter((_, idx) => idx !== clickedIdx));
+          setSelectedWaypointIndex(null);
+          soundManager.playHitBrick();
+        }
+      } else {
+        setSelectedWaypointIndex(null);
+      }
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setMouseTrackPos(null);
+    setHoveredWaypointIndex(null);
+    setHoveredSegmentIndex(null);
+    setIsDraggingWaypoint(false);
     setIsDrawing(false);
   };
 
@@ -694,8 +901,58 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
   const handleResetTrackToDefault = useCallback(() => {
     setWaypoints(BADWATER_WAYPOINTS.map((w) => ({ ...w })));
     setSelectedWaypointIndex(null);
-    setIsAddPointMode(false);
     soundManager.playHitBrick();
+  }, []);
+
+  const loadTrackPreset = useCallback((type: 'badwater' | 'zigzag' | 'perimeter' | 'direct' | 'minimal') => {
+    soundManager.playHitBrick();
+    setSelectedWaypointIndex(null);
+    if (type === 'badwater') {
+      setWaypoints(BADWATER_WAYPOINTS.map((w) => ({ ...w })));
+    } else if (type === 'zigzag') {
+      const pad = 48;
+      const right = currentCanvasSize - 48;
+      setWaypoints([
+        { x: pad, y: currentCanvasSize - pad },
+        { x: right, y: Math.round(currentCanvasSize * 0.78) },
+        { x: pad, y: Math.round(currentCanvasSize * 0.52) },
+        { x: right, y: Math.round(currentCanvasSize * 0.28) },
+        { x: pad, y: pad },
+        { x: right, y: pad },
+      ]);
+    } else if (type === 'perimeter') {
+      const pad = 48;
+      const far = currentCanvasSize - 48;
+      setWaypoints([
+        { x: pad, y: far },
+        { x: pad, y: pad },
+        { x: far, y: pad },
+        { x: far, y: far },
+        { x: Math.round(currentCanvasSize / 2), y: far },
+      ]);
+    } else if (type === 'direct') {
+      const pad = 48;
+      const far = currentCanvasSize - 48;
+      setWaypoints([
+        { x: pad, y: far },
+        { x: Math.round(currentCanvasSize * 0.35), y: Math.round(currentCanvasSize * 0.65) },
+        { x: Math.round(currentCanvasSize * 0.65), y: Math.round(currentCanvasSize * 0.35) },
+        { x: far, y: pad },
+      ]);
+    } else if (type === 'minimal') {
+      const pad = 48;
+      const far = currentCanvasSize - 48;
+      setWaypoints([
+        { x: pad, y: far },
+        { x: far, y: pad },
+      ]);
+    }
+  }, [currentCanvasSize]);
+
+  const handleReverseTrack = useCallback(() => {
+    soundManager.playPowerUpSpawn();
+    setWaypoints((prev) => [...prev].reverse());
+    setSelectedWaypointIndex(null);
   }, []);
 
   const handleDeleteSelectedWaypoint = useCallback(() => {
@@ -708,11 +965,10 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
 
   const handleClearTrack = useCallback(() => {
     setWaypoints([
-      { x: 32, y: 32 },
-      { x: currentCanvasSize - 32, y: currentCanvasSize - 32 },
+      { x: 48, y: currentCanvasSize - 48 },
+      { x: currentCanvasSize - 48, y: 48 },
     ]);
     setSelectedWaypointIndex(null);
-    setIsAddPointMode(false);
     soundManager.playHitBrick();
   }, [currentCanvasSize]);
 
@@ -1235,7 +1491,6 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
                 id="tab-mode-tiles"
                 onClick={() => {
                   setEditorMode('tiles');
-                  setIsAddPointMode(false);
                   soundManager.playHitBrick();
                 }}
                 className={`flex items-center justify-center gap-1.5 py-1.5 rounded text-[9px] font-bold tracking-wider transition-all cursor-pointer ${
@@ -1266,111 +1521,238 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
             </div>
 
             {editorMode === 'track' ? (
-              /* Professional Track Builder Panel */
-              <div className="flex flex-col gap-3 w-full">
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1">
+              /* Professional Intuitive Track Builder Panel */
+              <div className="flex flex-col gap-2.5 w-full">
+                <div className="flex items-center justify-between pb-1 border-b border-[#2d2d2d]">
+                  <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                     <Route className="w-3.5 h-3.5" />
                     <span>TRACK BUILDER</span>
                   </span>
-                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-700 text-cyan-300 font-mono">
-                    {waypoints.length} Nodes
-                  </span>
+                  <div className="flex items-center gap-1.5 font-mono text-[8px]">
+                    <span className="px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-700 text-cyan-300">
+                      {waypoints.length} NODES
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-[#202020] border border-[#3a3a3a] text-zinc-300">
+                      {trackStats.totalLength}px
+                    </span>
+                  </div>
                 </div>
 
-                {/* Add Point Toggle Button */}
-                <button
-                  type="button"
-                  id="btn-add-track-node"
-                  onClick={() => {
-                    setIsAddPointMode((prev) => !prev);
-                    soundManager.playHitBrick();
-                  }}
-                  className={`w-full py-2 px-2.5 rounded border text-[9px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    isAddPointMode
-                      ? 'bg-green-600 border-green-300 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)] animate-pulse ring-1 ring-green-300'
-                      : 'bg-[#252525] border-[#383838] text-green-400 hover:bg-[#2e2e2e] hover:border-green-500'
-                  }`}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{isAddPointMode ? 'CLICK MAP TO ADD NODE' : 'ADD TRACK NODE'}</span>
-                </button>
-
-                {/* Action Buttons: Remove & Reset */}
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    id="btn-remove-track-node"
-                    onClick={handleDeleteSelectedWaypoint}
-                    disabled={waypoints.length <= 2}
-                    className={`py-1.5 px-2 rounded border text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                      waypoints.length <= 2
-                        ? 'opacity-40 cursor-not-allowed bg-zinc-900 border-zinc-800 text-zinc-500'
-                        : 'bg-red-950/60 border-red-700/80 text-red-300 hover:bg-red-900 hover:border-red-500'
-                    }`}
-                    title={selectedWaypointIndex !== null ? `Remove Node #${selectedWaypointIndex + 1}` : 'Remove Last Node'}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    <span>{selectedWaypointIndex !== null ? `DEL #${selectedWaypointIndex + 1}` : 'DEL LAST'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="btn-reset-track"
-                    onClick={handleResetTrackToDefault}
-                    className="py-1.5 px-2 rounded border border-[#383838] bg-[#252525] text-amber-300 hover:bg-[#2e2e2e] hover:border-amber-400 text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                    title="Reset to Original Badwater Basin Track"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>DEFAULT</span>
-                  </button>
+                {/* 1. Track Editing Mode Switcher: Draw Path vs Move & Reshape */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider">EDITING MODE</span>
+                  <div className="grid grid-cols-2 gap-1 bg-[#121212] p-1 rounded border border-[#303030]">
+                    <button
+                      type="button"
+                      id="btn-track-draw-mode"
+                      onClick={() => {
+                        setTrackTool('draw');
+                        soundManager.playPowerUpSpawn();
+                      }}
+                      className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-[8.5px] font-bold tracking-wide transition-all cursor-pointer ${
+                        trackTool === 'draw'
+                          ? 'bg-cyan-600 text-white shadow-md ring-1 ring-cyan-300'
+                          : 'text-zinc-400 hover:text-white hover:bg-[#222222]'
+                      }`}
+                      title="Continuous Click-to-Draw Path"
+                    >
+                      <PenTool className="w-3 h-3" />
+                      <span>DRAW PATH</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-track-move-mode"
+                      onClick={() => {
+                        setTrackTool('move');
+                        soundManager.playHitBrick();
+                      }}
+                      className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-[8.5px] font-bold tracking-wide transition-all cursor-pointer ${
+                        trackTool === 'move'
+                          ? 'bg-amber-600 text-white shadow-md ring-1 ring-amber-300'
+                          : 'text-zinc-400 hover:text-white hover:bg-[#222222]'
+                      }`}
+                      title="Drag Nodes & Split Track Segments"
+                    >
+                      <Move className="w-3 h-3" />
+                      <span>SELECT & MOVE</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Clear / New Minimal Track */}
-                <button
-                  type="button"
-                  id="btn-clear-track"
-                  onClick={handleClearTrack}
-                  className="w-full py-1.5 px-2 rounded border border-[#383838] bg-[#202020] text-zinc-400 hover:text-red-300 hover:border-red-500/60 text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>RESET TRACK (START & END ONLY)</span>
-                </button>
+                {/* 2. Grid Snap Toggle */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[8px] text-zinc-400 uppercase font-bold tracking-wider">GRID SNAP</span>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTrackSnap(16);
+                        soundManager.playHitBrick();
+                      }}
+                      className={`py-1 rounded border text-[8px] font-bold transition-all cursor-pointer ${
+                        trackSnap === 16
+                          ? 'bg-cyan-900 border-cyan-400 text-white shadow-sm'
+                          : 'bg-[#202020] border-[#353535] text-zinc-400 hover:text-white'
+                      }`}
+                      title="Snap to 16px Block Tile Grid"
+                    >
+                      16px GRID
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTrackSnap(8);
+                        soundManager.playHitBrick();
+                      }}
+                      className={`py-1 rounded border text-[8px] font-bold transition-all cursor-pointer ${
+                        trackSnap === 8
+                          ? 'bg-cyan-900 border-cyan-400 text-white shadow-sm'
+                          : 'bg-[#202020] border-[#353535] text-zinc-400 hover:text-white'
+                      }`}
+                      title="Snap to 8px Half-Block Subgrid"
+                    >
+                      8px HALF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTrackSnap(4);
+                        soundManager.playHitBrick();
+                      }}
+                      className={`py-1 rounded border text-[8px] font-bold transition-all cursor-pointer ${
+                        trackSnap === 4
+                          ? 'bg-cyan-900 border-cyan-400 text-white shadow-sm'
+                          : 'bg-[#202020] border-[#353535] text-zinc-400 hover:text-white'
+                      }`}
+                      title="Freeform Smooth 4px Precision"
+                    >
+                      FREE (4px)
+                    </button>
+                  </div>
+                </div>
 
-                {/* Route Summary & Checkpoints Guide */}
-                <div className="p-2.5 rounded bg-[#10141a] border border-[#233549] flex flex-col gap-1.5 text-[8px] font-mono">
+                {/* 3. Track Presets / Quick Layouts */}
+                <div className="flex flex-col gap-1 pt-1 border-t border-[#2a2a2a]">
+                  <span className="text-[8px] text-amber-400 uppercase font-bold tracking-wider">TRACK PRESETS</span>
+                  <div className="grid grid-cols-2 gap-1 font-mono text-[8px]">
+                    <button
+                      type="button"
+                      onClick={() => loadTrackPreset('badwater')}
+                      className="py-1 px-1.5 rounded border border-[#353535] bg-[#222222] text-zinc-300 hover:text-cyan-300 hover:border-cyan-500 transition-all text-left truncate cursor-pointer"
+                      title="Standard TF2 Badwater S-Curve"
+                    >
+                      BADWATER
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => loadTrackPreset('zigzag')}
+                      className="py-1 px-1.5 rounded border border-[#353535] bg-[#222222] text-zinc-300 hover:text-cyan-300 hover:border-cyan-500 transition-all text-left truncate cursor-pointer"
+                      title="Zig-Zag Switchback Track"
+                    >
+                      ZIG-ZAG
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => loadTrackPreset('perimeter')}
+                      className="py-1 px-1.5 rounded border border-[#353535] bg-[#222222] text-zinc-300 hover:text-cyan-300 hover:border-cyan-500 transition-all text-left truncate cursor-pointer"
+                      title="Perimeter Sweep Track"
+                    >
+                      PERIMETER
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => loadTrackPreset('direct')}
+                      className="py-1 px-1.5 rounded border border-[#353535] bg-[#222222] text-zinc-300 hover:text-cyan-300 hover:border-cyan-500 transition-all text-left truncate cursor-pointer"
+                      title="Direct Rush Line"
+                    >
+                      DIRECT RUSH
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Action Controls: Reverse, Delete, Clear, Default */}
+                <div className="flex flex-col gap-1 pt-1 border-t border-[#2a2a2a]">
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={handleReverseTrack}
+                      className="py-1.5 px-2 rounded border border-[#3a3a3a] bg-[#242424] text-sky-300 hover:bg-[#2c2c2c] hover:border-sky-400 text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      title="Reverse Route: Start becomes Finish"
+                    >
+                      <ArrowLeftRight className="w-3 h-3" />
+                      <span>REVERSE</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="btn-remove-track-node"
+                      onClick={handleDeleteSelectedWaypoint}
+                      disabled={waypoints.length <= 2}
+                      className={`py-1.5 px-2 rounded border text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                        waypoints.length <= 2
+                          ? 'opacity-40 cursor-not-allowed bg-zinc-900 border-zinc-800 text-zinc-500'
+                          : 'bg-red-950/60 border-red-700/80 text-red-300 hover:bg-red-900 hover:border-red-500'
+                      }`}
+                      title={selectedWaypointIndex !== null ? `Remove Node #${selectedWaypointIndex + 1}` : 'Remove Last Node'}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>{selectedWaypointIndex !== null ? `DEL #${selectedWaypointIndex + 1}` : 'DEL LAST'}</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      id="btn-reset-track"
+                      onClick={handleResetTrackToDefault}
+                      className="py-1.5 px-2 rounded border border-[#383838] bg-[#222222] text-amber-300 hover:bg-[#2c2c2c] hover:border-amber-400 text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      title="Reset to Original Badwater Basin Track"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>DEFAULT</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="btn-clear-track"
+                      onClick={() => loadTrackPreset('minimal')}
+                      className="py-1.5 px-2 rounded border border-[#383838] bg-[#222222] text-zinc-400 hover:text-red-300 hover:border-red-500/60 text-[8px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      title="Start fresh with Start & Finish points only"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>MINIMAL</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 5. Route Summary & Checkpoints Guide */}
+                <div className="p-2 rounded bg-[#10141a] border border-[#233549] flex flex-col gap-1 text-[8px] font-mono">
                   <div className="text-cyan-400 font-bold uppercase tracking-wider text-[8px] pb-1 border-b border-[#233549] flex items-center justify-between">
                     <span>CHECKPOINTS ROUTE</span>
-                    <span className="text-[7px] text-zinc-400 font-sans">Auto-calculated</span>
+                    <span className="text-[7px] text-zinc-400 font-sans">Dynamic</span>
                   </div>
                   <div className="flex items-center justify-between text-zinc-300 pt-0.5">
-                    <span className="text-blue-400 font-bold">START:</span>
+                    <span className="text-blue-400 font-bold">START (BLU):</span>
                     <span>Node 1 ({Math.round(waypoints[0].x)}, {Math.round(waypoints[0].y)})</span>
                   </div>
                   <div className="flex items-center justify-between text-zinc-400">
-                    <span className="text-amber-400 font-bold">POINT A:</span>
-                    <span>25% Distance</span>
-                  </div>
-                  <div className="flex items-center justify-between text-zinc-400">
-                    <span className="text-amber-400 font-bold">POINT B:</span>
-                    <span>50% Distance</span>
-                  </div>
-                  <div className="flex items-center justify-between text-zinc-400">
-                    <span className="text-amber-400 font-bold">POINT C:</span>
-                    <span>75% Distance</span>
+                    <span className="text-amber-400 font-bold">CHECKPOINTS A/B/C:</span>
+                    <span>25% • 50% • 75%</span>
                   </div>
                   <div className="flex items-center justify-between text-zinc-300">
-                    <span className="text-red-400 font-bold">PIT (SILO):</span>
-                    <span>End Node ({Math.round(waypoints[waypoints.length - 1].x)}, {Math.round(waypoints[waypoints.length - 1].y)})</span>
+                    <span className="text-red-400 font-bold">PIT (EXPLODES):</span>
+                    <span>Node {waypoints.length} ({Math.round(waypoints[waypoints.length - 1].x)}, {Math.round(waypoints[waypoints.length - 1].y)})</span>
                   </div>
                 </div>
 
-                {/* Instructions Box */}
-                <div className="p-2.5 rounded bg-[#151515] border border-[#2c2c2c] text-[8px] text-zinc-400 leading-relaxed flex flex-col gap-1">
-                  <div className="text-amber-400 font-bold">INSTRUCTIONS:</div>
-                  <div>• Drag numbered pins on canvas to reshape track route.</div>
-                  <div>• Toggle [ADD TRACK NODE] then click on canvas to add path points.</div>
-                  <div>• Cart follows your exact route and detonates upon reaching the pit!</div>
+                {/* 6. Friendly Fast Guide */}
+                <div className="p-2 rounded bg-[#141414] border border-[#2c2c2c] text-[8px] text-zinc-400 leading-relaxed flex flex-col gap-0.5">
+                  <div className="text-amber-400 font-bold flex items-center gap-1">
+                    <span>EASY CONTROLS / إرشادات:</span>
+                  </div>
+                  <div>• رسم المسار: انقر في أي مكان لإضافة نقاط السكة تباعاً.</div>
+                  <div>• وضع التحريك: اسحب النقاط، أو انقر على السكة لإدراج نقطة.</div>
+                  <div>• زر الفأرة الأيمن: لحذف النقطة فوراً.</div>
                 </div>
               </div>
             ) : (
@@ -1692,7 +2074,8 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
+                onMouseLeave={handleMouseLeave}
+                onContextMenu={handleContextMenu}
                 onTouchStart={(e) => {
                   setIsDrawing(true);
                   applyBrush(e);
@@ -1708,7 +2091,9 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
                 <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
                 {editorMode === 'track' ? (
                   <span className="text-cyan-300 font-bold tracking-wide">
-                    TRACK MODE: DRAG NUMBERED NODES TO RESHAPE • CLICK [ADD TRACK NODE] TO EXTEND ROUTE
+                    {trackTool === 'draw'
+                      ? 'DRAW MODE: CLICK ON MAP TO ADD NODES • RIGHT-CLICK TO DELETE NODE'
+                      : 'MOVE MODE: DRAG NODES • CLICK TRACK SEGMENT TO INSERT NODE'}
                   </span>
                 ) : hasGamepad ? (
                   <span className="text-amber-300 font-bold tracking-wide">

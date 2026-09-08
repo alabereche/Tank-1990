@@ -851,13 +851,16 @@ export class GameEngine {
     const attackerSlot = this.payloadAttackerSlot;
     const isDelivery = winner === attackerSlot;
 
-    // Award round point to the winner (whether won via delivery or via holding defense)
-    if (winner === 1) {
-      this.scoreData.roundWinsP1 = (this.scoreData.roundWinsP1 ?? 0) + 1;
-    } else {
-      this.scoreData.roundWinsP2 = (this.scoreData.roundWinsP2 ?? 0) + 1;
-    }
+    // In Payload mode, each match is self-contained: single 2:30 match decided completely!
     this.scoreData.roundWinner = winner;
+    this.scoreData.matchWinner = winner;
+    if (winner === 1) {
+      this.scoreData.roundWinsP1 = 1;
+      this.scoreData.roundWinsP2 = 0;
+    } else {
+      this.scoreData.roundWinsP1 = 0;
+      this.scoreData.roundWinsP2 = 1;
+    }
 
     if (isDelivery) {
       if (this.payloadManager) {
@@ -901,11 +904,11 @@ export class GameEngine {
       }
       this.gridVersion++;
 
-      this.addTacticalPopup(this.canvasSize / 2, this.canvasSize / 2, `DELIVERY SUCCESSFUL! P${winner} SCORED!`);
+      this.addTacticalPopup(this.canvasSize / 2, this.canvasSize / 2, `DELIVERY SUCCESSFUL! P${winner} WINS THE MATCH!`);
     } else {
       // Defender successfully stopped the cart until time expired
       soundManager.playBigExplosion();
-      this.addTacticalPopup(this.canvasSize / 2, this.canvasSize / 2, `TIME EXPIRED — DEFENSE HELD! P${winner} SCORED!`);
+      this.addTacticalPopup(this.canvasSize / 2, this.canvasSize / 2, `TIME EXPIRED — DEFENSE HELD! P${winner} WINS THE MATCH!`);
     }
 
     this.gameState = GameState.ROUND_END;
@@ -916,7 +919,11 @@ export class GameEngine {
     this.roundTransitionTimer = setTimeout(() => {
       this.roundTransitionTimer = null;
       this.isRoundEnding = false;
-      this.resolveRoundAfterBanner();
+      // Payload ends the match immediately — no switching roles or continuing rounds!
+      this.gameState = GameState.MATCH_END;
+      soundManager.stopEngineSound();
+      soundManager.playStageStart();
+      this.onStateChange(this.gameState, this.scoreData);
     }, this.roundEndMs);
   }
 

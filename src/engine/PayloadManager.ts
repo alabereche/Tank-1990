@@ -44,7 +44,7 @@ export class PayloadManager {
 
   // Match flow
   public timeRemainingSec: number = 150; // 2 minutes 30 seconds initial timer
-  private lastTickTimestamp: number = 0;
+  public elapsedTicks: number = 0;
   public status: PayloadStatus = 'IDLE';
   public checkpoints: PayloadCheckpoint[] = [];
   public currentCheckpointIdx: number = -1;
@@ -135,8 +135,8 @@ export class PayloadManager {
     }
     this.currentDistance = 0;
     this.minAllowedDistance = 0;
+    this.elapsedTicks = 0;
     this.timeRemainingSec = 150;
-    this.lastTickTimestamp = 0;
     this.status = 'IDLE';
     this.idleTimer = 0;
     this.winner = null;
@@ -148,7 +148,8 @@ export class PayloadManager {
   }
 
   public resetClock() {
-    this.lastTickTimestamp = 0;
+    this.elapsedTicks = 0;
+    this.timeRemainingSec = 150;
   }
 
   /**
@@ -163,15 +164,9 @@ export class PayloadManager {
       return this.getState();
     }
 
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    let deltaSec = 1 / 60;
-    if (this.lastTickTimestamp > 0) {
-      const diffSec = (now - this.lastTickTimestamp) / 1000;
-      deltaSec = Math.min(0.1, Math.max(0, diffSec));
-    }
-    this.lastTickTimestamp = now;
-
-    this.timeRemainingSec = Math.max(0, this.timeRemainingSec - deltaSec);
+    // Precise fixed 60Hz frame-based countdown (starts at 150s = 02:30, decrements 1 sec every 60 simulation ticks)
+    this.elapsedTicks++;
+    this.timeRemainingSec = Math.max(0, 150 - Math.floor(this.elapsedTicks / 60));
 
     // Identify Attacker & Defender tanks
     const attackerTank = this.attackerSlot === 1 ? p1Tank : p2Tank;
