@@ -196,6 +196,10 @@ export class GameEngine {
     return (round % 2 === 1) ? 1 : 2;
   }
 
+  public get isPayloadMode(): boolean {
+    return this.multiMode === 'versus' && this.versusSubMode === 'payload';
+  }
+
   public get isRemoteViewer(): boolean {
     return false;
   }
@@ -544,7 +548,17 @@ export class GameEngine {
       if (this.versusSubMode === 'payload') {
         this.clearBaseArea('south');
         this.clearBaseArea('north');
+        // Ensure NO TileType.BASE tiles exist anywhere on the map
+        for (let r = 0; r < this.gridSize; r++) {
+          for (let c = 0; c < this.gridSize; c++) {
+            if (this.grid[r]?.[c]?.type === TileType.BASE) {
+              this.grid[r][c] = { type: TileType.EMPTY, damageMask: 0 };
+            }
+          }
+        }
         this.bases.clear();
+        this.baseState = BaseState.DESTROYED;
+        this.baseStateB = BaseState.DESTROYED;
       } else {
         const defender: 1 | 2 =
           this.pendingVsDefender ?? (((this.scoreData.roundNumber ?? 1) % 2 === 1) ? 1 : 2);
@@ -1774,7 +1788,7 @@ export class GameEngine {
           this.scoreData.roundNumber = newRound;
           if (!this.hasCustomMap && this.multiMode === 'versus') {
             const preset: MapSizePreset = this.gridSize === 42 ? 'giant' : this.gridSize === 34 ? 'large' : 'classic';
-            this.currentMap = getStageMapForPresetAndStage(newRound, preset, this.multiMode);
+            this.currentMap = getStageMapForPresetAndStage(newRound, preset, this.multiMode, this.versusSubMode);
           }
           this.onStateChange(this.gameState, this.scoreData);
         }
@@ -2547,7 +2561,8 @@ export class GameEngine {
       if (bulletCancelled) continue;
 
       // C. Bullet vs Base Eagle (1v1 alternating single base / 2v2 dual base)
-      if (this.multiMode !== 'ffa') {
+      // Base Eagles NEVER exist or take damage in FFA or Payload mode!
+      if (this.multiMode !== 'ffa' && !this.isPayloadMode) {
         const southActive = this.multiMode !== 'versus' || this.vsDefenderSlot === 1;
         const northActive = this.multiMode === '2v2' || (this.multiMode === 'versus' && this.vsDefenderSlot === 2);
         // 1) Bullet vs South Base (Base A - Team A / Player 1)
@@ -2961,7 +2976,7 @@ export class GameEngine {
 
   // --- Base Eagle Destroyed ---
   public destroyBase(baseId: 'A' | 'B' = 'A') {
-    if (this.isRoundEnding) return;
+    if (this.isRoundEnding || this.isPayloadMode) return;
     soundManager.stopEngineSound();
     for (const p of this.playerTanks.values()) {
       if (p) p.moving = false;
@@ -3113,7 +3128,10 @@ export class GameEngine {
       this.freezeEnemiesTimer = 600;
     } else if (type === 'SHOVEL') {
       // Turn base bunker walls into steel for 20 seconds (1200 frames)
-      if (this.multiMode === 'versus') {
+      if (this.isPayloadMode) {
+        // In payload mode, no eagle base exists: give collecting tank heavy temporary armor/shield
+        target.shieldTimer = Math.max(target.shieldTimer || 0, 600);
+      } else if (this.multiMode === 'versus') {
         // In 1v1, fortify the active eagle only if collected by the defender
         if (target.playerIndex === this.vsDefenderSlot) {
           this.applyShovelBunker(this.vsDefenderSlot === 2 ? 'B' : 'A');
