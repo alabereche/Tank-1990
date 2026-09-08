@@ -16,6 +16,7 @@ interface GameOverModalProps {
   onNextStage?: () => void;
   onRetry: () => void;
   onReturnToMenu: () => void;
+  isGuest?: boolean;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
@@ -24,6 +25,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onNextStage,
   onRetry,
   onReturnToMenu,
+  isGuest = false,
 }) => {
   const [revealedIdx, setRevealedIdx] = useState<number>(0);
   const [selectedBtnIdx, setSelectedBtnIdx] = useState<number>(0);
@@ -78,8 +80,22 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   }, [revealedIdx, breakdown.length]);
 
   const actionButtons = [
-    ...(isVictory && onNextStage ? [{ id: 'next', label: 'NEXT STAGE', action: onNextStage }] : []),
-    { id: 'retry', label: isVictory ? 'REPLAY' : 'RETRY', action: onRetry },
+    ...(isVictory && onNextStage
+      ? [
+          {
+            id: 'next',
+            label: isGuest ? 'WAITING FOR HOST...' : 'NEXT STAGE',
+            action: isGuest ? () => {} : onNextStage,
+            disabled: isGuest,
+          },
+        ]
+      : []),
+    {
+      id: 'retry',
+      label: isGuest ? 'WAITING FOR HOST...' : isVictory ? 'REPLAY' : 'RETRY',
+      action: isGuest ? () => {} : onRetry,
+      disabled: isGuest,
+    },
     { id: 'menu', label: 'MENU', action: onReturnToMenu },
   ];
 
@@ -178,8 +194,11 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         prevConfirm = confirmPressed;
 
         if (confirmTrigger && time >= mountCooldownUntil) {
-          soundManager.playMenuSelect();
-          actionButtonsRef.current[selectedBtnIdxRef.current]?.action();
+          const btn = actionButtonsRef.current[selectedBtnIdxRef.current];
+          if (btn && !(btn as any).disabled) {
+            soundManager.playMenuSelect();
+            btn.action();
+          }
         }
 
         // Physical Menu / Start button (Button 9) OR Cancel (Button 1 / B) exits directly to Menu
@@ -222,8 +241,11 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         soundManager.playMenuMove();
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        soundManager.playMenuSelect();
-        actionButtonsRef.current[selectedBtnIdxRef.current]?.action();
+        const btn = actionButtonsRef.current[selectedBtnIdxRef.current];
+        if (btn && !(btn as any).disabled) {
+          soundManager.playMenuSelect();
+          btn.action();
+        }
       } else if (e.key === 'Escape') {
         e.preventDefault();
         soundManager.playMenuMove();
@@ -372,27 +394,33 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           const isSelected = selectedBtnIdx === idx;
           const isPrimary = btn.id === 'next';
           const isRetry = btn.id === 'retry';
+          const isDisabled = Boolean((btn as any).disabled);
 
           return (
             <button
               key={btn.id}
               id={`btn-score-${btn.id}`}
+              disabled={isDisabled}
               onClick={() => {
+                if (isDisabled) return;
                 soundManager.playMenuSelect();
                 btn.action();
               }}
               onMouseEnter={() => {
+                if (isDisabled) return;
                 setSelectedBtnIdx(idx);
                 soundManager.playMenuMove();
               }}
-              className={`flex-1 min-w-[110px] sm:min-w-[130px] flex items-center justify-center gap-1.5 py-1.5 sm:py-2.5 px-2.5 sm:px-3 rounded text-[9px] sm:text-[10px] font-pixel border transition-all cursor-pointer ${
-                isPrimary
-                  ? 'bg-green-600 hover:bg-green-500 text-white border-green-400 shadow-md'
+              className={`flex-1 min-w-[110px] sm:min-w-[130px] flex items-center justify-center gap-1.5 py-1.5 sm:py-2.5 px-2.5 sm:px-3 rounded text-[9px] sm:text-[10px] font-pixel border transition-all ${
+                isDisabled
+                  ? 'bg-zinc-900 text-zinc-500 border-zinc-800 cursor-not-allowed opacity-60'
+                  : isPrimary
+                  ? 'bg-green-600 hover:bg-green-500 text-white border-green-400 shadow-md cursor-pointer'
                   : isRetry
-                  ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-400 shadow-md'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-600'
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-400 shadow-md cursor-pointer'
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-600 cursor-pointer'
               } ${
-                isSelected
+                isSelected && !isDisabled
                   ? 'ring-2 ring-[#f8b800] ring-offset-2 ring-offset-black scale-105 shadow-xl'
                   : 'opacity-90'
               }`}

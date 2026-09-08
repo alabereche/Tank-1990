@@ -103,7 +103,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
     { label: 'INSTALL APP', action: handleInstallApp, badge: 'PWA' },
-    { label: 'PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'SOON' },
+    ...(!isElectron ? [{ label: 'PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'WIN' }] : []),
     ...(!isElectron ? [{ label: 'FULLSCREEN', action: handleToggleFullscreen }] : []),
     { label: 'EXIT GAME', action: () => { setExitConfirmIdx(0); setShowExitModal(true); } },
   ];
@@ -1026,14 +1026,24 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </div>
             </div>
 
-            <a
-              href="/battle-city-1990.apk"
-              download="Battle City 1990.apk"
-              onClick={() => soundManager.playPowerUpCollect()}
-              className="block w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-emerald-400 bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
-            >
-              [ DOWNLOAD ANDROID APK ]
-            </a>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              <a
+                href="/battle-city-1990.apk"
+                download="Battle City 1990.apk"
+                onClick={() => soundManager.playPowerUpCollect()}
+                className="block w-full py-1.5 sm:py-2 px-2 text-[8px] sm:text-[9px] font-pixel border-2 border-emerald-400 bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
+              >
+                [ ANDROID APK ]
+              </a>
+              <a
+                href="/battle-city-1990.exe"
+                download="Battle City 1990.exe"
+                onClick={() => soundManager.playPowerUpCollect()}
+                className="block w-full py-1.5 sm:py-2 px-2 text-[8px] sm:text-[9px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
+              >
+                [ WINDOWS .EXE ]
+              </a>
+            </div>
 
             <button
               type="button"
@@ -1046,7 +1056,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       )}
 
-      {/* PC (.EXE) Download Coming Soon Modal */}
+      {/* PC (.EXE) Download Modal */}
       {showPcDownloadModal && (
         <div
           className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-3 backdrop-blur-xs select-none"
@@ -1060,18 +1070,27 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               PC DOWNLOAD (.EXE)
             </div>
 
-            <div className="inline-block px-2.5 py-0.5 bg-zinc-900 border border-zinc-700 text-amber-300 text-[8px] sm:text-[9px] font-pixel">
-              STATUS: COMING SOON
+            <div className="inline-block px-2.5 py-0.5 bg-emerald-950 border border-emerald-500 text-emerald-300 text-[8px] sm:text-[9px] font-pixel">
+              STATUS: READY FOR DOWNLOAD
             </div>
 
             <p className="text-[7.5px] sm:text-[8px] text-zinc-300 leading-relaxed font-pixel text-left">
-              THE STANDALONE WINDOWS PC EXECUTABLE (.EXE) IS BEING PACKAGED AND WILL BE AVAILABLE FOR DIRECT DOWNLOAD HERE.
+              WINDOWS 64-BIT STANDALONE RETRO ARCADE APP. PORTABLE SINGLE-FILE EXECUTABLE WITH ZERO INSTALLATION REQUIRED.
             </p>
+
+            <a
+              href="/battle-city-1990.exe"
+              download="Battle City 1990.exe"
+              onClick={() => soundManager.playPowerUpCollect()}
+              className="block w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
+            >
+              [ DOWNLOAD WINDOWS (.EXE) ]
+            </a>
 
             <button
               type="button"
               onClick={() => setShowPcDownloadModal(false)}
-              className="w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold"
+              className="w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-zinc-600 bg-zinc-800 hover:bg-zinc-700 text-white cursor-pointer transition-all shadow-md font-bold"
             >
               [ CLOSE ]
             </button>

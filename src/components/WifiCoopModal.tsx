@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { localP2PService, P2PConnectionState } from '../services/LocalP2PService';
 import { soundManager } from '../engine/SoundManager';
+import { StageMap } from '../types';
 import { Wifi, Users, Smartphone, Monitor, Check, X, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface WifiCoopModalProps {
@@ -16,10 +17,22 @@ interface WifiCoopModalProps {
     role: 'host' | 'guest';
     mode: 'coop' | 'versus';
     versusSubMode?: 'classic' | 'payload';
+    mapSize?: 'classic' | 'large' | 'giant';
+    stage?: number;
+    customMap?: StageMap;
   }) => void;
+  currentStage?: number;
+  mapSize?: 'classic' | 'large' | 'giant';
+  customMap?: StageMap;
 }
 
-export const WifiCoopModal: React.FC<WifiCoopModalProps> = ({ onClose, onStartBattle }) => {
+export const WifiCoopModal: React.FC<WifiCoopModalProps> = ({
+  onClose,
+  onStartBattle,
+  currentStage = 1,
+  mapSize = 'classic',
+  customMap,
+}) => {
   const [activeTab, setActiveTab] = useState<'host' | 'join'>('host');
   const [roomCode, setRoomCode] = useState<string>('');
   const [joinCode, setJoinCode] = useState<string>('');
@@ -43,13 +56,16 @@ export const WifiCoopModal: React.FC<WifiCoopModalProps> = ({ onClose, onStartBa
       onLatencyUpdate: (ms) => {
         setLatency(ms);
       },
-      onStageStart: (stage) => {
-        // If we are guest and host starts stage, launch automatically
+      onStageStart: (stage, map, remoteMode, remoteSubMode, remoteMapSize) => {
+        // If we are guest and host starts stage, launch automatically with host-selected mode & map
         onStartBattle({
           roomCode: localP2PService.getRoomCode(),
           role: 'guest',
-          mode: gameMode === 'payload' ? 'versus' : gameMode,
-          versusSubMode: gameMode === 'payload' ? 'payload' : 'classic',
+          mode: remoteMode || (gameMode === 'payload' ? 'versus' : gameMode),
+          versusSubMode: remoteSubMode || (gameMode === 'payload' ? 'payload' : 'classic'),
+          mapSize: remoteMapSize || mapSize || 'classic',
+          stage: stage || currentStage || 1,
+          customMap: map || customMap,
         });
       },
     });
@@ -57,7 +73,7 @@ export const WifiCoopModal: React.FC<WifiCoopModalProps> = ({ onClose, onStartBa
     return () => {
       // Don't disconnect if we transition to battle
     };
-  }, [gameMode, onStartBattle]);
+  }, [gameMode, onStartBattle, mapSize, currentStage, customMap]);
 
   // Host: Automatically generate room code on tab select
   useEffect(() => {
@@ -86,12 +102,19 @@ export const WifiCoopModal: React.FC<WifiCoopModalProps> = ({ onClose, onStartBa
   const handleStartAsHost = () => {
     soundManager.unlockAudio();
     soundManager.playStageStart();
-    localP2PService.sendStageStart(1);
+    const effectiveMode = gameMode === 'payload' ? 'versus' : gameMode;
+    const effectiveSubMode = gameMode === 'payload' ? 'payload' : 'classic';
+    const effectiveSize = effectiveSubMode === 'payload' ? 'large' : (mapSize || 'classic');
+    const stageToPlay = currentStage || 1;
+    localP2PService.sendStageStart(stageToPlay, customMap, effectiveMode, effectiveSubMode, effectiveSize);
     onStartBattle({
       roomCode,
       role: 'host',
-      mode: gameMode === 'payload' ? 'versus' : gameMode,
-      versusSubMode: gameMode === 'payload' ? 'payload' : 'classic',
+      mode: effectiveMode,
+      versusSubMode: effectiveSubMode,
+      mapSize: effectiveSize,
+      stage: stageToPlay,
+      customMap,
     });
   };
 

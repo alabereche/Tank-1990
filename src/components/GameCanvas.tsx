@@ -241,6 +241,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Keyboard input state tracking
   const keysDown = useRef<{ [key: string]: boolean }>({});
+  const lastSnapshotTimeRef = useRef<number>(0);
+  const lastSentInputRef = useRef<string>('');
+  const lastSentInputTimeRef = useRef<number>(0);
 
   const handleStateChange = useCallback(
     (state: GameState, score: GameScore) => {
@@ -323,6 +326,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           onSnapshot: (snapshot) => {
             if (!isHost) {
               engine.applyNetworkSnapshot(snapshot);
+            }
+          },
+          onStageStart: (stage, stageMap) => {
+            if (!isHost) {
+              engine.startStage(stage, stageMap);
             }
           },
           onRemotePause: (paused) => {
@@ -559,9 +567,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (isHost) {
           engine?.setPlayerSlotInput(1, localMerged);
           engine?.updateInput(localMerged);
-          localP2PService.sendSnapshot(engine?.getNetworkSnapshot());
+          const now = performance.now();
+          if (now - lastSnapshotTimeRef.current >= 33) {
+            lastSnapshotTimeRef.current = now;
+            localP2PService.sendSnapshot(engine?.getNetworkSnapshot());
+          }
         } else {
-          localP2PService.sendInput(localMerged);
+          const now = performance.now();
+          const inputKey = `${localMerged.up ? 1 : 0}${localMerged.down ? 1 : 0}${localMerged.left ? 1 : 0}${localMerged.right ? 1 : 0}${localMerged.fire ? 1 : 0}${localMerged.smoke ? 1 : 0}${localMerged.grenade ? 1 : 0}${localMerged.shield ? 1 : 0}`;
+          const isChanged = inputKey !== lastSentInputRef.current;
+          if (isChanged || now - lastSentInputTimeRef.current >= 40) {
+            lastSentInputRef.current = inputKey;
+            lastSentInputTimeRef.current = now;
+            localP2PService.sendInput(localMerged);
+          }
         }
 
         if (pad?.pause) {

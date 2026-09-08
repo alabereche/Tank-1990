@@ -255,7 +255,10 @@ export class GameEngine {
     this.canvas = canvas;
     if (canvas) {
       const context = canvas.getContext('2d', { alpha: false });
-      if (context) this.ctx = context;
+      if (context) {
+        context.imageSmoothingEnabled = false;
+        this.ctx = context;
+      }
     }
     this.currentMap = map;
     this.hasCustomMap = Boolean(map?.name && !map.name.startsWith('Stage '));
@@ -285,6 +288,7 @@ export class GameEngine {
     }
     const context = canvas.getContext('2d', { alpha: false });
     if (context) {
+      context.imageSmoothingEnabled = false;
       this.ctx = context;
     }
     this.render();
@@ -687,7 +691,7 @@ export class GameEngine {
     this.p2AuthTarget = null;
     this.gridVersion++;
     this.lastSentGridVersion = -1;
-    this.gridSyncFramesRemaining = 60;
+    this.gridSyncFramesRemaining = 5;
 
     if (this.isRemoteViewer) {
       // Thin client: every entity arrives via host snapshots
@@ -1057,7 +1061,7 @@ export class GameEngine {
     this.initGrid(this.currentMap.grid);
     this.gridVersion++;
     this.lastSentGridVersion = -1;
-    this.gridSyncFramesRemaining = 60;
+    this.gridSyncFramesRemaining = 5;
 
     // Reliable broadcast of map sync to all peers
     this.emitNetEvent({
@@ -1482,6 +1486,10 @@ export class GameEngine {
 
   private onWorkerTick = () => {
     if (!this.isRunning || this.isPaused) return;
+    // When document is visible in foreground, requestAnimationFrame drives simulation to avoid IPC jitter!
+    // Worker ticks only take over if the app or tab is in background (hidden)
+    if (typeof document !== 'undefined' && !document.hidden) return;
+
     if (
       this.gameState !== GameState.PLAYING &&
       this.gameState !== GameState.ROUND_END &&
@@ -1503,21 +1511,24 @@ export class GameEngine {
     const elapsed = Math.min(100, Math.max(0, timestamp - this.lastLoopTime));
     this.lastLoopTime = timestamp;
 
+    const isDocVisible = typeof document === 'undefined' || !document.hidden;
+
     if (
-      this.localRole !== 'host' &&
       !this.isPaused &&
       (this.gameState === GameState.PLAYING ||
         this.gameState === GameState.ROUND_END ||
         this.gameState === GameState.ROUND_INTRO)
     ) {
-      this.timeAccumulator += elapsed;
-      if (this.timeAccumulator > 100) {
-        this.timeAccumulator = 100;
-      }
-      while (this.timeAccumulator >= this.TICK_DELTA) {
-        this.tickCount++;
-        this.update();
-        this.timeAccumulator -= this.TICK_DELTA;
+      if (isDocVisible) {
+        this.timeAccumulator += elapsed;
+        if (this.timeAccumulator > 100) {
+          this.timeAccumulator = 100;
+        }
+        while (this.timeAccumulator >= this.TICK_DELTA) {
+          this.tickCount++;
+          this.update();
+          this.timeAccumulator -= this.TICK_DELTA;
+        }
       }
     } else if (this.gameState !== GameState.PLAYING) {
       soundManager.stopEngineSound();
@@ -3893,11 +3904,6 @@ export class GameEngine {
       SpriteRenderer.renderSpawnAnimation(ctx, sp.x, sp.y, sp.progress);
     }
 
-    // 6b. Render Deployable Shield Barricades
-    for (const s of this.activeShields) {
-      SpriteRenderer.renderDeployableShield(ctx, s);
-    }
-
     // 7. Render Tanks (Enemies and All Active Player Tanks 1..8)
     for (const enemy of this.enemies) {
       if (enemy) {
@@ -3908,6 +3914,11 @@ export class GameEngine {
       if (p) {
         SpriteRenderer.renderTank(ctx, p, this.tickCount);
       }
+    }
+
+    // 7b. Render Deployable Shield Barricades (rendered over tanks for maximum clarity & visibility)
+    for (const s of this.activeShields) {
+      SpriteRenderer.renderDeployableShield(ctx, s);
     }
 
     // 7c. Render Payload Armored Bomb Cart and Push Aura (unless exploded)
@@ -4076,6 +4087,7 @@ export class GameEngine {
             moving: this.player.moving,
             tier: this.player.tier,
             shield: this.player.shieldTimer,
+            tactical: this.player.tacticalInventory ? { ...this.player.tacticalInventory } : undefined,
           }
         : null,
       p2: this.player2
@@ -4086,6 +4098,7 @@ export class GameEngine {
             moving: this.player2.moving,
             tier: this.player2.tier,
             shield: this.player2.shieldTimer,
+            tactical: this.player2.tacticalInventory ? { ...this.player2.tacticalInventory } : undefined,
           }
         : null,
       players: playersList,
@@ -4192,6 +4205,9 @@ export class GameEngine {
       this.player.moving = data.p1.moving;
       this.player.tier = data.p1.tier;
       this.player.shieldTimer = data.p1.shield;
+      if (data.p1.tactical) {
+        this.player.tacticalInventory = { ...data.p1.tactical };
+      }
     } else {
       this.player = null;
     }
@@ -4207,8 +4223,21 @@ export class GameEngine {
       this.player2.moving = data.p2.moving;
       this.player2.tier = data.p2.tier;
       this.player2.shieldTimer = data.p2.shield;
+      if (data.p2.tactical) {
+        this.player2.tacticalInventory = { ...data.p2.tactical };
+      }
     } else {
       this.player2 = null;
+    }
+
+    // Apply Active Players (Multi-tank / FFA)
+    if (Array.isArray(data.players)) {
+      for (const pd of data.players) {
+        const pt = this.playerTanks.get(pd.slot);
+        if (pt && pd.tactical) {
+          pt.tacticalInventory = { ...pd.tactical };
+        }
+      }
     }
 
     // Apply Enemies
@@ -4263,6 +4292,67 @@ export class GameEngine {
       }));
     }
 
+    // Apply Smokes (Synchronize active smoke clouds across network)
+    if (Array.isArray(data.smokes)) {
+      this.activeSmokeScreens = data.smokes.map((s: any) => ({
+        id: s.id,
+        x: s.x,
+        y: s.y,
+        radius: s.radius || 56,
+        duration: s.duration,
+        maxDuration: 480,
+        particles: [],
+      }));
+    }
+
+    // Apply Grenades (Synchronize bouncing grenades across network)
+    if (Array.isArray(data.grenades)) {
+      this.activeGrenades = data.grenades.map((g: any) => ({
+        id: g.id,
+        ownerId: g.ownerId,
+        isPlayer: g.isPlayer,
+        team: g.team,
+        x: g.x,
+        y: g.y,
+        z: g.z ?? 0,
+        vx: g.vx ?? 0,
+        vy: g.vy ?? 0,
+        vz: g.vz ?? 0,
+        life: g.life,
+        bouncesLeft: g.bouncesLeft ?? 0,
+      }));
+    }
+
+    // Apply Shields (Synchronize deployable shield barricades across network)
+    if (Array.isArray(data.shields)) {
+      this.activeShields = data.shields.map((s: any) => ({
+        id: s.id,
+        ownerId: s.ownerId,
+        team: s.team,
+        x: s.x,
+        y: s.y,
+        width: s.w,
+        height: s.h,
+        hp: s.hp,
+        maxHp: s.maxHp || 3,
+        timer: s.timer,
+        maxTimer: 900,
+        direction: s.dir || 'UP',
+      }));
+    }
+
+    // Apply Tactical Pickups
+    if (Array.isArray(data.tacPickups)) {
+      this.tacticalPickups = data.tacPickups.map((t: any) => ({
+        id: t.id,
+        type: t.type,
+        x: t.x,
+        y: t.y,
+        flashFrame: t.flashFrame ?? 0,
+        duration: 720,
+      }));
+    }
+
     // Apply Score / Base / Game State
     if (data.scoreData) {
       this.scoreData = { ...this.scoreData, ...data.scoreData };
@@ -4288,6 +4378,13 @@ export class GameEngine {
     if (data.gameState && data.gameState !== this.gameState) {
       this.gameState = data.gameState;
       this.onStateChange(this.gameState, this.scoreData);
+    }
+
+    // Synchronize Terrain / Map Grid from Host
+    if (data.grid && Array.isArray(data.grid) && data.gv !== undefined) {
+      if (data.gv !== this.gridVersion || (data.gs && data.gs !== this.gridSize)) {
+        this.decodeGrid(data.grid, data.gv, data.gs);
+      }
     }
   }
 }

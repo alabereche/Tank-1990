@@ -20,7 +20,13 @@ export interface LocalP2PCallbacks {
   onRemoteInput?: (input: InputState) => void;
   onSnapshot?: (snapshot: any) => void;
   onTaunt?: (text: string) => void;
-  onStageStart?: (stage: number, map?: StageMap) => void;
+  onStageStart?: (
+    stage: number,
+    map?: StageMap,
+    mode?: 'coop' | 'versus',
+    versusSubMode?: 'classic' | 'payload',
+    mapSize?: 'classic' | 'large' | 'giant'
+  ) => void;
   onRemotePause?: (paused: boolean) => void;
   onLatencyUpdate?: (ms: number) => void;
 }
@@ -34,8 +40,16 @@ export class LocalP2PService {
   private roomCode: string = '';
   private callbacks: LocalP2PCallbacks | null = null;
   private sseEventSource: EventSource | null = null;
+  private answerPollInterval: number | null = null;
   private pingInterval: number | null = null;
   private lastPingSentTime: number = 0;
+  private stageStartListeners: Set<(
+    stage: number,
+    map?: StageMap,
+    mode?: 'coop' | 'versus',
+    versusSubMode?: 'classic' | 'payload',
+    mapSize?: 'classic' | 'large' | 'giant'
+  ) => void> = new Set();
 
   private iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -48,6 +62,21 @@ export class LocalP2PService {
       LocalP2PService.instance = new LocalP2PService();
     }
     return LocalP2PService.instance;
+  }
+
+  public addStageStartListener(
+    listener: (
+      stage: number,
+      map?: StageMap,
+      mode?: 'coop' | 'versus',
+      versusSubMode?: 'classic' | 'payload',
+      mapSize?: 'classic' | 'large' | 'giant'
+    ) => void
+  ): () => void {
+    this.stageStartListeners.add(listener);
+    return () => {
+      this.stageStartListeners.delete(listener);
+    };
   }
 
   public setCallbacks(callbacks: LocalP2PCallbacks) {
@@ -101,14 +130,14 @@ export class LocalP2PService {
       const localDesc = this.peerConnection.localDescription;
       if (!localDesc) throw new Error('Failed to generate local SDP offer');
 
-      // Publish offer to fast signaling relay
+      // Publish offer to fast signaling relay as text/plain
       await fetch(`https://ntfy.sh/bc1990-${this.roomCode}-offer`, {
         method: 'POST',
         body: JSON.stringify(localDesc),
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
       });
 
-      // Listen for Guest answer via SSE
+      // Listen for Guest answer via SSE + periodic poll fallback
       this.listenForAnswer();
 
       return this.roomCode;
@@ -126,23 +155,69 @@ export class LocalP2PService {
     this.disconnect();
     this.role = 'guest';
     this.roomCode = roomCode.trim();
-    this.updateState('connecting', `CONNECTING TO ROOM ${this.roomCode}...`);
+    this.updateState('connecting', `SEARCHING ROOM ${this.roomCode}...`);
 
     try {
-      // 1. Fetch Host offer from signaling relay
-      const resp = await fetch(`https://ntfy.sh/bc1990-${this.roomCode}-offer/raw`, {
-        cache: 'no-store',
-      });
-      if (!resp.ok) {
+      // 1. Fetch Host offer from signaling relay with retry loop (up to 15 attempts, 1s apart)
+      let offer: any = null;
+      for (let attempt = 1; attempt <= 15; attempt++) {
+        try {
+          const rawResp = await fetch(
+            `https://ntfy.sh/bc1990-${this.roomCode}-offer/raw?poll=1&since=all`,
+            { cache: 'no-store' }
+          );
+          if (rawResp.ok) {
+            const rawText = await rawResp.text();
+            if (rawText && rawText.includes('sdp')) {
+              const lines = rawText.trim().split('\n');
+              for (let i = lines.length - 1; i >= 0; i--) {
+                try {
+                  const candidate = JSON.parse(lines[i]);
+                  if (candidate && candidate.sdp) {
+                    offer = candidate;
+                    break;
+                  }
+                } catch {}
+              }
+              if (offer) break;
+            }
+          }
+
+          const jsonResp = await fetch(
+            `https://ntfy.sh/bc1990-${this.roomCode}-offer/json?poll=1&since=all`,
+            { cache: 'no-store' }
+          );
+          if (jsonResp.ok) {
+            const jsonText = await jsonResp.text();
+            if (jsonText && jsonText.includes('sdp')) {
+              const lines = jsonText.trim().split('\n');
+              for (let i = lines.length - 1; i >= 0; i--) {
+                try {
+                  const ev = JSON.parse(lines[i]);
+                  if (ev.message) {
+                    const candidate = JSON.parse(ev.message);
+                    if (candidate && candidate.sdp) {
+                      offer = candidate;
+                      break;
+                    }
+                  }
+                } catch {}
+              }
+              if (offer) break;
+            }
+          }
+        } catch {}
+
+        if (offer) break;
+        this.updateState('connecting', `LOCATING ROOM ${this.roomCode} (${attempt}/15)...`);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      if (!offer) {
         throw new Error(`ROOM ${this.roomCode} NOT FOUND. VERIFY HOST IS RUNNING.`);
       }
 
-      const offerText = await resp.text();
-      if (!offerText || !offerText.includes('sdp')) {
-        throw new Error(`INVALID OR EXPIRED ROOM CODE ${this.roomCode}`);
-      }
-
-      const offer = JSON.parse(offerText);
+      this.updateState('connecting', 'EXCHANGING HANDSHAKE...');
 
       this.peerConnection = new RTCPeerConnection({ iceServers: this.iceServers });
 
@@ -160,12 +235,14 @@ export class LocalP2PService {
 
       const localDesc = this.peerConnection.localDescription;
 
-      // Publish answer to Host
+      // Publish answer to Host as text/plain
       await fetch(`https://ntfy.sh/bc1990-${this.roomCode}-answer`, {
         method: 'POST',
         body: JSON.stringify(localDesc),
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
       });
+
+      this.updateState('connecting', 'HANDSHAKE SENT! WAITING FOR PEER...');
     } catch (err: any) {
       console.error('Failed to join P2P room:', err);
       this.updateState('error', err?.message || 'FAILED TO JOIN ROOM');
@@ -218,28 +295,104 @@ export class LocalP2PService {
   private listenForAnswer() {
     if (this.sseEventSource) {
       this.sseEventSource.close();
+      this.sseEventSource = null;
+    }
+    if (this.answerPollInterval !== null) {
+      clearInterval(this.answerPollInterval);
+      this.answerPollInterval = null;
     }
 
-    const sseUrl = `https://ntfy.sh/bc1990-${this.roomCode}-answer/sse`;
-    this.sseEventSource = new EventSource(sseUrl);
-
-    this.sseEventSource.onmessage = async (e) => {
-      try {
-        const eventData = JSON.parse(e.data);
-        if (eventData.message) {
-          const answer = JSON.parse(eventData.message);
-          if (answer.sdp && this.peerConnection && this.peerConnection.signalingState !== 'stable') {
-            await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            this.sseEventSource?.close();
+    const applyAnswer = async (answerObj: any) => {
+      if (answerObj?.sdp && this.peerConnection && this.peerConnection.signalingState !== 'stable') {
+        try {
+          await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answerObj));
+          if (this.sseEventSource) {
+            this.sseEventSource.close();
             this.sseEventSource = null;
+          }
+          if (this.answerPollInterval !== null) {
+            clearInterval(this.answerPollInterval);
+            this.answerPollInterval = null;
+          }
+        } catch (e) {
+          console.warn('Error applying remote answer:', e);
+        }
+      }
+    };
+
+    // 1. Listen via SSE
+    const sseUrl = `https://ntfy.sh/bc1990-${this.roomCode}-answer/sse`;
+    try {
+      this.sseEventSource = new EventSource(sseUrl);
+      this.sseEventSource.onmessage = async (e) => {
+        try {
+          const eventData = JSON.parse(e.data);
+          if (eventData.message) {
+            try {
+              const answer = JSON.parse(eventData.message);
+              await applyAnswer(answer);
+            } catch {}
+          }
+        } catch {}
+      };
+      this.sseEventSource.onerror = () => {};
+    } catch {}
+
+    // 2. Active Polling fallback every 1000ms with since=all
+    this.answerPollInterval = window.setInterval(async () => {
+      if (!this.peerConnection || this.peerConnection.signalingState === 'stable' || this.state === 'connected') {
+        if (this.answerPollInterval !== null) {
+          clearInterval(this.answerPollInterval);
+          this.answerPollInterval = null;
+        }
+        return;
+      }
+
+      try {
+        const rawResp = await fetch(
+          `https://ntfy.sh/bc1990-${this.roomCode}-answer/raw?poll=1&since=all`,
+          { cache: 'no-store' }
+        );
+        if (rawResp.ok) {
+          const rawText = await rawResp.text();
+          if (rawText && rawText.includes('sdp')) {
+            const lines = rawText.trim().split('\n');
+            for (let i = lines.length - 1; i >= 0; i--) {
+              try {
+                const cand = JSON.parse(lines[i]);
+                if (cand?.sdp) {
+                  await applyAnswer(cand);
+                  return;
+                }
+              } catch {}
+            }
+          }
+        }
+
+        const jsonResp = await fetch(
+          `https://ntfy.sh/bc1990-${this.roomCode}-answer/json?poll=1&since=all`,
+          { cache: 'no-store' }
+        );
+        if (jsonResp.ok) {
+          const jsonText = await jsonResp.text();
+          if (jsonText && jsonText.includes('sdp')) {
+            const lines = jsonText.trim().split('\n');
+            for (let i = lines.length - 1; i >= 0; i--) {
+              try {
+                const ev = JSON.parse(lines[i]);
+                if (ev?.message) {
+                  const parsed = JSON.parse(ev.message);
+                  if (parsed?.sdp) {
+                    await applyAnswer(parsed);
+                    return;
+                  }
+                }
+              } catch {}
+            }
           }
         }
       } catch {}
-    };
-
-    this.sseEventSource.onerror = () => {
-      // Automatic reconnect handled by EventSource
-    };
+    }, 1000);
   }
 
   private setupDataChannel(channel: RTCDataChannel) {
@@ -285,7 +438,24 @@ export class LocalP2PService {
           this.callbacks?.onTaunt?.(msg.payload);
           break;
         case 'stage_start':
-          this.callbacks?.onStageStart?.(msg.payload?.stage, msg.payload?.map);
+          this.callbacks?.onStageStart?.(
+            msg.payload?.stage,
+            msg.payload?.map,
+            msg.payload?.mode,
+            msg.payload?.versusSubMode,
+            msg.payload?.mapSize
+          );
+          for (const listener of this.stageStartListeners) {
+            try {
+              listener(
+                msg.payload?.stage,
+                msg.payload?.map,
+                msg.payload?.mode,
+                msg.payload?.versusSubMode,
+                msg.payload?.mapSize
+              );
+            } catch {}
+          }
           break;
         case 'pause':
           this.callbacks?.onRemotePause?.(msg.payload);
@@ -308,6 +478,12 @@ export class LocalP2PService {
    */
   public sendMessage(type: P2PMessage['type'], payload: any) {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
+
+    // Backpressure guard: discard redundant snapshots or inputs if outgoing buffer is saturated (> 32KB)
+    // Prevents packet queue buildup, Wi-Fi latency waves, and memory bloat on mobile
+    if (this.dataChannel.bufferedAmount > 32768 && (type === 'snapshot' || type === 'input')) {
+      return;
+    }
 
     try {
       const msg: P2PMessage = {
@@ -343,8 +519,14 @@ export class LocalP2PService {
   /**
    * Synchronize Stage deployment
    */
-  public sendStageStart(stage: number, map?: StageMap) {
-    this.sendMessage('stage_start', { stage, map });
+  public sendStageStart(
+    stage: number,
+    map?: StageMap,
+    mode?: 'coop' | 'versus',
+    versusSubMode?: 'classic' | 'payload',
+    mapSize?: 'classic' | 'large' | 'giant'
+  ) {
+    this.sendMessage('stage_start', { stage, map, mode, versusSubMode, mapSize });
   }
 
   /**
@@ -380,7 +562,7 @@ export class LocalP2PService {
 
       const timeout = setTimeout(() => {
         resolve();
-      }, 1500);
+      }, 2500);
 
       const checkState = () => {
         if (pc.iceGatheringState === 'complete') {
@@ -396,6 +578,11 @@ export class LocalP2PService {
 
   public disconnect() {
     this.stopPingLoop();
+
+    if (this.answerPollInterval !== null) {
+      clearInterval(this.answerPollInterval);
+      this.answerPollInterval = null;
+    }
 
     if (this.sseEventSource) {
       this.sseEventSource.close();

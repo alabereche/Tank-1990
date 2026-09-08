@@ -20,6 +20,33 @@ import {
 import { BLOCK_SIZE, BadwaterWaypoint } from './maps';
 
 export class SpriteRenderer {
+  // --- Offscreen Sprite Cache for High-Performance GPU Blitting ---
+  private static spriteCache: Map<string, HTMLCanvasElement> = new Map();
+
+  private static getOrCreateSprite(
+    key: string,
+    width: number,
+    height: number,
+    renderFn: (c: CanvasRenderingContext2D) => void
+  ): HTMLCanvasElement | null {
+    if (typeof document === 'undefined') return null;
+    let cached = SpriteRenderer.spriteCache.get(key);
+    if (cached) return cached;
+    try {
+      cached = document.createElement('canvas');
+      cached.width = width;
+      cached.height = height;
+      const c = cached.getContext('2d', { alpha: true });
+      if (c) {
+        c.imageSmoothingEnabled = false;
+        renderFn(c);
+        SpriteRenderer.spriteCache.set(key, cached);
+        return cached;
+      }
+    } catch {}
+    return null;
+  }
+
   /**
    * Renders a 16x16 Brick sub-tile with 4-quadrant damage mask
    * mask: 4-bit integer (1: TL, 2: TR, 4: BL, 8: BR)
@@ -31,12 +58,25 @@ export class SpriteRenderer {
     mask: number = 15
   ) {
     if (mask === 0) return;
+    const sprite = SpriteRenderer.getOrCreateSprite(`brick_${mask}`, 16, 16, (c) => {
+      SpriteRenderer.drawProceduralBrick(c, 0, 0, mask);
+    });
+    if (sprite) {
+      ctx.drawImage(sprite, x, y);
+      return;
+    }
+    SpriteRenderer.drawProceduralBrick(ctx, x, y, mask);
+  }
+
+  public static drawProceduralBrick(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    mask: number = 15
+  ) {
+    if (mask === 0) return;
 
     // Draw intact quadrants (8x8 each)
-    // Quadrant 0: Top-Left (mask & 1)
-    // Quadrant 1: Top-Right (mask & 2)
-    // Quadrant 2: Bottom-Left (mask & 4)
-    // Quadrant 3: Bottom-Right (mask & 8)
     const renderQuadrant = (qx: number, qy: number) => {
       // 8x8 brick texture
       ctx.fillStyle = '#b84418'; // Main terracotta brick
@@ -68,6 +108,17 @@ export class SpriteRenderer {
    * Renders a 16x16 Steel sub-tile with metallic bevels and rivets
    */
   public static renderSteel(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    const sprite = SpriteRenderer.getOrCreateSprite('steel', 16, 16, (c) => {
+      SpriteRenderer.drawProceduralSteel(c, 0, 0);
+    });
+    if (sprite) {
+      ctx.drawImage(sprite, x, y);
+      return;
+    }
+    SpriteRenderer.drawProceduralSteel(ctx, x, y);
+  }
+
+  public static drawProceduralSteel(ctx: CanvasRenderingContext2D, x: number, y: number) {
     // Metal base
     ctx.fillStyle = '#b4b4b4';
     ctx.fillRect(x, y, 16, 16);
@@ -110,6 +161,23 @@ export class SpriteRenderer {
     y: number,
     animFrame: number
   ) {
+    const frame = animFrame % 2;
+    const sprite = SpriteRenderer.getOrCreateSprite(`water_${frame}`, 16, 16, (c) => {
+      SpriteRenderer.drawProceduralWater(c, 0, 0, frame);
+    });
+    if (sprite) {
+      ctx.drawImage(sprite, x, y);
+      return;
+    }
+    SpriteRenderer.drawProceduralWater(ctx, x, y, animFrame);
+  }
+
+  public static drawProceduralWater(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    animFrame: number
+  ) {
     // Deep blue background
     ctx.fillStyle = '#2038ec';
     ctx.fillRect(x, y, 16, 16);
@@ -141,6 +209,17 @@ export class SpriteRenderer {
    * Renders a 16x16 Ice sub-tile
    */
   public static renderIce(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    const sprite = SpriteRenderer.getOrCreateSprite('ice', 16, 16, (c) => {
+      SpriteRenderer.drawProceduralIce(c, 0, 0);
+    });
+    if (sprite) {
+      ctx.drawImage(sprite, x, y);
+      return;
+    }
+    SpriteRenderer.drawProceduralIce(ctx, x, y);
+  }
+
+  public static drawProceduralIce(ctx: CanvasRenderingContext2D, x: number, y: number) {
     // Base pale cyan/white
     ctx.fillStyle = '#d0e0ec';
     ctx.fillRect(x, y, 16, 16);
@@ -161,6 +240,17 @@ export class SpriteRenderer {
    * Renders a 16x16 Mud sub-tile (swampy muddy terrain with authentic NES palette)
    */
   public static renderMud(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    const sprite = SpriteRenderer.getOrCreateSprite('mud', 16, 16, (c) => {
+      SpriteRenderer.drawProceduralMud(c, 0, 0);
+    });
+    if (sprite) {
+      ctx.drawImage(sprite, x, y);
+      return;
+    }
+    SpriteRenderer.drawProceduralMud(ctx, x, y);
+  }
+
+  public static drawProceduralMud(ctx: CanvasRenderingContext2D, x: number, y: number) {
     // 1. Deep damp soil base
     ctx.fillStyle = '#382010';
     ctx.fillRect(x, y, 16, 16);
@@ -201,6 +291,17 @@ export class SpriteRenderer {
    * Renders a 16x16 Trees / Foliage sub-tile (drawn in top layer over tanks)
    */
   public static renderTrees(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    const sprite = SpriteRenderer.getOrCreateSprite('trees', 16, 16, (c) => {
+      SpriteRenderer.drawProceduralTrees(c, 0, 0);
+    });
+    if (sprite) {
+      ctx.drawImage(sprite, x, y);
+      return;
+    }
+    SpriteRenderer.drawProceduralTrees(ctx, x, y);
+  }
+
+  public static drawProceduralTrees(ctx: CanvasRenderingContext2D, x: number, y: number) {
     // Dark forest green base
     ctx.fillStyle = '#007800';
     ctx.fillRect(x, y, 16, 16);
@@ -232,6 +333,23 @@ export class SpriteRenderer {
    * Renders the 32x32 Phoenix / Eagle Base Emblem
    */
   public static renderBase(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    state: BaseState,
+    palette: 'gold' | 'crimson' = 'gold'
+  ) {
+    const sprite = SpriteRenderer.getOrCreateSprite(`base_${palette}_${state}`, 32, 32, (c) => {
+      SpriteRenderer.drawProceduralBase(c, 0, 0, state, palette);
+    });
+    if (sprite) {
+      ctx.drawImage(sprite, x, y);
+      return;
+    }
+    SpriteRenderer.drawProceduralBase(ctx, x, y, state, palette);
+  }
+
+  public static drawProceduralBase(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
@@ -584,24 +702,37 @@ export class SpriteRenderer {
     cy: number,
     tick: number
   ) {
-    const colors = ['#ffffff', '#00f8f8', '#0078f8', '#e8f800'];
+    const colors = ['#ffffff', '#00f8f8', '#0090ff', '#ffe820'];
     const color = colors[Math.floor(tick / 3) % colors.length];
 
     ctx.save();
+    // 1. Heavy Outer Energy Forcefield Ring (3px bold stroke)
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 19, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 4 spinning energy nodes around ring
-    const rot = (tick * 0.15) % (Math.PI * 2);
+    // 2. Inner Crisp White Energy Ring
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 3. 4 Heavy Orbiting Energy Node Brackets (with sharp black rim for contrast)
+    const rot = (tick * 0.12) % (Math.PI * 2);
     for (let i = 0; i < 4; i++) {
       const a = rot + (i * Math.PI) / 2;
-      const px = cx + Math.cos(a) * 18;
-      const py = cy + Math.sin(a) * 18;
+      const px = Math.floor(cx + Math.cos(a) * 19);
+      const py = Math.floor(cy + Math.sin(a) * 19);
+
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(px - 3, py - 3, 6, 6);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(px - 2, py - 2, 4, 4);
+      ctx.fillStyle = color;
+      ctx.fillRect(px - 1, py - 1, 2, 2);
     }
     ctx.restore();
   }
@@ -1038,15 +1169,18 @@ export class SpriteRenderer {
 
   /**
    * Renders an Active Smoke Screen (Square Billowing NES Pixel Smoke Cloud)
-   * Completely square, large footprint (112x112px), uniform density across the area
-   * without any center target/tell, fully obscuring any tanks or terrain beneath.
+   * High-contrast, dense arcade billowing white/silver clouds that fully obscure
+   * tanks and battlefield without any transparency loss on dark mobile screens.
+   * Ultra-lightweight: ~15 fast fillRect calls with zero loop drag.
    */
   public static renderSmokeScreen(
     ctx: CanvasRenderingContext2D,
     smoke: ActiveSmokeScreen
   ) {
     ctx.save();
-    const globalFade = smoke.duration < 90 ? smoke.duration / 90 : 1;
+    // Global fade out smoothly only during the final 60 ticks
+    const globalFade = smoke.duration < 60 ? smoke.duration / 60 : 1;
+    ctx.globalAlpha = Math.max(0.35, globalFade);
 
     const half = smoke.radius; // 56px (total 112x112px square)
     const cx = Math.floor(smoke.x);
@@ -1054,109 +1188,72 @@ export class SpriteRenderer {
     const left = cx - half;
     const top = cy - half;
     const size = half * 2; // 112px
+    const cornerStep = 10;
 
-    // 1. Base Dense Charcoal Square Body (Stepped pixel corners for authentic arcade silhouette)
-    const cornerStep = 8;
-    ctx.globalAlpha = 0.90 * globalFade;
-    ctx.fillStyle = '#1c1c1c';
-
-    // Horizontal cross band
+    // 1. High-Contrast Outer Silhouette (Dark charcoal/navy rim)
+    ctx.fillStyle = '#1c2430';
     ctx.fillRect(left, top + cornerStep, size, size - cornerStep * 2);
-    // Vertical cross band
     ctx.fillRect(left + cornerStep, top, size - cornerStep * 2, size);
-    // 4 Corner pixel bevels (4x4)
-    ctx.fillRect(left + 4, top + 4, 4, 4);
-    ctx.fillRect(left + size - 8, top + 4, 4, 4);
-    ctx.fillRect(left + 4, top + size - 8, 4, 4);
-    ctx.fillRect(left + size - 8, top + size - 8, 4, 4);
+    ctx.fillRect(left + 4, top + 4, size - 8, size - 8);
 
-    // 2. Uniform Billowing Pixel Blocks (8x8 pixel blocks)
-    // Distributed evenly across the whole square footprint — NO center focal point!
-    const animTick = Math.floor(Date.now() / 150);
-    const numBlocks = Math.floor(size / 8); // 14 blocks
+    // 2. Solid Dense Cloud Mass (100% opaque light cloud silver/white)
+    ctx.fillStyle = '#d6e2ee';
+    ctx.fillRect(left + 2, top + cornerStep + 2, size - 4, size - (cornerStep + 2) * 2);
+    ctx.fillRect(left + cornerStep + 2, top + 2, size - (cornerStep + 2) * 2, size - 4);
+    ctx.fillRect(left + 6, top + 6, size - 12, size - 12);
 
-    for (let r = 0; r < numBlocks; r++) {
-      for (let c = 0; c < numBlocks; c++) {
-        // Skip outer-most corner cuts to retain stepped pixel silhouette
-        if (
-          (r === 0 && (c === 0 || c === numBlocks - 1)) ||
-          (r === numBlocks - 1 && (c === 0 || c === numBlocks - 1))
-        ) {
-          continue;
-        }
+    // 3. Billowing Arcade Cloud Clusters (Stylized retro billows with pure white highlights)
+    const animTick = Math.floor(Date.now() / 180) % 2;
+    const puffOffset = animTick === 0 ? 0 : 2;
 
-        const bx = left + c * 8;
-        const by = top + r * 8;
+    // Cloud clusters: center & quadrants
+    const puffs = [
+      // Center puffs
+      { x: cx - 22, y: cy - 22, w: 44, h: 44, col: '#ffffff' },
+      // Top-left
+      { x: left + 14 + puffOffset, y: top + 14, w: 32, h: 28, col: '#edf4fa' },
+      // Top-right
+      { x: left + 62, y: top + 14 + puffOffset, w: 34, h: 28, col: '#ffffff' },
+      // Bottom-left
+      { x: left + 14, y: top + 64 + puffOffset, w: 34, h: 32, col: '#b8cce0' },
+      // Bottom-right
+      { x: left + 64 - puffOffset, y: top + 64, w: 32, h: 32, col: '#d0e0f0' },
+      // Upper crest
+      { x: cx - 20, y: top + 6, w: 40, h: 18, col: '#ffffff' },
+      // Lower shaded crest
+      { x: cx - 24, y: top + size - 24, w: 48, h: 16, col: '#98acc0' },
+      // Left crest
+      { x: left + 6, y: cy - 20, w: 18, h: 40, col: '#e2edf6' },
+      // Right crest
+      { x: left + size - 24, y: cy - 20, w: 18, h: 40, col: '#c8d8ea' },
+    ];
 
-        // Deterministic pseudo-random variation based on grid pos + time
-        const hash = (r * 23 + c * 41 + animTick * 11) % 100;
-
-        let blockColor = '#303030';
-        let blockAlpha = 0.65;
-
-        if (hash < 20) {
-          blockColor = '#242424';
-          blockAlpha = 0.85;
-        } else if (hash < 45) {
-          blockColor = '#3c3c3c';
-          blockAlpha = 0.75;
-        } else if (hash < 70) {
-          blockColor = '#545454';
-          blockAlpha = 0.70;
-        } else if (hash < 88) {
-          blockColor = '#6c6c6c';
-          blockAlpha = 0.65;
-        } else {
-          blockColor = '#808080';
-          blockAlpha = 0.60;
-        }
-
-        ctx.globalAlpha = blockAlpha * globalFade;
-        ctx.fillStyle = blockColor;
-        ctx.fillRect(bx, by, 8, 8);
-
-        // Retro NES checkered dither pattern on alternating blocks
-        if ((r + c) % 2 === 0) {
-          ctx.fillStyle = '#202020';
-          ctx.globalAlpha = 0.35 * globalFade;
-          ctx.fillRect(bx, by, 4, 4);
-          ctx.fillRect(bx + 4, by + 4, 4, 4);
-        }
-      }
+    for (const p of puffs) {
+      ctx.fillStyle = p.col;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      // Highlight rim on puffs
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(p.x + 2, p.y + 2, Math.floor(p.w * 0.5), 3);
     }
 
-    // 3. Billowing Square Edge Teeth (Active fluctuating pixel perimeter)
-    const edgeTime = Date.now() * 0.0035;
-    ctx.fillStyle = '#505050';
-    for (let i = 1; i < numBlocks - 1; i++) {
-      if (Math.sin(edgeTime + i * 1.4) > 0.25) {
-        ctx.globalAlpha = 0.75 * globalFade;
-        ctx.fillRect(left + i * 8, top - 3, 8, 3); // Top edge puff
-      }
-      if (Math.cos(edgeTime + i * 1.6) > 0.25) {
-        ctx.globalAlpha = 0.75 * globalFade;
-        ctx.fillRect(left + i * 8, top + size, 8, 3); // Bottom edge puff
-      }
-      if (Math.sin(edgeTime + i * 1.8) > 0.25) {
-        ctx.globalAlpha = 0.75 * globalFade;
-        ctx.fillRect(left - 3, top + i * 8, 3, 8); // Left edge puff
-      }
-      if (Math.cos(edgeTime + i * 1.2) > 0.25) {
-        ctx.globalAlpha = 0.75 * globalFade;
-        ctx.fillRect(left + size, top + i * 8, 3, 8); // Right edge puff
-      }
-    }
+    // 4. Stepped Cloud Billow Teeth around perimeter (animated pixel breathing)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx - 16, top - 2, 32, 4);
+    ctx.fillRect(cx - 16, top + size - 2, 32, 4);
+    ctx.fillRect(left - 2, cy - 16, 4, 32);
+    ctx.fillRect(left + size - 2, cy - 16, 4, 32);
 
-    // 4. Square Drifting Particles (Billowing pixel chunks)
-    for (const p of smoke.particles) {
-      ctx.globalAlpha = p.alpha * globalFade;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(
-        Math.floor(p.x - p.size / 2),
-        Math.floor(p.y - p.size / 2),
-        Math.floor(p.size),
-        Math.floor(p.size)
-      );
+    // 5. Square Drifting Sparks/Smoke Particles (if any)
+    if (smoke.particles && smoke.particles.length > 0) {
+      for (const p of smoke.particles) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(
+          Math.floor(p.x - p.size / 2),
+          Math.floor(p.y - p.size / 2),
+          Math.floor(p.size),
+          Math.floor(p.size)
+        );
+      }
     }
 
     ctx.restore();
@@ -1164,6 +1261,7 @@ export class SpriteRenderer {
 
   /**
    * Renders a Bouncing Grenade with altitude, shadow, and sparking fuse
+   * High-contrast 14px arcade design with bold rim, vibrant body, and bright spark.
    */
   public static renderBouncingGrenade(
     ctx: CanvasRenderingContext2D,
@@ -1171,42 +1269,77 @@ export class SpriteRenderer {
   ) {
     ctx.save();
 
-    // 1. Ground shadow (scales inversely with height z)
-    const shadowScale = Math.max(0.3, 1 - grenade.z * 0.025);
-    const shadowAlpha = Math.max(0.15, 0.5 - grenade.z * 0.02);
-    ctx.fillStyle = `rgba(0, 0, 0, ${shadowAlpha})`;
+    const gz = Math.max(0, grenade.z);
+    const gx = Math.floor(grenade.x);
+    const gy = Math.floor(grenade.y - gz);
+
+    // 1. High-Contrast Ground Target Shadow (Scales with altitude)
+    const shadowScale = Math.max(0.4, 1 - gz * 0.025);
+    // Outer contrast beacon
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.fillRect(
+      Math.floor(grenade.x - 7 * shadowScale),
+      Math.floor(grenade.y - 2 * shadowScale),
+      Math.floor(14 * shadowScale),
+      Math.floor(4 * shadowScale)
+    );
+    // Core black shadow
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(
+      Math.floor(grenade.x - 5 * shadowScale),
+      Math.floor(grenade.y - 1.5 * shadowScale),
+      Math.floor(10 * shadowScale),
+      Math.floor(3 * shadowScale)
+    );
+
+    // 2. Black Outer Rim Outline (Radius 7.5px) for 100% background contrast
+    ctx.fillStyle = '#000000';
     ctx.beginPath();
-    ctx.ellipse(grenade.x, grenade.y, 6 * shadowScale, 3 * shadowScale, 0, 0, Math.PI * 2);
+    ctx.arc(gx, gy, 7.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 2. Grenade elevated by altitude z
-    const gx = grenade.x;
-    const gy = grenade.y - Math.max(0, grenade.z);
-
-    // Grenade body (8x8 pixel circle)
-    ctx.fillStyle = '#204810'; // Dark olive
+    // 3. Vibrant High-Visibility Pine-Green Grenade Body (Radius 6.5px)
+    ctx.fillStyle = '#38a820';
     ctx.beginPath();
-    ctx.arc(gx, gy, 5, 0, Math.PI * 2);
+    ctx.arc(gx, gy, 6.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // Highlight
-    ctx.fillStyle = '#488828';
-    ctx.fillRect(gx - 2, gy - 3, 2, 2);
+    // 4. Segmentation Grooves
+    ctx.fillStyle = '#18580c';
+    ctx.fillRect(gx - 5, gy - 1, 10, 2);
+    ctx.fillRect(gx - 1, gy - 5, 2, 10);
 
-    // Brass fuse pin
-    ctx.fillStyle = '#d0a020';
-    ctx.fillRect(gx - 1, gy - 7, 2, 3);
+    // 5. Pulsing Red/White Detonation Warning Band
+    const isCritical = grenade.life < 60;
+    const pulseTick = Math.floor(Date.now() / (isCritical ? 60 : 120)) % 2 === 0;
+    ctx.fillStyle = pulseTick ? '#ff2020' : '#ffffff';
+    ctx.fillRect(gx - 2, gy - 2, 4, 4);
 
-    // Sparkling fuse tip
-    const spark = Math.floor(Date.now() / 60) % 2 === 0;
-    ctx.fillStyle = spark ? '#ffff00' : '#ff2000';
-    ctx.fillRect(gx - 2, gy - 9, 3, 3);
+    // 6. Crisp Specular Highlights
+    ctx.fillStyle = '#9cf838';
+    ctx.fillRect(gx - 4, gy - 4, 3, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(gx - 3, gy - 4, 1, 1);
+
+    // 7. Brass Detonator Neck & Safety Pin
+    ctx.fillStyle = '#f8d838';
+    ctx.fillRect(gx - 2, gy - 10, 4, 4);
+    ctx.fillStyle = '#a88818';
+    ctx.fillRect(gx - 1, gy - 9, 2, 2);
+
+    // 8. Dynamic Flashing Fuse Spark (White/Yellow/Flame-Orange star)
+    const sparkFrame = Math.floor(Date.now() / 45) % 3;
+    const sparkColor = sparkFrame === 0 ? '#ffffff' : sparkFrame === 1 ? '#ffff00' : '#ff4000';
+    ctx.fillStyle = sparkColor;
+    ctx.fillRect(gx - 3, gy - 14, 6, 2);
+    ctx.fillRect(gx - 1, gy - 16, 2, 6);
 
     ctx.restore();
   }
 
   /**
    * Renders a Deployable Shield Barricade (3 HP, 15s timer, directional)
+   * High-contrast, solid neon-cyan/steel forcefield barrier with zero transparency.
    */
   public static renderDeployableShield(
     ctx: CanvasRenderingContext2D,
@@ -1216,7 +1349,7 @@ export class SpriteRenderer {
 
     // 3-second expiration warning blink
     if (shield.timer < 180 && Math.floor(shield.timer / 8) % 2 === 0) {
-      ctx.globalAlpha = 0.4;
+      ctx.globalAlpha = 0.55;
     }
 
     const x = shield.x;
@@ -1224,59 +1357,77 @@ export class SpriteRenderer {
     const w = shield.width;
     const h = shield.height;
 
-    // Glowing aura
-    ctx.fillStyle = shield.hp === 3 ? 'rgba(0, 220, 255, 0.25)' : shield.hp === 2 ? 'rgba(255, 200, 0, 0.25)' : 'rgba(255, 50, 0, 0.3)';
-    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    // Palette based on HP (HP3: Cyan, HP2: Gold, HP1: Red)
+    const isHp3 = shield.hp >= 3;
+    const isHp2 = shield.hp === 2;
+    const coreColor = isHp3 ? '#00f8f8' : isHp2 ? '#f8d000' : '#ff2828';
+    const glowColor = isHp3 ? '#0088f8' : isHp2 ? '#e87000' : '#b00000';
+    const animTick = Math.floor(Date.now() / 80) % 4;
 
-    // Metallic chassis base
-    ctx.fillStyle = '#182430';
+    // 1. Black outer contrast rim
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+
+    // 2. High-voltage energy aura border (Solid)
+    ctx.fillStyle = glowColor;
     ctx.fillRect(x, y, w, h);
 
-    // Reinforced steel corner brackets
-    ctx.fillStyle = '#8090a0';
-    ctx.fillRect(x, y, 4, 4);
-    ctx.fillRect(x + w - 4, y, 4, 4);
-    ctx.fillRect(x, y + h - 4, 4, 4);
-    ctx.fillRect(x + w - 4, y + h - 4, 4, 4);
-
-    // Energy field core
-    ctx.fillStyle = shield.hp === 3 ? '#00e8ff' : shield.hp === 2 ? '#ffc020' : '#ff3820';
     if (w > h) {
-      // Horizontal barrier
-      ctx.fillRect(x + 4, y + 2, w - 8, h - 4);
-      // Scanlines
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x + 6, y + Math.floor(h / 2) - 1, w - 12, 2);
-    } else {
-      // Vertical barrier
-      ctx.fillRect(x + 2, y + 4, w - 4, h - 8);
-      // Scanlines
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x + Math.floor(w / 2) - 1, y + 6, 2, h - 12);
-    }
+      // Horizontal Barrier (32px wide, 10px high)
+      // Solid electric core
+      ctx.fillStyle = coreColor;
+      ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
 
-    // Damage cracks if hp < 3
-    if (shield.hp <= 2) {
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(x + Math.floor(w / 3), y + Math.floor(h / 3), 3, 2);
-      ctx.fillRect(x + Math.floor(w / 3) + 2, y + Math.floor(h / 3) + 2, 2, 3);
-    }
-    if (shield.hp === 1) {
+      // Brilliant white central energy beam
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x + Math.floor((w * 2) / 3), y + Math.floor(h / 2), 4, 2);
-      ctx.fillRect(x + Math.floor((w * 2) / 3) + 2, y + Math.floor(h / 2) - 3, 2, 4);
-    }
+      ctx.fillRect(x + 4, y + 4, w - 8, 2);
 
-    // 3 Status pips (HP indicator)
-    const pipColor = shield.hp >= 3 ? '#00ff60' : shield.hp === 2 ? '#ffb000' : '#ff2020';
-    ctx.fillStyle = pipColor;
-    if (w > h) {
+      // Heavy reinforced corner brackets (Solid steel metallic silver)
+      ctx.fillStyle = '#d0e4f4';
+      ctx.fillRect(x, y, 4, h);
+      ctx.fillRect(x + w - 4, y, 4, h);
+      ctx.fillStyle = '#607898';
+      ctx.fillRect(x + 1, y + 1, 2, h - 2);
+      ctx.fillRect(x + w - 3, y + 1, 2, h - 2);
+
+      // Animated electric pulse node along the beam
+      ctx.fillStyle = '#ffffff';
+      const nodeX = x + 6 + ((animTick * 6) % (w - 14));
+      ctx.fillRect(nodeX, y + 3, 3, 4);
+
+      // 3 HP status pips (Solid high-visibility bright jewels)
+      const pipColor = isHp3 ? '#00ff40' : isHp2 ? '#ffcc00' : '#ff2020';
+      ctx.fillStyle = pipColor;
       for (let i = 0; i < shield.hp; i++) {
-        ctx.fillRect(x + Math.floor(w / 2) - 8 + i * 6, y + h - 3, 4, 2);
+        ctx.fillRect(x + Math.floor(w / 2) - 9 + i * 7, y + h - 3, 5, 2);
       }
     } else {
+      // Vertical Barrier (10px wide, 32px high)
+      ctx.fillStyle = coreColor;
+      ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+
+      // Brilliant white central energy beam
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + 4, y + 4, 2, h - 8);
+
+      // Heavy reinforced corner brackets
+      ctx.fillStyle = '#d0e4f4';
+      ctx.fillRect(x, y, w, 4);
+      ctx.fillRect(x, y + h - 4, w, 4);
+      ctx.fillStyle = '#607898';
+      ctx.fillRect(x + 1, y + 1, w - 2, 2);
+      ctx.fillRect(x + 1, y + h - 3, w - 2, 2);
+
+      // Animated electric pulse node
+      ctx.fillStyle = '#ffffff';
+      const nodeY = y + 6 + ((animTick * 6) % (h - 14));
+      ctx.fillRect(x + 3, nodeY, 4, 3);
+
+      // 3 HP status pips
+      const pipColor = isHp3 ? '#00ff40' : isHp2 ? '#ffcc00' : '#ff2020';
+      ctx.fillStyle = pipColor;
       for (let i = 0; i < shield.hp; i++) {
-        ctx.fillRect(x + w - 3, y + Math.floor(h / 2) - 8 + i * 6, 2, 4);
+        ctx.fillRect(x + w - 3, y + Math.floor(h / 2) - 9 + i * 7, 2, 5);
       }
     }
 

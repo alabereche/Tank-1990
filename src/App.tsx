@@ -18,6 +18,7 @@ import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './e
 import { soundManager } from './engine/SoundManager';
 import { gamepadManager, GamepadInfo } from './engine/GamepadManager';
 import { toggleFullscreen, isElectronApp, lockOrientationLandscape, isStandaloneApp } from './utils/fullscreen';
+import { localP2PService } from './services/LocalP2PService';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<GameState>(GameState.MENU);
@@ -53,6 +54,11 @@ export default function App() {
   });
 
   const [settings, setSettings] = useState<GameSettings>(() => {
+    const isMobileDevice =
+      typeof navigator !== 'undefined' &&
+      (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        (typeof window !== 'undefined' && window.innerWidth <= 960 && 'ontouchstart' in window));
+
     try {
       const saved = localStorage.getItem('battle_city_settings');
       if (saved) {
@@ -60,7 +66,7 @@ export default function App() {
         return {
           mapSize: parsed.mapSize || 'classic',
           playerSpeed: 1.1,
-          showScanlines: parsed.showScanlines !== false,
+          showScanlines: isMobileDevice ? Boolean(parsed.showScanlines) : parsed.showScanlines !== false,
           soundEnabled: parsed.soundEnabled !== false,
           windowScale: parsed.windowScale || 'large',
         };
@@ -69,7 +75,7 @@ export default function App() {
     return {
       mapSize: 'classic',
       playerSpeed: 1.1,
-      showScanlines: true,
+      showScanlines: !isMobileDevice,
       soundEnabled: true,
       windowScale: 'large',
     };
@@ -259,17 +265,75 @@ export default function App() {
     setCurrentScreen(GameState.VICTORY);
   }, [highScore]);
 
+  // Global Wi-Fi P2P Stage Start Sync (ensures guest aligns map, size, and stage even if canvas unmounted)
+  useEffect(() => {
+    const unsub = localP2PService.addStageStartListener((stage, map, mode, versusSubMode, mapSize) => {
+      soundManager.stopMenuMusic();
+      soundManager.unlockAudio();
+      setIsWifiCoopOpen(false);
+      if (mapSize) {
+        setSettings((prev) => (prev.mapSize === mapSize ? prev : { ...prev, mapSize }));
+      }
+      setCustomMap(map);
+      setCurrentStage(stage);
+      setMultiplayerConfig((prev) => {
+        const effectiveSize = versusSubMode === 'payload' ? 'large' : (mapSize || prev?.mapSize || 'classic');
+        return {
+          roomCode: prev?.roomCode || localP2PService.getRoomCode(),
+          role: prev?.role || 'guest',
+          mode: mode || prev?.mode || 'coop',
+          versusSubMode: versusSubMode || prev?.versusSubMode || 'classic',
+          mapSize: effectiveSize,
+          stage,
+          slot: prev?.slot || 2,
+        };
+      });
+      setFinalScoreData(null);
+      setCurrentScreen(GameState.STAGE_START);
+    });
+    return unsub;
+  }, []);
+
   const handleNextStage = () => {
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
-    setCurrentStage((prev) => prev + 1);
+    const nextStage = currentStage + 1;
+    setCurrentStage(nextStage);
+    setFinalScoreData(null);
     setCurrentScreen(GameState.STAGE_START);
+
+    if (multiplayerConfig && multiplayerConfig.roomCode !== 'LOCAL' && multiplayerConfig.role === 'host') {
+      const nextMap = customMap || getStageMapForPresetAndStage(
+        nextStage,
+        effectiveMapSize,
+        multiplayerConfig.mode,
+        multiplayerConfig.versusSubMode
+      );
+      localP2PService.sendStageStart(
+        nextStage,
+        nextMap,
+        multiplayerConfig.mode,
+        multiplayerConfig.versusSubMode,
+        effectiveMapSize
+      );
+    }
   };
 
   const handleRetryStage = () => {
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
+    setFinalScoreData(null);
     setCurrentScreen(GameState.STAGE_START);
+
+    if (multiplayerConfig && multiplayerConfig.roomCode !== 'LOCAL' && multiplayerConfig.role === 'host') {
+      localP2PService.sendStageStart(
+        currentStage,
+        currentActiveMap,
+        multiplayerConfig.mode,
+        multiplayerConfig.versusSubMode,
+        effectiveMapSize
+      );
+    }
   };
 
   const handleReturnToMenu = () => {
@@ -307,22 +371,27 @@ export default function App() {
     role: 'host' | 'guest';
     mode: 'coop' | 'versus';
     versusSubMode?: 'classic' | 'payload';
+    mapSize?: 'classic' | 'large' | 'giant';
+    stage?: number;
+    customMap?: StageMap;
   }) => {
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setIsWifiCoopOpen(false);
-    const effectiveSize = config.versusSubMode === 'payload' ? 'large' : settings.mapSize;
+    const effectiveSize = config.versusSubMode === 'payload' ? 'large' : (config.mapSize || settings.mapSize);
+    const stg = config.stage || 1;
     setMultiplayerConfig({
       roomCode: config.roomCode,
       role: config.role,
       mode: config.mode,
       versusSubMode: config.versusSubMode || 'classic',
       mapSize: effectiveSize,
-      stage: 1,
+      stage: stg,
       slot: config.role === 'host' ? 1 : 2,
     });
-    setCustomMap(undefined);
-    setCurrentStage(1);
+    setCustomMap(config.customMap);
+    setCurrentStage(stg);
+    setFinalScoreData(null);
     setCurrentScreen(GameState.STAGE_START);
   };
 
@@ -447,6 +516,7 @@ export default function App() {
             onNextStage={currentScreen === GameState.VICTORY ? handleNextStage : undefined}
             onRetry={handleRetryStage}
             onReturnToMenu={handleReturnToMenu}
+            isGuest={multiplayerConfig?.role === 'guest' && multiplayerConfig.roomCode !== 'LOCAL'}
           />
         ) : null}
       </main>
@@ -473,6 +543,9 @@ export default function App() {
         <WifiCoopModal
           onClose={() => setIsWifiCoopOpen(false)}
           onStartBattle={handleStartWifiCoop}
+          currentStage={currentStage}
+          mapSize={effectiveMapSize}
+          customMap={customMap}
         />
       )}
     </div>

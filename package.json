@@ -9,7 +9,8 @@
     "build": "vite build",
     "electron:build": "npm run build && electron-builder --win",
     "android:build": "npm run build && npx cap sync android && node scripts/build-apk.cjs",
-    "start": "vite preview",
+    "serve": "node server.cjs",
+    "start": "node server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
