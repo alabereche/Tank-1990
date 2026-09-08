@@ -28,20 +28,22 @@ const TankIcon: React.FC<{ color: string; core: string; size?: number }> = ({ co
 const Scoreline: React.FC<{ scoreData: GameScore; big?: boolean; is2v2?: boolean }> = ({ scoreData, big, is2v2 }) => {
   if (scoreData.payloadState) {
     const attacker = scoreData.payloadState.attackerSlot;
+    const w1 = scoreData.roundWinsP1 ?? 0;
+    const w2 = scoreData.roundWinsP2 ?? 0;
     return (
       <div className="flex flex-col items-center gap-1.5">
         <div className={`flex items-center gap-3 font-mono font-bold ${big ? 'text-2xl' : 'text-xl'}`}>
           <div className="flex items-center gap-2 text-[#4a9eff] bg-[#101826] px-3 py-1 rounded border border-[#25406b]">
             <TankIcon color={BLUE} core="#ffffff" size={big ? 10 : 8} />
-            <span>P1 {attacker === 1 ? '(BLU ATTACK)' : '(RED DEFEND)'}</span>
+            <span>P1: {w1} {attacker === 1 ? '(BLU)' : '(RED)'}</span>
           </div>
           <span className="text-zinc-400 font-pixel text-xs px-1">VS</span>
           <div className="flex items-center gap-2 text-[#ff4a4a] bg-[#261010] px-3 py-1 rounded border border-[#6b2525]">
             <TankIcon color={RED} core="#ffffff" size={big ? 10 : 8} />
-            <span>P2 {attacker === 2 ? '(BLU ATTACK)' : '(RED DEFEND)'}</span>
+            <span>P2: {w2} {attacker === 2 ? '(BLU)' : '(RED)'}</span>
           </div>
         </div>
-        <span className="text-[9px] text-amber-400 font-pixel tracking-wider">MATCH TIME: 2:30</span>
+        <span className="text-[9px] text-amber-400 font-pixel tracking-wider">FIRST TO 7 WINS — 2:30 PER ROUND</span>
       </div>
     );
   }
@@ -111,7 +113,7 @@ export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mod
                   {isAttacker ? '[BLU PUSHER] PUSH THE BOMB CART TO BASE' : '[RED DEFENDER] STOP THE CART UNTIL TIME EXPIRES'}
                 </div>
                 <div className="text-[9px] text-amber-400 font-mono tracking-widest animate-pulse">
-                  TF2 PAYLOAD — 2:30 TIME LIMIT
+                  TF2 PAYLOAD — FIRST TO 7 WINS (2:30 PER ROUND)
                 </div>
               </>
             ) : myRole ? (
@@ -136,14 +138,14 @@ export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mod
                   className="text-base tracking-widest font-bold"
                   style={{ color: winner === 1 ? BLUE : RED, textShadow: '0 0 12px currentColor' }}
                 >
-                  DELIVERY SUCCESSFUL! PLAYER {winner} WINS!
+                  DELIVERY SUCCESSFUL! PLAYER {winner} SCORES!
                 </div>
               ) : (
                 <div
                   className="text-base tracking-widest font-bold text-amber-300"
                   style={{ textShadow: '0 0 12px currentColor' }}
                 >
-                  TIME EXPIRED — DEFENSE HELD! PLAYER {winner} WINS!
+                  TIME EXPIRED — DEFENSE HELD! PLAYER {winner} SCORES!
                 </div>
               )
             ) : is2v2 ? (
@@ -170,7 +172,7 @@ export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mod
             <Scoreline scoreData={scoreData} is2v2={is2v2} />
             <div className="text-[9px] text-zinc-500 tracking-widest">
               {isPayload
-                ? 'MATCH CONCLUDED — FINAL RESULTS...'
+                ? 'SWITCHING ROLES — NEXT ROUND STARTING...'
                 : (is2v2 ? teamWinner === 'DRAW' : winner === 0)
                 ? 'ROUND WILL BE REPLAYED'
                 : 'NEXT ROUND STARTING...'}
@@ -370,33 +372,9 @@ export const MatchEndPanel: React.FC<{
       <div className="w-11/12 max-w-lg border-4 border-[#3a3a3a] bg-[#101010] px-6 py-6 flex flex-col items-center gap-4 shadow-2xl">
         <Trophy className="w-10 h-10" style={{ color, filter: `drop-shadow(0 0 10px ${color})` }} />
         <div className="text-lg tracking-widest text-center" style={{ color, textShadow: '0 0 14px currentColor' }}>
-          {isPayload ? (
-            isDeliveryWin ? (
-              <>
-                DELIVERY SUCCESSFUL!
-                <br />
-                PLAYER {winner} (BLU ATTACKER) WINS!
-              </>
-            ) : (
-              <>
-                TIME EXPIRED — DEFENSE HELD!
-                <br />
-                PLAYER {winner} (RED DEFENDER) WINS!
-              </>
-            )
-          ) : isFfa ? (
-            `PLAYER ${ffaSlot}`
-          ) : is2v2 ? (
-            `TEAM ${teamWin}`
-          ) : (
-            winner === 1 ? 'PLAYER 1' : 'PLAYER 2'
-          )}
-          {!isPayload && (
-            <>
-              <br />
-              WINS THE MATCH!
-            </>
-          )}
+          {isFfa ? `PLAYER ${ffaSlot}` : is2v2 ? `TEAM ${teamWin}` : winner === 1 ? 'PLAYER 1' : 'PLAYER 2'}
+          <br />
+          WINS THE MATCH!
         </div>
         {isFfa ? (
           <div className="font-mono font-bold text-3xl" style={{ color }}>
@@ -406,15 +384,7 @@ export const MatchEndPanel: React.FC<{
           <Scoreline scoreData={scoreData} big is2v2={is2v2} />
         )}
         <div className="text-[9px] text-zinc-500 tracking-widest">
-          {isPayload
-            ? isDeliveryWin
-              ? 'CART DELIVERED TO FINAL DESTINATION PIT'
-              : 'DEFENSE HELD BEFORE TIME EXPIRED'
-            : isFfa
-            ? 'KILL TARGET REACHED'
-            : is2v2
-            ? 'FIRST TO 5 ROUNDS ACHIEVED'
-            : 'FIRST TO 7 ROUNDS ACHIEVED'}
+          {isFfa ? 'KILL TARGET REACHED' : is2v2 ? 'FIRST TO 5 ROUNDS ACHIEVED' : 'FIRST TO 7 ROUNDS ACHIEVED'}
         </div>
 
         <div className="flex items-center gap-4 mt-2">

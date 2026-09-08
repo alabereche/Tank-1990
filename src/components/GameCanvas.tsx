@@ -966,11 +966,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   : multiplayerConfig.mode === '2v2' ? '2V2 BATTLE' : '2P CO-OP'}
               </span>
               <span className="px-2 py-0.5 bg-[#252535] border border-[#3e3e55] rounded text-[9px] text-zinc-300 font-mono font-bold">
-                {scoreData.payloadState ? 'TIME 2:30' : `ROUND ${scoreData.roundNumber || 1}`}
+                {`ROUND ${scoreData.roundNumber || 1}`}
               </span>
             </div>
 
-            {/* Center: Tournament Scoreboard (First to 7 Wins or Payload VS) */}
+            {/* Center: Tournament Scoreboard (First to 7 Wins) */}
             {(multiplayerConfig.mode === 'versus' || scoreData.roundWinsP1 !== undefined) && (
               <div className="flex items-center gap-2 bg-[#101016] px-3 py-1 rounded border border-[#2e2e40] shadow-inner">
                 {/* Player 1 Score */}
@@ -983,7 +983,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
                 {/* Separator / Target */}
                 <span className="text-[8px] font-pixel text-zinc-500 px-1">
-                  {scoreData.payloadState ? 'VS' : (multiplayerConfig?.mode === '2v2' || scoreData.teamWinsA !== undefined) ? 'FT5' : 'FT7'}
+                  {(multiplayerConfig?.mode === '2v2' || scoreData.teamWinsA !== undefined) ? 'FT5' : 'FT7'}
                 </span>
 
                 {/* Player 2 Score */}
