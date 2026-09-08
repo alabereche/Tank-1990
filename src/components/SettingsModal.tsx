@@ -361,44 +361,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   return (
     <div
       id="settings-modal-overlay"
-      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-xs p-1.5 sm:p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
         id="settings-modal-content"
-        className="relative w-full max-w-2xl max-h-[92vh] flex flex-col bg-[#161616] border-4 border-[#505050] text-white font-pixel shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-none overflow-hidden"
+        className="relative w-full max-w-2xl max-h-[96vh] sm:max-h-[92vh] flex flex-col bg-[#161616] border-2 sm:border-4 border-[#505050] text-white font-pixel shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-none overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Sticky Header */}
-        <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-[#202020] border-b-2 border-[#3c3c3c] shrink-0">
+        <div className="flex items-center justify-between px-2.5 sm:px-4 py-1.5 sm:py-2 bg-[#202020] border-b-2 border-[#3c3c3c] shrink-0">
           <div className="flex items-center gap-2 text-[#f8b800]">
-            <Settings className="w-4 h-4 text-amber-400" />
-            <h2 className="text-xs sm:text-sm tracking-wider font-bold">GAME SETTINGS</h2>
+            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+            <h2 className="text-[10px] sm:text-sm tracking-wider font-bold">GAME SETTINGS</h2>
           </div>
           <button
             id="btn-close-settings"
             onClick={onClose}
-            className="text-zinc-300 hover:text-white px-2 py-0.5 text-[9px] sm:text-[10px] border border-zinc-600 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors font-pixel active:scale-95"
+            className="text-zinc-300 hover:text-white px-2 py-0.5 text-[8.5px] sm:text-[10px] border border-zinc-600 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors font-pixel active:scale-95"
           >
             [X] CLOSE
           </button>
         </div>
 
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-3.5 text-xs select-none">
+        <div className="flex-1 overflow-y-auto px-2.5 sm:px-4 py-2 sm:py-3 space-y-2.5 sm:space-y-3.5 text-xs select-none">
           {/* Section 1: Map Size Preset */}
           <div>
-            <div className="flex items-center justify-between mb-1.5 text-[10px]">
-              <span className="text-amber-400 flex items-center gap-1.5 font-bold">
-                <MapPin className="w-3.5 h-3.5 text-amber-400" />
+            <div className="flex items-center justify-between mb-1 text-[9px] sm:text-[10px]">
+              <span className="text-amber-400 flex items-center gap-1 font-bold">
+                <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
                 <span>BATTLEFIELD MAP SIZE</span>
               </span>
-              <span className="text-zinc-400 font-mono text-[9px]">
+              <span className="text-zinc-400 font-mono text-[8px] sm:text-[9px]">
                 {MAP_SIZE_CONFIGS[settings.mapSize].size}x{MAP_SIZE_CONFIGS[settings.mapSize].size} TILES
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
               {(['classic', 'large', 'giant'] as MapSizePreset[]).map((preset, pIdx) => {
                 const isSelected = settings.mapSize === preset;
                 const isFocused = focusIndex === pIdx;
@@ -411,7 +411,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       setFocusIndex(pIdx);
                       handleSelectMapSize(preset);
                     }}
-                    className={`p-2 rounded-sm border-2 text-left transition-all ${
+                    className={`p-1.5 sm:p-2 rounded-sm border-2 text-left transition-all ${
                       isFocused
                         ? 'ring-2 ring-white scale-[1.02] shadow-[0_0_10px_rgba(248,184,0,0.6)] z-10'
                         : ''
@@ -422,18 +422,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }`}
                   >
                     <div className="flex items-center justify-between w-full mb-0.5">
-                      <span className="font-bold text-[10px] uppercase tracking-wide flex items-center gap-1">
+                      <span className="font-bold text-[8.5px] sm:text-[10px] uppercase tracking-wide flex items-center gap-1">
                         {isFocused && <span className="text-[#f8b800]">▶</span>}
                         <span>{preset}</span>
                       </span>
                       {isSelected && (
-                        <Check className="w-3 h-3 text-amber-400 stroke-[3]" />
+                        <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400 stroke-[3]" />
                       )}
                     </div>
-                    <div className="text-[9px] text-zinc-300 font-mono">
+                    <div className="text-[7.5px] sm:text-[9px] text-zinc-300 font-mono">
                       {config.size}x{config.size} ({config.canvasSize}px)
                     </div>
-                    <div className="text-[8px] text-zinc-400 line-clamp-1 mt-0.5">
+                    <div className="text-[7px] sm:text-[8px] text-zinc-400 line-clamp-1 mt-0.5 hidden xs:block">
                       {preset === 'classic' ? 'Original 1990 NES' : preset === 'large' ? 'Expanded +70%' : 'Super Arena'}
                     </div>
                   </button>
@@ -444,12 +444,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Section 2: Game Window Size */}
           <div>
-            <div className="flex items-center justify-between mb-1.5 text-[10px]">
-              <span className="text-amber-400 flex items-center gap-1.5 font-bold">
-                <Scaling className="w-3.5 h-3.5 text-amber-400" />
+            <div className="flex items-center justify-between mb-1 text-[9px] sm:text-[10px]">
+              <span className="text-amber-400 flex items-center gap-1 font-bold">
+                <Scaling className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
                 <span>GAME WINDOW SIZE</span>
               </span>
-              <span className="text-zinc-400 font-mono text-[9px]">
+              <span className="text-zinc-400 font-mono text-[8px] sm:text-[9px]">
                 {settings.windowScale === 'max'
                   ? 'FIT SCREEN'
                   : settings.windowScale === 'large'
@@ -458,7 +458,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
               {[
                 {
                   scale: 'standard' as WindowScalePreset,
@@ -489,7 +489,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       setFocusIndex(3 + wIdx);
                       handleSelectWindowScale(w.scale);
                     }}
-                    className={`p-2 rounded-sm border-2 text-left transition-all ${
+                    className={`p-1.5 sm:p-2 rounded-sm border-2 text-left transition-all ${
                       isFocused
                         ? 'ring-2 ring-white scale-[1.02] shadow-[0_0_10px_rgba(248,184,0,0.6)] z-10'
                         : ''
@@ -500,16 +500,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }`}
                   >
                     <div className="flex items-center justify-between w-full mb-0.5">
-                      <span className="font-bold text-[10px] uppercase tracking-wide flex items-center gap-1">
+                      <span className="font-bold text-[8.5px] sm:text-[10px] uppercase tracking-wide flex items-center gap-1">
                         {isFocused && <span className="text-[#f8b800]">▶</span>}
                         <span>{w.name}</span>
                       </span>
-                      {isSelected && <Check className="w-3 h-3 text-amber-400 stroke-[3]" />}
+                      {isSelected && <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400 stroke-[3]" />}
                     </div>
-                    <div className="text-[9px] text-zinc-300 font-mono">
+                    <div className="text-[7.5px] sm:text-[9px] text-zinc-300 font-mono">
                       {w.ratio}
                     </div>
-                    <div className="text-[8px] text-zinc-400 line-clamp-1 mt-0.5">
+                    <div className="text-[7px] sm:text-[8px] text-zinc-400 line-clamp-1 mt-0.5 hidden xs:block">
                       {w.desc}
                     </div>
                   </button>
@@ -519,15 +519,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Section 3: Display & Audio */}
-          <div className="pt-2 border-t border-[#303030]">
-            <div className="flex items-center justify-between mb-1.5 text-[10px]">
-              <span className="text-amber-400 flex items-center gap-1.5 font-bold">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <div className="pt-1.5 sm:pt-2 border-t border-[#303030]">
+            <div className="flex items-center justify-between mb-1 text-[9px] sm:text-[10px]">
+              <span className="text-amber-400 flex items-center gap-1 font-bold">
+                <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
                 <span>DISPLAY & AUDIO</span>
               </span>
             </div>
 
-            <div className={`grid ${isElectron ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
+            <div className={`grid ${isElectron ? 'grid-cols-2' : 'grid-cols-3'} gap-1.5 sm:gap-2`}>
               {/* Fullscreen Toggle */}
               {!isElectron && (
                 <button
@@ -536,7 +536,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     setFocusIndex(6);
                     handleToggleFullscreen();
                   }}
-                  className={`p-2 rounded-sm border-2 flex items-center justify-between transition-all ${
+                  className={`p-1.5 sm:p-2 rounded-sm border-2 flex items-center justify-between transition-all ${
                     focusIndex === 6 ? 'ring-2 ring-white scale-[1.02]' : ''
                   } ${
                     currentFullscreen
@@ -544,16 +544,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       : 'bg-[#1c1c1c] border-[#383838] text-zinc-400 hover:border-zinc-500'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 text-left">
+                  <div className="flex items-center gap-1 text-left">
                     {currentFullscreen ? (
-                      <Minimize2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />
                     ) : (
-                      <Maximize2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />
                     )}
-                    <span className="text-[9px] sm:text-[10px] font-bold">FULLSCREEN</span>
+                    <span className="text-[8px] sm:text-[10px] font-bold">FULLSCREEN</span>
                   </div>
                   <span
-                    className={`text-[8px] px-1 py-0.5 rounded font-mono ${
+                    className={`text-[7px] sm:text-[8px] px-1 py-0.5 rounded font-mono ${
                       currentFullscreen ? 'bg-amber-800 text-white' : 'bg-zinc-800 text-zinc-400'
                     }`}
                   >
@@ -569,7 +569,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   setFocusIndex(7);
                   handleToggleScanlines();
                 }}
-                className={`p-2 rounded-sm border-2 flex items-center justify-between transition-all ${
+                className={`p-1.5 sm:p-2 rounded-sm border-2 flex items-center justify-between transition-all ${
                   focusIndex === 7 ? 'ring-2 ring-white scale-[1.02]' : ''
                 } ${
                   settings.showScanlines
@@ -577,12 +577,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'bg-[#1c1c1c] border-[#383838] text-zinc-400 hover:border-zinc-500'
                 }`}
               >
-                <div className="flex items-center gap-1.5 text-left">
-                  <Tv className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="text-[9px] sm:text-[10px] font-bold">CRT LINES</span>
+                <div className="flex items-center gap-1 text-left">
+                  <Tv className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-[8px] sm:text-[10px] font-bold">CRT LINES</span>
                 </div>
                 <span
-                  className={`text-[8px] px-1 py-0.5 rounded font-mono ${
+                  className={`text-[7px] sm:text-[8px] px-1 py-0.5 rounded font-mono ${
                     settings.showScanlines ? 'bg-amber-800 text-white' : 'bg-zinc-800 text-zinc-400'
                   }`}
                 >
@@ -597,7 +597,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   setFocusIndex(8);
                   handleToggleSound();
                 }}
-                className={`p-2 rounded-sm border-2 flex items-center justify-between transition-all ${
+                className={`p-1.5 sm:p-2 rounded-sm border-2 flex items-center justify-between transition-all ${
                   focusIndex === 8 ? 'ring-2 ring-white scale-[1.02]' : ''
                 } ${
                   settings.soundEnabled
@@ -605,16 +605,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'bg-[#1c1c1c] border-[#383838] text-zinc-400 hover:border-zinc-500'
                 }`}
               >
-                <div className="flex items-center gap-1.5 text-left">
+                <div className="flex items-center gap-1 text-left">
                   {settings.soundEnabled ? (
-                    <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <Volume2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />
                   ) : (
-                    <VolumeX className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                    <VolumeX className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-400 shrink-0" />
                   )}
-                  <span className="text-[9px] sm:text-[10px] font-bold">SOUND FX</span>
+                  <span className="text-[8px] sm:text-[10px] font-bold">SOUND FX</span>
                 </div>
                 <span
-                  className={`text-[8px] px-1 py-0.5 rounded font-mono ${
+                  className={`text-[7px] sm:text-[8px] px-1 py-0.5 rounded font-mono ${
                     settings.soundEnabled ? 'bg-amber-800 text-white' : 'bg-zinc-800 text-zinc-400'
                   }`}
                 >
@@ -626,8 +626,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Sticky Footer */}
-        <div className="px-3 sm:px-4 py-2 bg-[#202020] border-t-2 border-[#3c3c3c] flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-[#202020] border-t-2 border-[#3c3c3c] flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {onExitMatch && (
               <button
                 id="btn-exit-match-modal"
@@ -636,9 +636,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   soundManager.playMenuSelect();
                   onExitMatch();
                 }}
-                className="px-3 py-1.5 bg-red-900/90 hover:bg-red-800 border-2 border-red-500 text-white font-pixel text-[9px] sm:text-[10px] rounded active:scale-95 shadow cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 py-1 sm:py-1.5 bg-red-900/90 hover:bg-red-800 border-2 border-red-500 text-white font-pixel text-[8px] sm:text-[10px] rounded active:scale-95 shadow cursor-pointer flex items-center gap-1"
               >
-                <LogOut className="w-3 h-3" />
+                <LogOut className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                 <span>EXIT MATCH</span>
               </button>
             )}
@@ -650,7 +650,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   soundManager.playMenuSelect();
                   window.electronAPI?.quit?.();
                 }}
-                className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-pixel text-[9px] rounded"
+                className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-pixel text-[8px] sm:text-[9px] rounded"
               >
                 QUIT
               </button>
@@ -668,7 +668,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <button
             id="btn-save-settings"
             onClick={onClose}
-            className={`px-5 py-1.5 bg-[#f8b800] hover:bg-[#e0a000] text-black font-pixel font-bold text-[10px] sm:text-xs rounded transition-all shadow cursor-pointer active:scale-95 ${
+            className={`px-3.5 sm:px-5 py-1 sm:py-1.5 bg-[#f8b800] hover:bg-[#e0a000] text-black font-pixel font-bold text-[9px] sm:text-xs rounded transition-all shadow cursor-pointer active:scale-95 ${
               focusIndex === 9
                 ? 'ring-2 ring-white ring-offset-2 ring-offset-black scale-105'
                 : ''

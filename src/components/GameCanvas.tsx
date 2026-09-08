@@ -25,6 +25,7 @@ import { soundManager } from '../engine/SoundManager';
 import { TouchControls, VirtualJoystick, TouchActionButtons } from './TouchControls';
 import { RoundBanner, MatchEndPanel } from './VersusOverlays';
 import { PauseModal } from './PauseModal';
+import { localP2PService } from '../services/LocalP2PService';
 import { toggleFullscreen, isFullscreen, onFullscreenChange, isElectronApp } from '../utils/fullscreen';
 import {
   Settings,
@@ -300,13 +301,40 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     engineRef.current = engine;
 
     if (multiplayerConfig) {
-      // Local Couch Play: Local browser engine runs the entire game
+      const isWifi = Boolean(multiplayerConfig.roomCode && multiplayerConfig.roomCode !== 'LOCAL');
+      const role = isWifi ? multiplayerConfig.role : 'host';
       engine.setMultiplayerMode(
         multiplayerConfig.mode,
-        'host',
+        role,
         multiplayerConfig.versusSubMode || 'classic'
       );
-      engine.localPlayerSlot = 1;
+      engine.localPlayerSlot = isWifi && multiplayerConfig.role === 'guest' ? 2 : 1;
+
+      if (isWifi) {
+        const isHost = multiplayerConfig.role === 'host';
+        localP2PService.setCallbacks({
+          onStateChange: () => {},
+          onRemoteInput: (input) => {
+            if (isHost) {
+              engine.setP2Input(input);
+              engine.setPlayerSlotInput(2, input);
+            }
+          },
+          onSnapshot: (snapshot) => {
+            if (!isHost) {
+              engine.applyNetworkSnapshot(snapshot);
+            }
+          },
+          onRemotePause: (paused) => {
+            if (paused !== engine.paused) {
+              engine.togglePause();
+            }
+          },
+          onTaunt: (text) => {
+            engine.triggerTaunt(text, isHost ? 'P2' : 'P1');
+          },
+        });
+      }
     }
 
     if (settings?.playerSpeed) {
@@ -325,10 +353,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const triggerQuickTaunt = useCallback(
     (phrase: string) => {
       if (!multiplayerConfig || !engineRef.current) return;
-      const sender = 'P1';
+      const isGuest = multiplayerConfig.roomCode !== 'LOCAL' && multiplayerConfig.role === 'guest';
+      const sender = isGuest ? 'P2' : 'P1';
       soundManager.unlockAudio();
       soundManager.playHitSteel();
       engineRef.current.triggerTaunt(phrase, sender);
+      if (multiplayerConfig.roomCode !== 'LOCAL') {
+        localP2PService.sendTaunt(phrase);
+      }
     },
     [multiplayerConfig]
   );
@@ -339,10 +371,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       soundManager.unlockAudio();
       setInitialPauseFocusQuit(focusQuit);
       if (engineRef.current) {
-        engineRef.current.togglePause();
+        const isPaused = engineRef.current.togglePause();
+        if (multiplayerConfig && multiplayerConfig.roomCode !== 'LOCAL') {
+          localP2PService.sendPause(isPaused);
+        }
       }
     },
-    []
+    [multiplayerConfig]
   );
 
   const triggerPauseRef = useRef(triggerPause);
@@ -504,7 +539,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       const kd = keysDown.current;
 
-      if (multiplayerConfig?.roomCode === 'LOCAL') {
+      if (multiplayerConfig && multiplayerConfig.roomCode !== 'LOCAL') {
+        // Wi-Fi Local P2P: Both Host and Guest drive their own tank
+        const isHost = multiplayerConfig.role === 'host';
+        const kb = {
+          up: Boolean(kd['arrowup'] || kd['w'] || kd['keyw']),
+          down: Boolean(kd['arrowdown'] || kd['s'] || kd['keys']),
+          left: Boolean(kd['arrowleft'] || kd['a'] || kd['keya']),
+          right: Boolean(kd['arrowright'] || kd['d'] || kd['keyd']),
+          fire: Boolean(kd[' '] || kd['space'] || kd['j'] || kd['keyj'] || kd['z'] || kd['keyz'] || kd['control'] || kd['controlleft'] || kd['controlright']),
+          smoke: Boolean(kd['q'] || kd['keyq']),
+          grenade: Boolean(kd['e'] || kd['keye']),
+          shield: Boolean(kd['r'] || kd['keyr'] || kd['c'] || kd['keyc']),
+        };
+        const padPoll = gamepadManager.pollInputForRole('any');
+        const pad = padPoll?.input;
+        const localMerged = mergeInput(kb, pad, touchInput.current);
+
+        if (isHost) {
+          engine?.setPlayerSlotInput(1, localMerged);
+          engine?.updateInput(localMerged);
+          localP2PService.sendSnapshot(engine?.getNetworkSnapshot());
+        } else {
+          localP2PService.sendInput(localMerged);
+        }
+
+        if (pad?.pause) {
+          triggerPauseRef.current(false);
+        }
+        if (padPoll?.selectPressed) {
+          triggerPauseRef.current(true);
+        }
+      } else if (multiplayerConfig?.roomCode === 'LOCAL') {
         // Split keyboard: WASD+Space/J = P1, Arrows+Enter/K = P2. Pad N = player N.
         const kbP1 = {
           up: Boolean(kd['w'] || kd['keyw']),

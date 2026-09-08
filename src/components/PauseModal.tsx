@@ -276,19 +276,19 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   return (
     <div
       id="pause-menu-overlay"
-      className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-[2px] p-4 animate-in fade-in duration-100 select-none"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-[2px] p-2 sm:p-4 animate-in fade-in duration-100 select-none"
     >
       <div
         id="pause-menu-content"
-        className="relative w-full max-w-[320px] bg-[#1a1a1a] border-4 border-[#606060] rounded p-5 shadow-[0_0_30px_rgba(0,0,0,0.95)] text-white font-pixel flex flex-col items-center"
+        className="relative w-full max-w-[280px] sm:max-w-[320px] max-h-[96%] overflow-y-auto bg-[#1a1a1a] border-2 sm:border-4 border-[#606060] rounded p-2.5 sm:p-5 shadow-[0_0_30px_rgba(0,0,0,0.95)] text-white font-pixel flex flex-col items-center"
       >
         {/* Title */}
-        <div className="flex flex-col items-center mb-5">
-          <span className="text-[#f8b800] text-xl sm:text-2xl tracking-[0.25em] font-bold animate-pulse drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+        <div className="flex flex-col items-center mb-2 sm:mb-4">
+          <span className="text-[#f8b800] text-lg sm:text-2xl tracking-[0.25em] font-bold animate-pulse drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
             PAUSE
           </span>
           {isOnlineGuest && (
-            <span className="text-[9px] text-zinc-400 font-mono tracking-widest mt-1">
+            <span className="text-[8px] sm:text-[9px] text-zinc-400 font-mono tracking-widest mt-0.5 sm:mt-1">
               ONLINE MATCH (GUEST)
             </span>
           )}
@@ -296,7 +296,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
 
         {/* Menu Body */}
         {!showConfirmQuit ? (
-          <div className="w-full flex flex-col gap-3 mb-5">
+          <div className="w-full flex flex-col gap-2 sm:gap-3 mb-2 sm:mb-4">
             {/* RESUME Option */}
             <button
               id="pause-btn-resume"
@@ -308,20 +308,20 @@ export const PauseModal: React.FC<PauseModalProps> = ({
                   soundManager.playMenuMove();
                 }
               }}
-              className={`w-full py-3 px-4 rounded border-2 flex items-center justify-between transition-all cursor-pointer ${
+              className={`w-full py-2 sm:py-3 px-3 sm:px-4 rounded border-2 flex items-center justify-between transition-all cursor-pointer ${
                 selectedIdx === 0
-                  ? 'bg-amber-950/60 border-[#f8b800] text-[#f8b800] scale-[1.03] shadow-[0_0_15px_rgba(248,184,0,0.5)]'
+                  ? 'bg-amber-950/60 border-[#f8b800] text-[#f8b800] scale-[1.02] shadow-[0_0_15px_rgba(248,184,0,0.5)]'
                   : 'bg-[#262626] border-[#454545] text-zinc-300 hover:border-zinc-400'
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <span className={`text-xs ${selectedIdx === 0 ? 'text-[#f8b800] animate-bounce' : 'opacity-0'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] sm:text-xs ${selectedIdx === 0 ? 'text-[#f8b800] animate-bounce' : 'opacity-0'}`}>
                   ▶
                 </span>
-                <Play className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-xs tracking-widest font-bold">RESUME</span>
+                <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 shrink-0" />
+                <span className="text-[10px] sm:text-xs tracking-wider sm:tracking-widest font-bold">RESUME</span>
               </div>
-              <span className="text-[9px] text-zinc-500 font-mono">[A / START / B]</span>
+              <span className="text-[7.5px] sm:text-[9px] text-zinc-500 font-mono">[A / START / B]</span>
             </button>
 
             {/* QUIT Option */}
@@ -335,41 +335,41 @@ export const PauseModal: React.FC<PauseModalProps> = ({
                   soundManager.playMenuMove();
                 }
               }}
-              className={`w-full py-3 px-4 rounded border-2 flex items-center justify-between transition-all cursor-pointer ${
+              className={`w-full py-2 sm:py-3 px-3 sm:px-4 rounded border-2 flex items-center justify-between transition-all cursor-pointer ${
                 selectedIdx === 1
-                  ? 'bg-red-950/60 border-red-500 text-red-300 scale-[1.03] shadow-[0_0_15px_rgba(239,68,68,0.5)]'
+                  ? 'bg-red-950/60 border-red-500 text-red-300 scale-[1.02] shadow-[0_0_15px_rgba(239,68,68,0.5)]'
                   : 'bg-[#262626] border-[#454545] text-zinc-300 hover:border-zinc-400'
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <span className={`text-xs ${selectedIdx === 1 ? 'text-red-400 animate-bounce' : 'opacity-0'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] sm:text-xs ${selectedIdx === 1 ? 'text-red-400 animate-bounce' : 'opacity-0'}`}>
                   ▶
                 </span>
-                <LogOut className="w-4 h-4 text-red-400 shrink-0" />
-                <span className="text-xs tracking-widest font-bold">QUIT</span>
+                <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400 shrink-0" />
+                <span className="text-[10px] sm:text-xs tracking-wider sm:tracking-widest font-bold">QUIT</span>
               </div>
-              <span className="text-[9px] text-zinc-500 font-mono">[A]</span>
+              <span className="text-[7.5px] sm:text-[9px] text-zinc-500 font-mono">[A]</span>
             </button>
           </div>
         ) : (
           /* Confirmation Sub-Modal */
-          <div className="w-full flex flex-col items-center bg-[#222] border-2 border-red-800/80 rounded p-4 mb-4 animate-in zoom-in-95 duration-100">
-            <div className="flex items-center gap-1.5 text-red-400 font-bold text-xs tracking-wider mb-1">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+          <div className="w-full flex flex-col items-center bg-[#222] border-2 border-red-800/80 rounded p-2.5 sm:p-4 mb-2 sm:mb-4 animate-in zoom-in-95 duration-100">
+            <div className="flex items-center gap-1.5 text-red-400 font-bold text-[10px] sm:text-xs tracking-wider mb-1">
+              <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400 shrink-0" />
               <span>QUIT TO MENU?</span>
             </div>
-            <p className="text-[9px] text-zinc-400 text-center mb-4 leading-relaxed font-sans">
+            <p className="text-[8px] sm:text-[9px] text-zinc-400 text-center mb-2.5 sm:mb-4 leading-relaxed font-sans">
               Are you sure you want to exit the current battle?
             </p>
 
-            <div className="w-full grid grid-cols-2 gap-3">
+            <div className="w-full grid grid-cols-2 gap-2 sm:gap-3">
               {/* YES Button */}
               <button
                 id="pause-confirm-btn-yes"
                 type="button"
                 onClick={handleExecuteQuit}
                 onMouseEnter={() => setConfirmIdx(0)}
-                className={`py-2 px-3 rounded border-2 text-center text-xs tracking-wider font-bold transition-all cursor-pointer ${
+                className={`py-1.5 sm:py-2 px-2.5 sm:px-3 rounded border-2 text-center text-[10px] sm:text-xs tracking-wider font-bold transition-all cursor-pointer ${
                   confirmIdx === 0
                     ? 'bg-red-700 border-red-400 text-white scale-105 shadow-[0_0_12px_rgba(239,68,68,0.8)]'
                     : 'bg-red-950/50 border-red-900 text-red-300 hover:bg-red-900/60'
@@ -384,7 +384,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
                 type="button"
                 onClick={handleCancelQuitConfirm}
                 onMouseEnter={() => setConfirmIdx(1)}
-                className={`py-2 px-3 rounded border-2 text-center text-xs tracking-wider font-bold transition-all cursor-pointer ${
+                className={`py-1.5 sm:py-2 px-2.5 sm:px-3 rounded border-2 text-center text-[10px] sm:text-xs tracking-wider font-bold transition-all cursor-pointer ${
                   confirmIdx === 1
                     ? 'bg-zinc-700 border-white text-white scale-105 shadow-[0_0_12px_rgba(255,255,255,0.6)]'
                     : 'bg-zinc-800 border-zinc-600 text-zinc-300 hover:bg-zinc-700'
@@ -397,7 +397,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         )}
 
         {/* Controller / Keyboard Guide Footer */}
-        <div className="w-full pt-3 border-t border-[#383838] flex flex-col items-center gap-1 text-[8px] sm:text-[9px] text-zinc-400 font-mono tracking-wider">
+        <div className="w-full pt-1.5 sm:pt-3 border-t border-[#383838] flex flex-col items-center gap-0.5 sm:gap-1 text-[7.5px] sm:text-[9px] text-zinc-400 font-mono tracking-wider">
           {!showConfirmQuit ? (
             <>
               <div className="flex items-center gap-1.5 text-[#f8b800]">

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Battle City 1990</string>
+    <string name="title_activity_main">Battle City 1990</string>
+    <string name="package_name">com.battlecity1990.arcade</string>
+    <string name="custom_url_scheme">com.battlecity1990.arcade</string>
+</resources>

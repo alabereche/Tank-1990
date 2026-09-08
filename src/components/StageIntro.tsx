@@ -135,14 +135,14 @@ export const StageIntro: React.FC<StageIntroProps> = ({ stage, onSelectStage, on
     <div
       id="stage-intro-curtain"
       onClick={onComplete}
-      className="flex flex-col items-center justify-center w-full max-w-xl mx-auto h-[480px] bg-[#282828] border-4 border-[#505050] shadow-2xl font-pixel select-none cursor-pointer relative overflow-hidden px-6"
+      className="flex flex-col items-center justify-center w-full max-w-xl mx-auto h-full max-h-[96vh] sm:h-[480px] bg-[#282828] border-2 sm:border-4 border-[#505050] shadow-2xl font-pixel select-none cursor-pointer relative overflow-hidden px-3 sm:px-6 py-3 sm:py-6"
     >
       {/* Retro Curtains CRT Scanline Texture */}
       <div className="absolute inset-0 scanlines opacity-25 pointer-events-none" />
 
-      <div className="relative z-10 flex flex-col items-center gap-5 text-center max-w-md animate-fade-in">
+      <div className="relative z-10 flex flex-col items-center gap-2.5 sm:gap-5 text-center max-w-md animate-fade-in">
         {/* Authentic NES Stage Number Banner */}
-        <div className="flex items-center justify-center gap-4">
+        <div className="flex items-center justify-center gap-3 sm:gap-4">
           {onSelectStage && (
             <button
               id="btn-intro-prev-stage"
@@ -155,14 +155,14 @@ export const StageIntro: React.FC<StageIntroProps> = ({ stage, onSelectStage, on
                 if (timerRef.current) clearTimeout(timerRef.current);
                 timerRef.current = setTimeout(onComplete, 3500);
               }}
-              className="text-[#f8b800] hover:text-yellow-300 text-lg sm:text-xl font-bold px-2.5 py-1 bg-black/60 hover:bg-black/90 rounded border border-zinc-700 hover:border-amber-400 transition-all active:scale-95"
+              className="text-[#f8b800] hover:text-yellow-300 text-sm sm:text-xl font-bold px-2 py-0.5 sm:py-1 bg-black/60 hover:bg-black/90 rounded border border-zinc-700 hover:border-amber-400 transition-all active:scale-95"
               title="Previous Stage"
             >
               ◀
             </button>
           )}
 
-          <div className="text-white text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-widest drop-shadow-[0_4px_0_#000000]">
+          <div className="text-white text-2xl sm:text-4xl md:text-5xl font-extrabold tracking-widest drop-shadow-[0_4px_0_#000000]">
             STAGE {stage.toString().padStart(2, ' ')}
           </div>
 
@@ -178,7 +178,7 @@ export const StageIntro: React.FC<StageIntroProps> = ({ stage, onSelectStage, on
                 if (timerRef.current) clearTimeout(timerRef.current);
                 timerRef.current = setTimeout(onComplete, 3500);
               }}
-              className="text-[#f8b800] hover:text-yellow-300 text-lg sm:text-xl font-bold px-2.5 py-1 bg-black/60 hover:bg-black/90 rounded border border-zinc-700 hover:border-amber-400 transition-all active:scale-95"
+              className="text-[#f8b800] hover:text-yellow-300 text-sm sm:text-xl font-bold px-2 py-0.5 sm:py-1 bg-black/60 hover:bg-black/90 rounded border border-zinc-700 hover:border-amber-400 transition-all active:scale-95"
               title="Next Stage"
             >
               ▶
@@ -187,17 +187,17 @@ export const StageIntro: React.FC<StageIntroProps> = ({ stage, onSelectStage, on
         </div>
 
         {/* Clean Retro Stage Name in Authentic Pixel Gold */}
-        <div className="text-lg sm:text-xl font-bold text-[#f8b800] tracking-widest drop-shadow-[0_2px_0_#000000] border-t border-b border-zinc-700/80 py-2 w-full">
+        <div className="text-sm sm:text-xl font-bold text-[#f8b800] tracking-widest drop-shadow-[0_2px_0_#000000] border-t border-b border-zinc-700/80 py-1 sm:py-2 w-full">
           {meta.name.toUpperCase()}
         </div>
 
         {/* Subtle English Tactical Subtitle */}
-        <div className="text-[10px] sm:text-[11px] text-zinc-400 tracking-wider font-mono">
+        <div className="text-[9px] sm:text-[11px] text-zinc-400 tracking-wider font-mono">
           {meta.subtitle.toUpperCase()}
         </div>
 
         {/* Authentic Arcade Deployment Prompt */}
-        <div className="mt-4 text-[10px] sm:text-xs text-amber-400 tracking-widest font-bold animate-pulse drop-shadow">
+        <div className="mt-2 sm:mt-4 text-[9px] sm:text-xs text-amber-400 tracking-widest font-bold animate-pulse drop-shadow">
           ▶ PRESS START OR SPACE TO DEPLOY ◀
         </div>
       </div>

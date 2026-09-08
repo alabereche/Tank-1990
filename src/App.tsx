@@ -12,6 +12,7 @@ import { MapEditorToolbar } from './components/MapEditorToolbar';
 import { StageIntro } from './components/StageIntro';
 import { GameOverModal } from './components/GameOverModal';
 import { SettingsModal } from './components/SettingsModal';
+import { WifiCoopModal } from './components/WifiCoopModal';
 import { ArcadeCabinetFrame } from './components/ArcadeCabinetFrame';
 import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './engine/maps';
 import { soundManager } from './engine/SoundManager';
@@ -25,6 +26,7 @@ export default function App() {
   const [editorInitialMap, setEditorInitialMap] = useState<StageMap | undefined>(undefined);
   const [finalScoreData, setFinalScoreData] = useState<GameScore | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isWifiCoopOpen, setIsWifiCoopOpen] = useState<boolean>(false);
   const [isMobileDevice, setIsMobileDevice] = useState<boolean>(false);
   const [isPortraitMode, setIsPortraitMode] = useState<boolean>(false);
   const [pwaPrompt, setPwaPrompt] = useState<any>(null);
@@ -300,6 +302,30 @@ export default function App() {
     setCurrentScreen(GameState.STAGE_START);
   };
 
+  const handleStartWifiCoop = (config: {
+    roomCode: string;
+    role: 'host' | 'guest';
+    mode: 'coop' | 'versus';
+    versusSubMode?: 'classic' | 'payload';
+  }) => {
+    soundManager.stopMenuMusic();
+    soundManager.unlockAudio();
+    setIsWifiCoopOpen(false);
+    const effectiveSize = config.versusSubMode === 'payload' ? 'large' : settings.mapSize;
+    setMultiplayerConfig({
+      roomCode: config.roomCode,
+      role: config.role,
+      mode: config.mode,
+      versusSubMode: config.versusSubMode || 'classic',
+      mapSize: effectiveSize,
+      stage: 1,
+      slot: config.role === 'host' ? 1 : 2,
+    });
+    setCustomMap(undefined);
+    setCurrentStage(1);
+    setCurrentScreen(GameState.STAGE_START);
+  };
+
   // Active map based on preset or custom.
   // Multiplayer rooms use the room's mapSize; 8-Player FFA & Payload strictly enforce large (34x34).
   const effectiveMapSize = useMemo(() => {
@@ -381,10 +407,11 @@ export default function App() {
               mapSizeLabel={MAP_SIZE_CONFIGS[settings.mapSize]?.label}
               onStart1Player={handleStartGame}
               onStartLocal2Player={handleStartLocal2Player}
+              onOpenWifiCoop={() => setIsWifiCoopOpen(true)}
               onOpenConstruction={handleOpenConstruction}
               onOpenSettings={() => setIsSettingsOpen(true)}
               inCabinet={true}
-              disabled={isSettingsOpen}
+              disabled={isSettingsOpen || isWifiCoopOpen}
             />
           </ArcadeCabinetFrame>
         ) : currentScreen === GameState.STAGE_START ? (
@@ -438,6 +465,14 @@ export default function App() {
                 }
               : undefined
           }
+        />
+      )}
+
+      {/* Local Wi-Fi Co-Op / Cross-Play Modal */}
+      {isWifiCoopOpen && (
+        <WifiCoopModal
+          onClose={() => setIsWifiCoopOpen(false)}
+          onStartBattle={handleStartWifiCoop}
         />
       )}
     </div>

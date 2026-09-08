@@ -31,3 +31,20 @@ canvas.game-canvas {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
+
+/* Custom retro slim scrollbar for modals */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #101014;
+}
+::-webkit-scrollbar-thumb {
+  background: #444450;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #f8b800;
+}
+

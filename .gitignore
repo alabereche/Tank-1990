@@ -18,3 +18,7 @@ coverage/
 # Local test bundle artifacts
 scripts/.*.cjs
 scratch/
+*.apk
+android/app/build/
+android/.gradle/
+android/build/

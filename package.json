@@ -8,12 +8,16 @@
     "dev": "vite",
     "build": "vite build",
     "electron:build": "npm run build && electron-builder --win",
+    "android:build": "npm run build && npx cap sync android && node scripts/build-apk.cjs",
     "start": "vite preview",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
     "@google/genai": "^2.4.0",
     "@roamhq/wrtc": "^0.10.0",
     "@tailwindcss/vite": "^4.1.14",

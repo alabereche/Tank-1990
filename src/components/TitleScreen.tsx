@@ -16,6 +16,7 @@ interface TitleScreenProps {
   mapSizeLabel?: string;
   onStart1Player: () => void;
   onStartLocal2Player: (mode: 'coop' | 'versus', subMode?: 'classic' | 'payload') => void;
+  onOpenWifiCoop?: () => void;
   onOpenConstruction: (initialMap?: StageMap) => void;
   onOpenSettings: () => void;
   inCabinet?: boolean;
@@ -27,6 +28,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   mapSizeLabel,
   onStart1Player,
   onStartLocal2Player,
+  onOpenWifiCoop,
   onOpenConstruction,
   onOpenSettings,
   inCabinet = false,
@@ -96,6 +98,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const menuOptions: { label: string; action: () => void; badge?: string }[] = [
     { label: '1 PLAYER', action: onStart1Player },
     { label: '2 PLAYERS (LOCAL)', action: () => setShowLocal2PModal(true) },
+    ...(onOpenWifiCoop ? [{ label: 'WI-FI CO-OP (P2P)', action: onOpenWifiCoop, badge: 'HOTSPOT' }] : []),
     { label: 'CONSTRUCTION', action: onOpenConstruction },
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
@@ -726,34 +729,34 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Field Manual (Help Modal) - Authentic Pixel Theme */}
       {showHelpModal && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-xs"
           onClick={() => setShowHelpModal(false)}
         >
           <div
-            className="bg-[#141414] border-4 border-[#444] rounded max-w-lg w-full p-5 space-y-4 font-sans text-white shadow-2xl"
+            className="bg-[#141414] border-2 sm:border-4 border-[#444] rounded max-w-lg w-full max-h-[96vh] p-3 sm:p-5 flex flex-col font-sans text-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-700 pb-2">
-              <span className="font-pixel text-[#f8b800] text-sm tracking-wider">FIELD MANUAL</span>
+            <div className="flex items-center justify-between border-b border-zinc-700 pb-1.5 sm:pb-2 shrink-0">
+              <span className="font-pixel text-[#f8b800] text-xs sm:text-sm tracking-wider">FIELD MANUAL</span>
               <button
                 onClick={() => setShowHelpModal(false)}
-                className="font-pixel text-zinc-400 hover:text-red-400 text-sm px-2 py-1 border border-zinc-700 hover:border-red-500"
+                className="font-pixel text-zinc-400 hover:text-red-400 text-xs px-2 py-0.5 sm:py-1 border border-zinc-700 hover:border-red-500"
               >
                 [X]
               </button>
             </div>
 
-            <div id="field-manual-scroll-area" className="space-y-3 text-zinc-300 text-xs leading-relaxed max-h-[60vh] overflow-y-auto pr-2">
+            <div id="field-manual-scroll-area" className="space-y-2.5 sm:space-y-3 text-zinc-300 text-xs leading-relaxed flex-1 overflow-y-auto pr-1 sm:pr-2 my-2">
               <div>
-                <strong className="text-white font-pixel text-xs">MISSION OBJECTIVE:</strong>
-                <p className="mt-1 text-zinc-300">
+                <strong className="text-white font-pixel text-[10px] sm:text-xs">MISSION OBJECTIVE:</strong>
+                <p className="mt-0.5 text-zinc-300 text-[10px] sm:text-xs">
                   Destroy all 20 enemy tanks and defend the Phoenix Eagle Base at the bottom of the map. If your base is destroyed, the mission fails immediately!
                 </p>
               </div>
 
               <div>
-                <strong className="text-amber-400 font-pixel text-xs">10 HANDCRAFTED TACTICAL STAGES:</strong>
-                <ul className="list-disc pl-5 mt-1.5 space-y-1 text-zinc-300 text-[11px]">
+                <strong className="text-amber-400 font-pixel text-[10px] sm:text-xs">10 HANDCRAFTED TACTICAL STAGES:</strong>
+                <ul className="list-disc pl-4 sm:pl-5 mt-1 space-y-0.5 sm:space-y-1 text-zinc-300 text-[9.5px] sm:text-[11px]">
                   <li><strong>Stage 1:</strong> Classic Citadel - NES homage with high-speed flank ice avenues</li>
                   <li><strong>Stage 2:</strong> Iron Fortress - Impenetrable central steel cross & water moats</li>
                   <li><strong>Stage 3:</strong> Twin Rivers - Double river crossing with slippery central ice bridge</li>
@@ -768,8 +771,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </div>
 
               <div>
-                <strong className="text-amber-400 font-pixel text-xs">COMBAT CONTROLS:</strong>
-                <ul className="list-disc pl-5 mt-1.5 space-y-1 text-zinc-300 text-[11px]">
+                <strong className="text-amber-400 font-pixel text-[10px] sm:text-xs">COMBAT CONTROLS:</strong>
+                <ul className="list-disc pl-4 sm:pl-5 mt-1 space-y-0.5 sm:space-y-1 text-zinc-300 text-[9.5px] sm:text-[11px]">
                   <li><strong>Move Tank:</strong> [W, A, S, D] or [Arrow Keys] or [Gamepad D-Pad]</li>
                   <li><strong>Fire Cannon:</strong> [Space] or [J] or [Gamepad A / X]</li>
                   <li><strong>Tactical Items:</strong> [1] Smoke Screen, [2] Grenade, [3] Deployable Shield</li>
@@ -780,7 +783,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
             <button
               onClick={() => setShowHelpModal(false)}
-              className="w-full bg-[#e52521] hover:bg-red-600 text-white font-pixel text-xs py-2 border-2 border-red-800 transition-colors"
+              className="w-full bg-[#e52521] hover:bg-red-600 text-white font-pixel text-[10px] sm:text-xs py-1.5 sm:py-2 border-2 border-red-800 transition-colors shrink-0 cursor-pointer"
             >
               CLOSE MANUAL
             </button>
@@ -791,100 +794,100 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Local 2-Player Combat Modal - Authentic Pixel Theme */}
       {showLocal2PModal && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-xs"
           onClick={() => setShowLocal2PModal(false)}
         >
           <div
-            className="bg-[#141414] border-4 border-[#444] rounded max-w-xl w-full p-5 space-y-4 font-pixel shadow-2xl text-white"
+            className="bg-[#141414] border-2 sm:border-4 border-[#444] rounded max-w-xl w-full max-h-[96vh] flex flex-col p-3 sm:p-5 font-pixel shadow-2xl text-white overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-700 pb-2">
-              <span className="text-[#f8b800] text-xs tracking-wider">LOCAL 2-PLAYER COMBAT</span>
+            <div className="flex items-center justify-between border-b border-zinc-700 pb-1.5 sm:pb-2 shrink-0">
+              <span className="text-[#f8b800] text-[10px] sm:text-xs tracking-wider">LOCAL 2-PLAYER COMBAT</span>
               <button
                 type="button"
                 onClick={() => setShowLocal2PModal(false)}
-                className="text-zinc-400 hover:text-red-400 text-xs px-2 py-1 border border-zinc-700 hover:border-red-500 cursor-pointer"
+                className="text-zinc-400 hover:text-red-400 text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 border border-zinc-700 hover:border-red-500 cursor-pointer"
               >
                 [X]
               </button>
             </div>
 
-            <div className="space-y-3">
-              <div className="text-[10px] text-zinc-300">
+            <div className="flex-1 overflow-y-auto pr-1 space-y-2 sm:space-y-3 my-1.5">
+              <div className="text-[9px] sm:text-[10px] text-zinc-300">
                 SELECT COMBAT RULES:
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2.5">
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('coop')}
-                  className={`p-2.5 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                  className={`p-2 sm:p-2.5 rounded border-2 text-left flex flex-col gap-0.5 sm:gap-1 transition-all cursor-pointer ${
                     local2PMode === 'coop'
                       ? 'border-[#f8b800] bg-amber-950/50 text-white shadow-lg'
                       : 'border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-500'
                   }`}
                 >
-                  <span className="font-bold text-[#f8b800] text-xs">CO-OP BATTLE</span>
-                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Defend eagle base together vs 20 tanks</span>
+                  <span className="font-bold text-[#f8b800] text-[10px] sm:text-xs">CO-OP BATTLE</span>
+                  <span className="text-[7.5px] sm:text-[8px] text-zinc-300 font-sans mt-0.5">Defend eagle base together vs 20 tanks</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('versus')}
-                  className={`p-2.5 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                  className={`p-2 sm:p-2.5 rounded border-2 text-left flex flex-col gap-0.5 sm:gap-1 transition-all cursor-pointer ${
                     local2PMode === 'versus'
                       ? 'border-[#58b8d8] bg-sky-950/50 text-white shadow-lg'
                       : 'border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-500'
                   }`}
                 >
-                  <span className="font-bold text-[#58b8d8] text-xs">1V1 VERSUS</span>
-                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Classic duel across rotating stages</span>
+                  <span className="font-bold text-[#58b8d8] text-[10px] sm:text-xs">1V1 VERSUS</span>
+                  <span className="text-[7.5px] sm:text-[8px] text-zinc-300 font-sans mt-0.5">Classic duel across rotating stages</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('payload')}
-                  className={`p-2.5 rounded border-2 text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                  className={`p-2 sm:p-2.5 rounded border-2 text-left flex flex-col gap-0.5 sm:gap-1 transition-all cursor-pointer ${
                     local2PMode === 'payload'
                       ? 'border-red-500 bg-red-950/60 text-white shadow-lg ring-1 ring-red-400'
                       : 'border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:border-zinc-500'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-red-400 text-xs">1V1 PAYLOAD</span>
+                    <span className="font-bold text-red-400 text-[10px] sm:text-xs">1V1 PAYLOAD</span>
                     <span className="text-[7px] bg-red-600/80 text-white px-1 py-0.5 rounded font-mono font-bold">TF2</span>
                   </div>
-                  <span className="text-[8px] text-zinc-300 font-sans mt-0.5">Badwater Basin (34x34). Push bomb cart or defend!</span>
+                  <span className="text-[7.5px] sm:text-[8px] text-zinc-300 font-sans mt-0.5">Badwater Basin (34x34). Push bomb cart or defend!</span>
                 </button>
               </div>
 
               {/* Special rules highlight when Payload is selected */}
               {local2PMode === 'payload' && (
-                <div className="bg-red-950/30 border border-red-800/80 p-2.5 rounded text-[8.5px] text-zinc-300 space-y-1 font-sans">
-                  <div className="font-pixel text-[9px] text-red-400 font-bold flex items-center justify-between">
+                <div className="bg-red-950/30 border border-red-800/80 p-2 sm:p-2.5 rounded text-[8px] sm:text-[8.5px] text-zinc-300 space-y-1 font-sans">
+                  <div className="font-pixel text-[8.5px] sm:text-[9px] text-red-400 font-bold flex items-center justify-between">
                     <span>TF2 PAYLOAD RULES:</span>
-                    <span className="text-zinc-400 font-mono text-[8px]">MAP: 34x34</span>
+                    <span className="text-zinc-400 font-mono text-[7.5px] sm:text-[8px]">MAP: 34x34</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sky-400 font-bold font-pixel text-[8px]">BLUE (P1):</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sky-400 font-bold font-pixel text-[7.5px] sm:text-[8px]">BLUE (P1):</span>
                     <span>Push cart along rails to 4 checkpoints. Cart absorbs enemy bullets!</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-red-400 font-bold font-pixel text-[8px]">RED (P2):</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-red-400 font-bold font-pixel text-[7.5px] sm:text-[8px]">RED (P2):</span>
                     <span>Contest the cart (stops push) and eliminate Blue until timer expires!</span>
                   </div>
                 </div>
               )}
 
               {/* Controls Layout Guide */}
-              <div className="bg-black/70 p-3 rounded border border-zinc-800 flex flex-col gap-2 mt-2">
-                <div className="flex items-center justify-between border-b border-zinc-800 pb-1 text-[9px]">
+              <div className="bg-black/70 p-2 sm:p-3 rounded border border-zinc-800 flex flex-col gap-1.5 sm:gap-2 mt-1 sm:mt-2">
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-1 text-[8px] sm:text-[9px]">
                   <span className={local2PMode === 'payload' ? 'text-sky-400 font-bold' : 'text-[#f8b800] font-bold'}>
                     {local2PMode === 'payload' ? 'PLAYER 1 (BLU / PUSHER)' : 'PLAYER 1 (GOLD)'}
                   </span>
                   <span className="text-zinc-300 font-sans">[W, A, S, D] + [SPACE]</span>
                 </div>
-                <div className="flex items-center justify-between text-[9px]">
+                <div className="flex items-center justify-between text-[8px] sm:text-[9px]">
                   <span className={local2PMode === 'payload' ? 'text-red-400 font-bold' : 'text-[#55f855] font-bold'}>
                     {local2PMode === 'payload' ? 'PLAYER 2 (RED / DEFENDER)' : 'PLAYER 2 (GREEN)'}
                   </span>
@@ -892,16 +895,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 </div>
               </div>
 
-              <div className="text-[8px] text-zinc-400 italic text-center font-sans">
+              <div className="text-[7.5px] sm:text-[8px] text-zinc-400 italic text-center font-sans">
                 * Dual gamepads supported: Gamepad 1 controls P1, Gamepad 2 controls P2.
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 mt-4 pt-3 border-t border-zinc-800">
+            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-800 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowLocal2PModal(false)}
-                className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-600 text-[10px] font-pixel transition-colors rounded cursor-pointer whitespace-nowrap text-center shrink-0"
+                className="px-3 sm:px-4 py-1.5 sm:py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-600 text-[9px] sm:text-[10px] font-pixel transition-colors rounded cursor-pointer whitespace-nowrap text-center shrink-0"
               >
                 CANCEL
               </button>
@@ -916,9 +919,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       grid: createBadwaterBasinGrid(34),
                     });
                   }}
-                  className="px-3.5 py-2.5 bg-amber-700 hover:bg-amber-600 text-white border border-amber-500 text-[9px] font-pixel font-bold transition-colors rounded cursor-pointer whitespace-nowrap text-center tracking-wide shrink-0 active:scale-[0.98]"
+                  className="px-2.5 sm:px-3.5 py-1.5 sm:py-2.5 bg-amber-700 hover:bg-amber-600 text-white border border-amber-500 text-[8px] sm:text-[9px] font-pixel font-bold transition-colors rounded cursor-pointer whitespace-nowrap text-center tracking-wide shrink-0 active:scale-[0.98]"
                 >
-                  EDIT IN CONSTRUCTION
+                  EDIT MAP
                 </button>
               )}
 
@@ -932,7 +935,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     onStartLocal2Player(local2PMode, 'classic');
                   }
                 }}
-                className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white border-2 border-emerald-400 text-xs font-pixel font-bold tracking-wider shadow-lg transition-all cursor-pointer rounded whitespace-nowrap text-center active:scale-[0.98]"
+                className="flex-1 py-1.5 sm:py-2.5 px-3 sm:px-4 bg-emerald-600 hover:bg-emerald-500 text-white border-2 border-emerald-400 text-[10px] sm:text-xs font-pixel font-bold tracking-wider shadow-lg transition-all cursor-pointer rounded whitespace-nowrap text-center active:scale-[0.98]"
               >
                 START BATTLE!
               </button>
@@ -944,28 +947,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Retro Quit Game Confirmation Modal */}
       {showExitModal && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-xs select-none"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-xs select-none"
           onClick={() => setShowExitModal(false)}
         >
           <div
-            className="bg-[#121216] border-4 border-red-600 rounded-md max-w-sm w-full p-5 space-y-4 font-pixel shadow-[0_0_30px_rgba(220,38,38,0.4)] text-white text-center"
+            className="bg-[#121216] border-2 sm:border-4 border-red-600 rounded-md max-w-sm w-full max-h-[96vh] overflow-y-auto p-3 sm:p-5 space-y-3 sm:space-y-4 font-pixel shadow-[0_0_30px_rgba(220,38,38,0.4)] text-white text-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-red-500 text-sm tracking-widest flex items-center justify-center gap-2">
+            <div className="text-red-500 text-xs sm:text-sm tracking-widest flex items-center justify-center gap-2">
               <span>[!]</span>
               <span>QUIT GAME?</span>
               <span>[!]</span>
             </div>
 
-            <p className="text-[10px] text-zinc-300 leading-relaxed font-pixel">
+            <p className="text-[9px] sm:text-[10px] text-zinc-300 leading-relaxed font-pixel">
               ARE YOU SURE YOU WANT TO EXIT BATTLE CITY 1990?
             </p>
 
-            <div className="flex items-center justify-center gap-3 mt-4">
+            <div className="flex items-center justify-center gap-2.5 mt-3 sm:mt-4">
               <button
                 type="button"
                 onClick={handleConfirmExit}
-                className={`flex-1 py-2.5 px-4 text-xs font-pixel border-2 transition-all cursor-pointer ${
+                className={`flex-1 py-2 sm:py-2.5 px-3 sm:px-4 text-[10px] sm:text-xs font-pixel border-2 transition-all cursor-pointer ${
                   exitConfirmIdx === 0
                     ? 'border-red-500 bg-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.6)]'
                     : 'border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-500'
@@ -977,7 +980,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setShowExitModal(false)}
-                className={`flex-1 py-2.5 px-4 text-xs font-pixel border-2 transition-all cursor-pointer ${
+                className={`flex-1 py-2 sm:py-2.5 px-3 sm:px-4 text-[10px] sm:text-xs font-pixel border-2 transition-all cursor-pointer ${
                   exitConfirmIdx === 1
                     ? 'border-emerald-400 bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.6)]'
                     : 'border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-500'
@@ -987,7 +990,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </button>
             </div>
 
-            <div className="text-[8px] text-zinc-500 font-sans mt-2">
+            <div className="text-[7.5px] sm:text-[8px] text-zinc-500 font-sans mt-1 sm:mt-2">
               Gamepad: [D-Pad] Select &bull; [A/Start] Confirm &bull; [B/ESC] Cancel
             </div>
           </div>
@@ -997,36 +1000,45 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* PWA Mobile App Installation Modal */}
       {showInstallModal && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-3 backdrop-blur-xs select-none"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-3 backdrop-blur-xs select-none"
           onClick={() => setShowInstallModal(false)}
         >
           <div
-            className="bg-[#0c0c0c] border-4 border-[#f8b800] max-w-md w-full p-4 space-y-3 font-pixel shadow-[0_0_25px_rgba(248,184,0,0.5)] text-white text-center"
+            className="bg-[#0c0c0c] border-2 sm:border-4 border-[#f8b800] max-w-md w-full max-h-[96vh] overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 font-pixel shadow-[0_0_25px_rgba(248,184,0,0.5)] text-white text-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-[#f8b800] text-xs sm:text-sm tracking-widest">
+            <div className="text-[#f8b800] text-[10px] sm:text-sm tracking-widest">
               INSTALL MOBILE APP (PWA)
             </div>
 
-            <p className="text-[9px] text-zinc-300 leading-relaxed font-pixel text-left">
+            <p className="text-[8px] sm:text-[9px] text-zinc-300 leading-relaxed font-pixel text-left">
               RUN AS FULLSCREEN RETRO APP WITHOUT BROWSER TOOLBARS:
             </p>
 
-            <div className="text-[8px] text-zinc-300 leading-relaxed text-left space-y-2 bg-black p-2.5 border-2 border-zinc-800 font-pixel">
+            <div className="text-[7.5px] sm:text-[8px] text-zinc-300 leading-relaxed text-left space-y-1.5 sm:space-y-2 bg-black p-2 sm:p-2.5 border-2 border-zinc-800 font-pixel">
               <div>
                 <span className="text-emerald-400 font-bold block mb-0.5">&gt; ANDROID (CHROME):</span>
                 <span className="text-zinc-400">TAP BROWSER MENU (⋮) THEN SELECT 'INSTALL APP' OR 'ADD TO HOME SCREEN'.</span>
               </div>
-              <div className="border-t border-zinc-800 pt-1.5">
+              <div className="border-t border-zinc-800 pt-1">
                 <span className="text-cyan-400 font-bold block mb-0.5">&gt; APPLE IOS (SAFARI):</span>
                 <span className="text-zinc-400">TAP SHARE BUTTON THEN SELECT 'ADD TO HOME SCREEN'.</span>
               </div>
             </div>
 
+            <a
+              href="/battle-city-1990.apk"
+              download="Battle City 1990.apk"
+              onClick={() => soundManager.playPowerUpCollect()}
+              className="block w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-emerald-400 bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
+            >
+              [ DOWNLOAD ANDROID APK ]
+            </a>
+
             <button
               type="button"
               onClick={() => setShowInstallModal(false)}
-              className="w-full py-2 px-3 text-[10px] font-pixel border-2 border-[#f8b800] bg-amber-600 hover:bg-amber-500 text-black cursor-pointer transition-all shadow-md font-bold"
+              className="w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-[#f8b800] bg-amber-600 hover:bg-amber-500 text-black cursor-pointer transition-all shadow-md font-bold"
             >
               [ OK / CLOSE ]
             </button>
@@ -1037,29 +1049,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* PC (.EXE) Download Coming Soon Modal */}
       {showPcDownloadModal && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-3 backdrop-blur-xs select-none"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-3 backdrop-blur-xs select-none"
           onClick={() => setShowPcDownloadModal(false)}
         >
           <div
-            className="bg-[#0c0c0c] border-4 border-[#58b8d8] max-w-md w-full p-4 space-y-3 font-pixel shadow-[0_0_25px_rgba(88,184,216,0.5)] text-white text-center"
+            className="bg-[#0c0c0c] border-2 sm:border-4 border-[#58b8d8] max-w-md w-full max-h-[96vh] overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 font-pixel shadow-[0_0_25px_rgba(88,184,216,0.5)] text-white text-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-[#58b8d8] text-xs sm:text-sm tracking-widest">
+            <div className="text-[#58b8d8] text-[10px] sm:text-sm tracking-widest">
               PC DOWNLOAD (.EXE)
             </div>
 
-            <div className="inline-block px-3 py-1 bg-zinc-900 border border-zinc-700 text-amber-300 text-[9px] font-pixel">
+            <div className="inline-block px-2.5 py-0.5 bg-zinc-900 border border-zinc-700 text-amber-300 text-[8px] sm:text-[9px] font-pixel">
               STATUS: COMING SOON
             </div>
 
-            <p className="text-[8px] text-zinc-300 leading-relaxed font-pixel text-left">
+            <p className="text-[7.5px] sm:text-[8px] text-zinc-300 leading-relaxed font-pixel text-left">
               THE STANDALONE WINDOWS PC EXECUTABLE (.EXE) IS BEING PACKAGED AND WILL BE AVAILABLE FOR DIRECT DOWNLOAD HERE.
             </p>
 
             <button
               type="button"
               onClick={() => setShowPcDownloadModal(false)}
-              className="w-full py-2 px-3 text-[10px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold"
+              className="w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold"
             >
               [ CLOSE ]
             </button>
