@@ -52,8 +52,8 @@ if (!fs.existsSync(gradlewBat)) {
   process.exit(1);
 }
 
-console.log('Executing Gradle build: gradlew.bat assembleDebug...');
-const result = spawnSync('cmd.exe', ['/c', 'gradlew.bat', 'assembleDebug', '--no-daemon'], {
+console.log('Executing Gradle build: gradlew.bat assembleRelease...');
+const result = spawnSync('cmd.exe', ['/c', 'gradlew.bat', 'assembleRelease', '--no-daemon'], {
   cwd: androidDir,
   env,
   stdio: 'inherit',
@@ -65,7 +65,7 @@ if (result.status !== 0) {
 }
 
 // Locate generated APK
-const apkSource = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+const apkSource = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
 if (!fs.existsSync(apkSource)) {
   console.error(`ERROR: Expected APK not found at: ${apkSource}`);
   process.exit(1);
