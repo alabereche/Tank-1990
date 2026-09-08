@@ -133,7 +133,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [gamepad, setGamepad] = useState<GamepadInfo | null>(gamepadManager.getConnectedGamepad());
   const [touchActive, setTouchActive] = useState<boolean>(false);
   const [fullscreenActive, setFullscreenActive] = useState<boolean>(isFullscreen());
-  const [tacticalInv, setTacticalInv] = useState<TacticalInventory>({ smoke: 1, grenade: 0, shield: 1 });
+  const [tacticalInv, setTacticalInv] = useState<TacticalInventory>({ smoke: 2, grenade: 2, shield: 1 });
   const [tacticalInvP2, setTacticalInvP2] = useState<TacticalInventory | undefined>(undefined);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [isLandscape, setIsLandscape] = useState<boolean>(false);
@@ -377,43 +377,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       soundManager.unlockAudio();
 
       const key = e.key.toLowerCase();
+      const code = e.code.toLowerCase();
       keysDown.current[key] = true;
+      keysDown.current[code] = true;
 
       // Prevent page scrolling on arrow keys and spacebar
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'w', 'a', 's', 'd'].includes(key)) {
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'w', 'a', 's', 'd'].includes(key) || ['keyw', 'keya', 'keys', 'keyd', 'space'].includes(code)) {
         e.preventDefault();
       }
 
       // Quick tactical taunts for multiplayer: 1, 2, 3, 4
       if (multiplayerConfig) {
-        if (key === '1') triggerQuickTaunt('ATTACK!');
-        else if (key === '2') triggerQuickTaunt('DEFEND!');
-        else if (key === '3') triggerQuickTaunt('GOOD JOB!');
-        else if (key === '4') triggerQuickTaunt('WATCH OUT!');
+        if (key === '1' || code === 'digit1') triggerQuickTaunt('ATTACK!');
+        else if (key === '2' || code === 'digit2') triggerQuickTaunt('DEFEND!');
+        else if (key === '3' || code === 'digit3') triggerQuickTaunt('GOOD JOB!');
+        else if (key === '4' || code === 'digit4') triggerQuickTaunt('WATCH OUT!');
       }
 
       // Mute toggle: 'M'
-      if (key === 'm') {
+      if (key === 'm' || code === 'keym') {
         const muted = soundManager.toggleMute();
         setIsMuted(muted);
       }
 
       // Fullscreen toggle: 'F'
-      if (key === 'f') {
+      if (key === 'f' || code === 'keyf') {
         toggleFullscreen();
       }
 
       // Window Scale toggle: 'V'
-      if (key === 'v') {
+      if (key === 'v' || code === 'keyv') {
         cycleWindowScaleRef.current();
       }
 
       // Pause / In-Game Menu: 'Escape' (quick quit focus), 'P', or 'Enter'
-      if (key === 'escape') {
+      if (key === 'escape' || code === 'escape') {
         e.preventDefault();
         triggerPauseRef.current(true);
-      } else if (key === 'enter' || key === 'p') {
-        if (multiplayerConfig?.roomCode === 'LOCAL' && key === 'enter') {
+      } else if (key === 'enter' || key === 'p' || code === 'enter' || code === 'keyp') {
+        if (multiplayerConfig?.roomCode === 'LOCAL' && (key === 'enter' || code === 'enter')) {
           // P2 fire in local 2P mode
         } else {
           e.preventDefault();
@@ -424,7 +426,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const handleKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+      const code = e.code.toLowerCase();
       keysDown.current[key] = false;
+      keysDown.current[code] = false;
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -503,24 +507,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (multiplayerConfig?.roomCode === 'LOCAL') {
         // Split keyboard: WASD+Space/J = P1, Arrows+Enter/K = P2. Pad N = player N.
         const kbP1 = {
-          up: Boolean(kd['w']),
-          down: Boolean(kd['s']),
-          left: Boolean(kd['a']),
-          right: Boolean(kd['d']),
-          fire: Boolean(kd[' '] || kd['j'] || kd['z']),
-          smoke: Boolean(kd['q']),
-          grenade: Boolean(kd['e']),
-          shield: Boolean(kd['r'] || kd['c']),
+          up: Boolean(kd['w'] || kd['keyw']),
+          down: Boolean(kd['s'] || kd['keys']),
+          left: Boolean(kd['a'] || kd['keya']),
+          right: Boolean(kd['d'] || kd['keyd']),
+          fire: Boolean(kd[' '] || kd['space'] || kd['j'] || kd['keyj'] || kd['z'] || kd['keyz']),
+          smoke: Boolean(kd['q'] || kd['keyq']),
+          grenade: Boolean(kd['e'] || kd['keye']),
+          shield: Boolean(kd['r'] || kd['keyr'] || kd['c'] || kd['keyc']),
         };
         const kbP2 = {
           up: Boolean(kd['arrowup']),
           down: Boolean(kd['arrowdown']),
           left: Boolean(kd['arrowleft']),
           right: Boolean(kd['arrowright']),
-          fire: Boolean(kd['enter'] || kd['k'] || kd['numpad0']),
-          smoke: Boolean(kd['numpad7'] || kd['u']),
-          grenade: Boolean(kd['numpad8'] || kd['i']),
-          shield: Boolean(kd['numpad9'] || kd['o']),
+          fire: Boolean(kd['enter'] || kd['k'] || kd['keyk'] || kd['numpad0']),
+          smoke: Boolean(kd['numpad7'] || kd['u'] || kd['keyu']),
+          grenade: Boolean(kd['numpad8'] || kd['i'] || kd['keyi']),
+          shield: Boolean(kd['numpad9'] || kd['o'] || kd['keyo']),
         };
         const pad1Poll = gamepadManager.pollInputForOrdinal(0);
         const pad2Poll = gamepadManager.pollInputForOrdinal(1);
@@ -542,14 +546,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       } else {
         // Single player: local player drives their own tank.
         const kb = {
-          up: Boolean(kd['arrowup'] || kd['w']),
-          down: Boolean(kd['arrowdown'] || kd['s']),
-          left: Boolean(kd['arrowleft'] || kd['a']),
-          right: Boolean(kd['arrowright'] || kd['d']),
-          fire: Boolean(kd[' '] || kd['j'] || kd['z'] || kd['control']),
-          smoke: Boolean(kd['q']),
-          grenade: Boolean(kd['e']),
-          shield: Boolean(kd['r'] || kd['c']),
+          up: Boolean(kd['arrowup'] || kd['w'] || kd['keyw']),
+          down: Boolean(kd['arrowdown'] || kd['s'] || kd['keys']),
+          left: Boolean(kd['arrowleft'] || kd['a'] || kd['keya']),
+          right: Boolean(kd['arrowright'] || kd['d'] || kd['keyd']),
+          fire: Boolean(kd[' '] || kd['space'] || kd['j'] || kd['keyj'] || kd['z'] || kd['keyz'] || kd['control'] || kd['controlleft'] || kd['controlright']),
+          smoke: Boolean(kd['q'] || kd['keyq']),
+          grenade: Boolean(kd['e'] || kd['keye']),
+          shield: Boolean(kd['r'] || kd['keyr'] || kd['c'] || kd['keyc']),
         };
         const padPoll = gamepadManager.pollInputForRole('any');
         const pad = padPoll?.input;

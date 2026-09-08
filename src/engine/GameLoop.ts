@@ -1282,7 +1282,11 @@ export class GameEngine {
       slideFrames: 0,
       shootCooldown: 0,
       bulletSpeed: 4.5,
-      tacticalInventory: { smoke: 1, grenade: 0, shield: 1 },
+      tacticalInventory: {
+        smoke: 2,
+        grenade: this.versusSubMode === 'payload' ? 3 : 2,
+        shield: 1,
+      },
     };
   }
 
@@ -1641,6 +1645,15 @@ export class GameEngine {
     if (this.multiMode === 'versus' && this.versusSubMode === 'payload' && this.payloadManager) {
       const payloadState = this.payloadManager.update(this.player, this.player2, (msg) => {
         this.tauntMessage = { text: msg, sender: 'P1', timer: 120 };
+        // Checkpoint captured! Resupply tactical equipment (+2 bombs, +1 smoke, +1 shield) to all active tanks
+        for (const p of this.playerTanks.values()) {
+          if (p && p.tacticalInventory) {
+            p.tacticalInventory.grenade = Math.min(9, p.tacticalInventory.grenade + 2);
+            p.tacticalInventory.smoke = Math.min(9, p.tacticalInventory.smoke + 1);
+            p.tacticalInventory.shield = Math.min(5, p.tacticalInventory.shield + 1);
+            this.addTacticalPopup(p.x + 16, p.y + 16, '+AMMO PACK');
+          }
+        }
       });
       this.scoreData.payloadState = payloadState;
 
@@ -2729,8 +2742,9 @@ export class GameEngine {
 
           if (tile.damageMask === 0) {
             tile.type = TileType.EMPTY;
-            // 7.5% chance to spawn a tactical pickup when a brick is destroyed!
-            if (Math.random() < 0.075) {
+            // Tactical pickup drop chance: 18% in Payload mode, 7.5% in regular modes
+            const dropRate = this.versusSubMode === 'payload' ? 0.18 : 0.075;
+            if (Math.random() < dropRate) {
               this.spawnTacticalPickup(c * BLOCK_SIZE, r * BLOCK_SIZE);
             }
           }
@@ -3347,6 +3361,8 @@ export class GameEngine {
   private triggerGrenadeAction(tank: Tank) {
     if (!tank.tacticalInventory || tank.tacticalInventory.grenade <= 0) return;
     tank.tacticalInventory.grenade--;
+    soundManager.playGrenadeBounce();
+    this.addTacticalPopup(tank.x + 16, tank.y + 16, 'BOMB!');
     this.emitNetEvent({ t: 'grenade' });
 
     let dirX = 0;
@@ -3522,6 +3538,17 @@ export class GameEngine {
       }
     }
 
+    // Armored Payload Cart ricochet
+    if (this.isPayloadMode && this.payloadManager) {
+      const cx = this.payloadManager.cartPosition.x;
+      const cy = this.payloadManager.cartPosition.y;
+      const hw = this.payloadManager.cartWidth / 2;
+      const hh = this.payloadManager.cartHeight / 2;
+      if (px >= cx - hw && px <= cx + hw && py >= cy - hh && py <= cy + hh) {
+        return true;
+      }
+    }
+
     return false;
   }
 
@@ -3661,8 +3688,9 @@ export class GameEngine {
             t.damageMask = 0;
             t.type = TileType.EMPTY;
             this.gridVersion++;
-            // 7.5% chance to spawn a tactical pickup when a brick is destroyed!
-            if (Math.random() < 0.075) {
+            // Tactical pickup drop chance: 18% in Payload mode, 7.5% in regular modes
+            const dropRate = this.versusSubMode === 'payload' ? 0.18 : 0.075;
+            if (Math.random() < dropRate) {
               this.spawnTacticalPickup(c * BLOCK_SIZE, r * BLOCK_SIZE);
             }
           }

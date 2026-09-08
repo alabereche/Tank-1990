@@ -290,7 +290,7 @@ interface TouchActionButtonsProps {
 
 export const TouchActionButtons: React.FC<TouchActionButtonsProps> = ({
   onInput,
-  tacticalInventory = { smoke: 1, grenade: 0, shield: 1 },
+  tacticalInventory = { smoke: 2, grenade: 2, shield: 1 },
   compact = false,
 }) => {
   const [fireActive, setFireActive] = useState<boolean>(false);
