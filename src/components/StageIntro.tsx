@@ -9,6 +9,7 @@ import React, { useEffect, useRef } from 'react';
 import { soundManager } from '../engine/SoundManager';
 import { gamepadManager } from '../engine/GamepadManager';
 import { STAGES_METADATA } from '../engine/maps';
+import { toggleFullscreen, lockOrientationLandscape } from '../utils/fullscreen';
 
 interface StageIntroProps {
   stage: number;
@@ -131,10 +132,23 @@ export const StageIntro: React.FC<StageIntroProps> = ({ stage, onSelectStage, on
     return () => cancelAnimationFrame(animId);
   }, []);
 
+  const handleCurtainClick = async () => {
+    try {
+      const hasTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      const isMobile = hasTouch && Math.min(window.innerWidth, window.innerHeight) <= 960;
+      if (isMobile) {
+        await toggleFullscreen();
+        await lockOrientationLandscape();
+      }
+    } catch {}
+    if (timerRef.current) clearTimeout(timerRef.current);
+    onComplete();
+  };
+
   return (
     <div
       id="stage-intro-curtain"
-      onClick={onComplete}
+      onClick={handleCurtainClick}
       className="flex flex-col items-center justify-center w-full max-w-xl mx-auto h-full max-h-[96vh] sm:h-[480px] bg-[#282828] border-2 sm:border-4 border-[#505050] shadow-2xl font-pixel select-none cursor-pointer relative overflow-hidden px-3 sm:px-6 py-3 sm:py-6"
     >
       {/* Retro Curtains CRT Scanline Texture */}

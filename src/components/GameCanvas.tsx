@@ -138,7 +138,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [tacticalInvP2, setTacticalInvP2] = useState<TacticalInventory | undefined>(undefined);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [isLandscape, setIsLandscape] = useState<boolean>(false);
-  const [showRotatePrompt, setShowRotatePrompt] = useState<boolean>(true);
 
   // Detect mobile device & orientation (portrait vs landscape)
   useEffect(() => {
@@ -175,6 +174,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Screen orientation lock may not be allowed in some contexts
     }
   }, []);
+
+  // Auto-attempt landscape orientation lock on mobile mount
+  useEffect(() => {
+    if (isMobile && !isLandscape) {
+      handleEnterLandscape();
+    }
+  }, [isMobile, isLandscape, handleEnterLandscape]);
 
   // Re-bind engine canvas when switching between landscape console and portrait cabinet
   useEffect(() => {
@@ -931,35 +937,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   return (
     <div id="game-view-container" className="inline-flex flex-col items-center justify-center select-none max-w-full">
-      {/* Mobile Landscape Recommendation Banner */}
-      {isMobile && !isLandscape && showRotatePrompt && (
-        <div className="w-full bg-gradient-to-r from-amber-950 via-zinc-900 to-amber-950 border border-amber-500/70 text-amber-200 px-3 py-2 rounded-lg mb-2 flex items-center justify-between text-[8px] sm:text-[9px] font-pixel shadow-xl">
-          <div className="flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-amber-400 rotate-90 shrink-0 animate-bounce" />
-            <div className="flex flex-col text-left">
-              <span className="text-amber-300 font-bold">العب بالوضع الأفقي / PLAY IN LANDSCAPE</span>
-              <span className="text-[7px] text-zinc-400">تحكم بالأنالوج وعصا التحكم وشاشة كاملة</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={handleEnterLandscape}
-              className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded text-[8px] flex items-center gap-1 active:scale-95 transition-all shadow-md shrink-0"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>تدوير الشاشة</span>
-            </button>
-            <button
-              onClick={() => setShowRotatePrompt(false)}
-              className="text-zinc-500 hover:text-zinc-300 px-1 text-[10px]"
-              title="إغلاق"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Authentic NES Console Cabinet (Unified Top Bar + Screen + HUD in One Seamless Frame) */}
       <div className="flex flex-col bg-[#303030] border-4 border-[#505050] rounded shadow-2xl overflow-hidden max-w-full">
         {/* Top Header Bar: Score, High Score & Action Controls - flush with game border */}
@@ -1166,8 +1143,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 windowScale === 'max'
                   ? 'w-[min(82vh,calc(95vw-130px))] h-[min(82vh,calc(95vw-130px))] min-w-[300px] min-h-[300px] max-w-[960px] max-h-[960px]'
                   : windowScale === 'large'
-                  ? 'w-[360px] h-[360px] xs:w-[420px] xs:h-[420px] sm:w-[512px] sm:h-[512px] md:w-[608px] md:h-[608px] lg:w-[672px] lg:h-[672px] max-w-[80vw] max-h-[76vh]'
-                  : 'w-[300px] h-[300px] xs:w-[350px] xs:h-[350px] sm:w-[416px] sm:h-[416px] md:w-[460px] md:h-[460px] max-w-[75vw] max-h-[70vh]'
+                  ? 'w-[min(48vh,360px)] h-[min(48vh,360px)] xs:w-[420px] xs:h-[420px] sm:w-[512px] sm:h-[512px] md:w-[608px] md:h-[608px] lg:w-[672px] lg:h-[672px] max-w-[calc(100vw-90px)] max-h-[76vh]'
+                  : 'w-[min(42vh,300px)] h-[min(42vh,300px)] xs:w-[350px] xs:h-[350px] sm:w-[416px] sm:h-[416px] md:w-[460px] md:h-[460px] max-w-[calc(100vw-90px)] max-h-[70vh]'
               }`}
               onClick={() => soundManager.unlockAudio()}
             />

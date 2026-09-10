@@ -18,7 +18,7 @@ import { ArcadeCabinetFrame } from './components/ArcadeCabinetFrame';
 import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './engine/maps';
 import { soundManager } from './engine/SoundManager';
 import { gamepadManager, GamepadInfo } from './engine/GamepadManager';
-import { toggleFullscreen, isElectronApp, isStandaloneApp } from './utils/fullscreen';
+import { toggleFullscreen, isElectronApp, isStandaloneApp, lockOrientationLandscape } from './utils/fullscreen';
 import { localP2PService } from './services/LocalP2PService';
 import { analyticsService } from './services/AnalyticsService';
 
@@ -197,8 +197,21 @@ export default function App() {
   };
 
 
+  // Auto-switch to landscape console mode when starting gameplay on mobile browsers
+  const autoEnterMobileLandscape = async () => {
+    try {
+      const hasTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      const isMobile = hasTouch && Math.min(window.innerWidth, window.innerHeight) <= 960;
+      if (isMobile) {
+        await toggleFullscreen();
+        await lockOrientationLandscape();
+      }
+    } catch {}
+  };
+
   // Handlers for Transitions
   const handleStartGame = (stageOverride?: number) => {
+    autoEnterMobileLandscape();
     analyticsService.track('play_game');
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
@@ -209,6 +222,7 @@ export default function App() {
   };
 
   const handleOpenConstruction = (initialMap?: StageMap) => {
+    autoEnterMobileLandscape();
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setEditorInitialMap(initialMap);
@@ -216,6 +230,7 @@ export default function App() {
   };
 
   const handlePlayCustomMap = (map: StageMap) => {
+    autoEnterMobileLandscape();
     analyticsService.track('play_game');
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
@@ -342,6 +357,7 @@ export default function App() {
     subMode: 'classic' | 'payload' = 'classic',
     stageOverride?: number
   ) => {
+    autoEnterMobileLandscape();
     analyticsService.track('play_game');
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
@@ -369,6 +385,7 @@ export default function App() {
     stage?: number;
     customMap?: StageMap;
   }) => {
+    autoEnterMobileLandscape();
     analyticsService.track('play_game');
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();

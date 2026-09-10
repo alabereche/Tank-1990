@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { soundManager } from '../engine/SoundManager';
 import { gamepadManager } from '../engine/GamepadManager';
-import { toggleFullscreen, onFullscreenChange, isElectronApp, isCapacitorApp, isStandaloneApp } from '../utils/fullscreen';
+import { toggleFullscreen, onFullscreenChange, isElectronApp, isCapacitorApp, isStandaloneApp, lockOrientationLandscape } from '../utils/fullscreen';
 import { StageMap } from '../types';
 import { createBadwaterBasinGrid } from '../engine/maps';
 import { analyticsService } from '../services/AnalyticsService';
@@ -112,11 +112,22 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     }
   };
 
+  const autoEnterLandscape = async () => {
+    try {
+      const hasTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      const isMobile = hasTouch && Math.min(window.innerWidth, window.innerHeight) <= 960;
+      if (isMobile) {
+        await toggleFullscreen();
+        await lockOrientationLandscape();
+      }
+    } catch {}
+  };
+
   const menuOptions: { label: string; action: () => void; badge?: string }[] = [
-    { label: '1 PLAYER', action: onStart1Player },
-    { label: '2 PLAYERS (LOCAL)', action: () => setShowLocal2PModal(true) },
-    ...(onOpenWifiCoop ? [{ label: 'WI-FI CO-OP (P2P)', action: onOpenWifiCoop, badge: 'HOTSPOT' }] : []),
-    { label: 'CONSTRUCTION', action: onOpenConstruction },
+    { label: '1 PLAYER', action: () => { autoEnterLandscape(); onStart1Player(); } },
+    { label: '2 PLAYERS (LOCAL)', action: () => { autoEnterLandscape(); setShowLocal2PModal(true); } },
+    ...(onOpenWifiCoop ? [{ label: 'WI-FI CO-OP (P2P)', action: () => { autoEnterLandscape(); onOpenWifiCoop(); }, badge: 'HOTSPOT' }] : []),
+    { label: 'CONSTRUCTION', action: () => { autoEnterLandscape(); onOpenConstruction(); } },
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
     ...(!isElectron && !isCapacitor ? [{ label: 'ANDROID APP (.APK)', action: handleDownloadApk, badge: 'APK' }] : []),
