@@ -13,12 +13,14 @@ import { StageIntro } from './components/StageIntro';
 import { GameOverModal } from './components/GameOverModal';
 import { SettingsModal } from './components/SettingsModal';
 import { WifiCoopModal } from './components/WifiCoopModal';
+import { SecretStatsModal } from './components/SecretStatsModal';
 import { ArcadeCabinetFrame } from './components/ArcadeCabinetFrame';
 import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './engine/maps';
 import { soundManager } from './engine/SoundManager';
 import { gamepadManager, GamepadInfo } from './engine/GamepadManager';
 import { toggleFullscreen, isElectronApp, lockOrientationLandscape, isStandaloneApp } from './utils/fullscreen';
 import { localP2PService } from './services/LocalP2PService';
+import { analyticsService } from './services/AnalyticsService';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<GameState>(GameState.MENU);
@@ -32,6 +34,7 @@ export default function App() {
   const [isPortraitMode, setIsPortraitMode] = useState<boolean>(false);
   const [pwaPrompt, setPwaPrompt] = useState<any>(null);
   const [showPwaBanner, setShowPwaBanner] = useState<boolean>(false);
+  const [showSecretStats, setShowSecretStats] = useState<boolean>(false);
   const [multiplayerConfig, setMultiplayerConfig] = useState<{
     roomCode: string;
     role: MultiplayerRole;
@@ -176,6 +179,18 @@ export default function App() {
     };
   }, []);
 
+  // Silent Visitor Analytics & ?stats / ?admin URL Parameter Detection
+  useEffect(() => {
+    analyticsService.trackVisit();
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('stats') || params.has('admin')) {
+        setShowSecretStats(true);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault();
@@ -208,6 +223,7 @@ export default function App() {
 
   // Handlers for Transitions
   const handleStartGame = (stageOverride?: number) => {
+    analyticsService.track('play_game');
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     const stg = stageOverride ?? currentStage ?? 1;
@@ -224,6 +240,7 @@ export default function App() {
   };
 
   const handlePlayCustomMap = (map: StageMap) => {
+    analyticsService.track('play_game');
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setCustomMap(map);
@@ -349,6 +366,7 @@ export default function App() {
     subMode: 'classic' | 'payload' = 'classic',
     stageOverride?: number
   ) => {
+    analyticsService.track('play_game');
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     const stg = stageOverride ?? currentStage ?? 1;
@@ -375,6 +393,7 @@ export default function App() {
     stage?: number;
     customMap?: StageMap;
   }) => {
+    analyticsService.track('play_game');
     soundManager.stopMenuMusic();
     soundManager.unlockAudio();
     setIsWifiCoopOpen(false);
@@ -479,8 +498,9 @@ export default function App() {
               onOpenWifiCoop={() => setIsWifiCoopOpen(true)}
               onOpenConstruction={handleOpenConstruction}
               onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenStats={() => setShowSecretStats(true)}
               inCabinet={true}
-              disabled={isSettingsOpen || isWifiCoopOpen}
+              disabled={isSettingsOpen || isWifiCoopOpen || showSecretStats}
             />
           </ArcadeCabinetFrame>
         ) : currentScreen === GameState.STAGE_START ? (
@@ -510,14 +530,16 @@ export default function App() {
             onCancel={handleReturnToMenu}
           />
         ) : (currentScreen === GameState.GAME_OVER || currentScreen === GameState.VICTORY) && finalScoreData ? (
-          <GameOverModal
-            isVictory={currentScreen === GameState.VICTORY}
-            scoreData={finalScoreData}
-            onNextStage={currentScreen === GameState.VICTORY ? handleNextStage : undefined}
-            onRetry={handleRetryStage}
-            onReturnToMenu={handleReturnToMenu}
-            isGuest={multiplayerConfig?.role === 'guest' && multiplayerConfig.roomCode !== 'LOCAL'}
-          />
+          <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-2 sm:p-4 backdrop-blur-xs overflow-y-auto">
+            <GameOverModal
+              isVictory={currentScreen === GameState.VICTORY}
+              scoreData={finalScoreData}
+              onNextStage={currentScreen === GameState.VICTORY ? handleNextStage : undefined}
+              onRetry={handleRetryStage}
+              onReturnToMenu={handleReturnToMenu}
+              isGuest={multiplayerConfig?.role === 'guest' && multiplayerConfig.roomCode !== 'LOCAL'}
+            />
+          </div>
         ) : null}
       </main>
 
@@ -547,6 +569,11 @@ export default function App() {
           mapSize={effectiveMapSize}
           customMap={customMap}
         />
+      )}
+
+      {/* Secret Analytics Stats Modal */}
+      {showSecretStats && (
+        <SecretStatsModal onClose={() => setShowSecretStats(false)} />
       )}
     </div>
   );

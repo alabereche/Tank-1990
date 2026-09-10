@@ -7,9 +7,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { soundManager } from '../engine/SoundManager';
 import { gamepadManager } from '../engine/GamepadManager';
-import { toggleFullscreen, onFullscreenChange, isElectronApp } from '../utils/fullscreen';
+import { toggleFullscreen, onFullscreenChange, isElectronApp, isCapacitorApp, isStandaloneApp } from '../utils/fullscreen';
 import { StageMap } from '../types';
 import { createBadwaterBasinGrid } from '../engine/maps';
+import { analyticsService } from '../services/AnalyticsService';
 
 interface TitleScreenProps {
   highScore: number;
@@ -19,6 +20,7 @@ interface TitleScreenProps {
   onOpenWifiCoop?: () => void;
   onOpenConstruction: (initialMap?: StageMap) => void;
   onOpenSettings: () => void;
+  onOpenStats?: () => void;
   inCabinet?: boolean;
   disabled?: boolean;
 }
@@ -31,10 +33,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenWifiCoop,
   onOpenConstruction,
   onOpenSettings,
+  onOpenStats,
   inCabinet = false,
   disabled = false,
 }) => {
   const isElectron = isElectronApp();
+  const isCapacitor = isCapacitorApp();
+  const isStandalone = isStandaloneApp();
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showLocal2PModal, setShowLocal2PModal] = useState<boolean>(false);
@@ -45,6 +50,25 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
   const [showPcDownloadModal, setShowPcDownloadModal] = useState<boolean>(false);
+
+  // Secret 5-tap sequence on Title Logo to reveal live analytics
+  const secretTapCountRef = useRef<number>(0);
+  const secretTapTimerRef = useRef<any>(null);
+
+  const handleSecretLogoClick = () => {
+    secretTapCountRef.current += 1;
+    if (secretTapTimerRef.current) clearTimeout(secretTapTimerRef.current);
+
+    if (secretTapCountRef.current >= 5) {
+      secretTapCountRef.current = 0;
+      soundManager.playPowerUpSpawn();
+      onOpenStats?.();
+    } else {
+      secretTapTimerRef.current = setTimeout(() => {
+        secretTapCountRef.current = 0;
+      }, 3000);
+    }
+  };
 
   useEffect(() => {
     const unsub = onFullscreenChange((active) => {
@@ -90,6 +114,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     soundManager.playMenuSelect();
     if (window.electronAPI?.quit) {
       window.electronAPI.quit();
+    } else if ((window as any).Capacitor?.Plugins?.App?.exitApp) {
+      (window as any).Capacitor.Plugins.App.exitApp();
+    } else if ((navigator as any).app?.exitApp) {
+      (navigator as any).app.exitApp();
     } else {
       window.close();
     }
@@ -102,10 +130,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     { label: 'CONSTRUCTION', action: onOpenConstruction },
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
-    { label: 'INSTALL APP', action: handleInstallApp, badge: 'PWA' },
-    ...(!isElectron ? [{ label: 'PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'WIN' }] : []),
-    ...(!isElectron ? [{ label: 'FULLSCREEN', action: handleToggleFullscreen }] : []),
-    { label: 'EXIT GAME', action: () => { setExitConfirmIdx(0); setShowExitModal(true); } },
+    ...(!isElectron && !isCapacitor && !isStandalone ? [{ label: 'INSTALL APP', action: handleInstallApp, badge: 'PWA' }] : []),
+    ...(!isElectron && !isCapacitor ? [{ label: 'PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'WIN' }] : []),
+    ...(!isCapacitor ? [{ label: 'FULLSCREEN', action: handleToggleFullscreen }] : []),
+    ...(isElectron || isCapacitor ? [{ label: 'EXIT GAME', action: () => { setExitConfirmIdx(0); setShowExitModal(true); } }] : []),
   ];
 
   // Stable references so polling and keyboard loops never re-create and never reset their state
@@ -141,6 +169,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const onStartLocal2PlayerRef = useRef(onStartLocal2Player);
   onStartLocal2PlayerRef.current = onStartLocal2Player;
+
+  useEffect(() => {
+    if (selectedIdx >= menuOptions.length) {
+      setSelectedIdx(0);
+    }
+  }, [menuOptions.length, selectedIdx]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -236,9 +270,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       } else if (e.key.toLowerCase() === 'h') {
         setShowHelpModal((prev) => !prev);
       } else if (e.key === 'Escape') {
-        setExitConfirmIdx(0);
-        setShowExitModal(true);
-        soundManager.playMenuMove();
+        if (isElectron || isCapacitor) {
+          setExitConfirmIdx(0);
+          setShowExitModal(true);
+          soundManager.playMenuMove();
+        }
       }
     };
 
@@ -487,9 +523,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             setShowHelpModal(false);
             soundManager.playMenuMove();
           } else {
-            setExitConfirmIdx(0);
-            setShowExitModal(true);
-            soundManager.playMenuMove();
+            if (isElectron || isCapacitor) {
+              setExitConfirmIdx(0);
+              setShowExitModal(true);
+              soundManager.playMenuMove();
+            }
           }
         }
 
@@ -601,8 +639,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
       {/* Main Center Stage: Logo, Pixel Tanks, and Navigation Menu */}
       <div className="flex-1 w-full flex flex-col items-center justify-center gap-1 sm:gap-4 my-auto">
-        {/* Retro Pixel Logo Banner */}
-        <div id="title-logo-banner" className="flex flex-col items-center text-center">
+        {/* Retro Pixel Logo Banner (Tap 5 times to reveal secret stats) */}
+        <div
+          id="title-logo-banner"
+          onClick={handleSecretLogoClick}
+          className="flex flex-col items-center text-center cursor-pointer select-none active:scale-[0.98] transition-transform"
+        >
           <div>
             <h1 id="title-logo-h1" className="font-extrabold tracking-widest text-[#e52521] select-none text-3xl sm:text-5xl md:text-6xl drop-shadow-[0_4px_0_#500000]">
               BATTLE
@@ -718,8 +760,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           <span>[ENTER / SPACE • A / START] CONFIRM</span>
           <span>•</span>
           <span>[SELECT] CYCLE</span>
-          <span>•</span>
-          <span>[F] FULLSCREEN</span>
+          {!isCapacitor && (
+            <>
+              <span>•</span>
+              <span>[F] FULLSCREEN</span>
+            </>
+          )}
         </div>
         <div id="title-footer-copy" className="text-[8px] sm:text-[9px] text-zinc-500 tracking-widest">
           © 1990 NAMCO LTD. / ENHANCED EDITION
@@ -798,26 +844,26 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           onClick={() => setShowLocal2PModal(false)}
         >
           <div
-            className="bg-[#141414] border-2 sm:border-4 border-[#444] rounded max-w-xl w-full max-h-[96vh] flex flex-col p-3 sm:p-5 font-pixel shadow-2xl text-white overflow-hidden"
+            className="bg-[#141414] border-2 sm:border-4 border-[#444] rounded max-w-xl w-full max-h-[96vh] flex flex-col p-2 sm:p-4 font-pixel shadow-2xl text-white overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-700 pb-1.5 sm:pb-2 shrink-0">
-              <span className="text-[#f8b800] text-[10px] sm:text-xs tracking-wider">LOCAL 2-PLAYER COMBAT</span>
+            <div className="flex items-center justify-between border-b border-zinc-700 pb-1 sm:pb-1.5 shrink-0">
+              <span className="text-[#f8b800] text-[9.5px] sm:text-xs tracking-wider">LOCAL 2-PLAYER COMBAT</span>
               <button
                 type="button"
                 onClick={() => setShowLocal2PModal(false)}
-                className="text-zinc-400 hover:text-red-400 text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 border border-zinc-700 hover:border-red-500 cursor-pointer"
+                className="text-zinc-400 hover:text-red-400 text-[10px] sm:text-xs px-2 py-0.5 border border-zinc-700 hover:border-red-500 cursor-pointer"
               >
                 [X]
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-1 space-y-2 sm:space-y-3 my-1.5">
-              <div className="text-[9px] sm:text-[10px] text-zinc-300">
+            <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 sm:space-y-2.5 my-1">
+              <div className="text-[8.5px] sm:text-[10px] text-zinc-300">
                 SELECT COMBAT RULES:
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2.5">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => setLocal2PMode('coop')}
@@ -951,7 +997,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           onClick={() => setShowExitModal(false)}
         >
           <div
-            className="bg-[#121216] border-2 sm:border-4 border-red-600 rounded-md max-w-sm w-full max-h-[96vh] overflow-y-auto p-3 sm:p-5 space-y-3 sm:space-y-4 font-pixel shadow-[0_0_30px_rgba(220,38,38,0.4)] text-white text-center"
+            className="bg-[#121216] border-2 sm:border-4 border-red-600 rounded-md max-w-sm w-full max-h-[96vh] overflow-y-auto p-2.5 sm:p-4 space-y-2 sm:space-y-3 font-pixel shadow-[0_0_30px_rgba(220,38,38,0.4)] text-white text-center"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-red-500 text-xs sm:text-sm tracking-widest flex items-center justify-center gap-2">
@@ -960,15 +1006,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <span>[!]</span>
             </div>
 
-            <p className="text-[9px] sm:text-[10px] text-zinc-300 leading-relaxed font-pixel">
+            <p className="text-[8.5px] sm:text-[9.5px] text-zinc-300 leading-relaxed font-pixel">
               ARE YOU SURE YOU WANT TO EXIT BATTLE CITY 1990?
             </p>
 
-            <div className="flex items-center justify-center gap-2.5 mt-3 sm:mt-4">
+            <div className="flex items-center justify-center gap-2.5 mt-2 sm:mt-3">
               <button
                 type="button"
                 onClick={handleConfirmExit}
-                className={`flex-1 py-2 sm:py-2.5 px-3 sm:px-4 text-[10px] sm:text-xs font-pixel border-2 transition-all cursor-pointer ${
+                className={`flex-1 py-1.5 sm:py-2.5 px-3 sm:px-4 text-[9.5px] sm:text-xs font-pixel border-2 transition-all cursor-pointer ${
                   exitConfirmIdx === 0
                     ? 'border-red-500 bg-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.6)]'
                     : 'border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-500'
@@ -980,7 +1026,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setShowExitModal(false)}
-                className={`flex-1 py-2 sm:py-2.5 px-3 sm:px-4 text-[10px] sm:text-xs font-pixel border-2 transition-all cursor-pointer ${
+                className={`flex-1 py-1.5 sm:py-2.5 px-3 sm:px-4 text-[9.5px] sm:text-xs font-pixel border-2 transition-all cursor-pointer ${
                   exitConfirmIdx === 1
                     ? 'border-emerald-400 bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.6)]'
                     : 'border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-500'
@@ -990,7 +1036,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </button>
             </div>
 
-            <div className="text-[7.5px] sm:text-[8px] text-zinc-500 font-sans mt-1 sm:mt-2">
+            <div className="text-[7.5px] sm:text-[8px] text-zinc-500 font-sans mt-1">
               Gamepad: [D-Pad] Select &bull; [A/Start] Confirm &bull; [B/ESC] Cancel
             </div>
           </div>
@@ -1004,18 +1050,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           onClick={() => setShowInstallModal(false)}
         >
           <div
-            className="bg-[#0c0c0c] border-2 sm:border-4 border-[#f8b800] max-w-md w-full max-h-[96vh] overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 font-pixel shadow-[0_0_25px_rgba(248,184,0,0.5)] text-white text-center"
+            className="bg-[#0c0c0c] border-2 sm:border-4 border-[#f8b800] max-w-lg w-full max-h-[96vh] overflow-y-auto p-2.5 sm:p-4 space-y-1.5 sm:space-y-2.5 font-pixel shadow-[0_0_25px_rgba(248,184,0,0.5)] text-white text-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-[#f8b800] text-[10px] sm:text-sm tracking-widest">
+            <div className="text-[#f8b800] text-[10px] sm:text-xs tracking-widest font-bold">
               INSTALL MOBILE APP (PWA)
             </div>
 
-            <p className="text-[8px] sm:text-[9px] text-zinc-300 leading-relaxed font-pixel text-left">
+            <p className="text-[7.5px] sm:text-[8.5px] text-zinc-300 leading-relaxed font-pixel text-left">
               RUN AS FULLSCREEN RETRO APP WITHOUT BROWSER TOOLBARS:
             </p>
 
-            <div className="text-[7.5px] sm:text-[8px] text-zinc-300 leading-relaxed text-left space-y-1.5 sm:space-y-2 bg-black p-2 sm:p-2.5 border-2 border-zinc-800 font-pixel">
+            <div className="text-[7px] sm:text-[7.5px] text-zinc-300 leading-relaxed text-left space-y-1 bg-black p-1.5 sm:p-2 border border-zinc-800 font-pixel">
               <div>
                 <span className="text-emerald-400 font-bold block mb-0.5">&gt; ANDROID (CHROME):</span>
                 <span className="text-zinc-400">TAP BROWSER MENU (⋮) THEN SELECT 'INSTALL APP' OR 'ADD TO HOME SCREEN'.</span>
@@ -1026,11 +1072,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               <a
                 href="https://api-tank.nosfir.online/battle-city-1990.apk"
                 download="Battle City 1990.apk"
-                onClick={() => soundManager.playPowerUpCollect()}
+                onClick={() => {
+                  soundManager.playPowerUpCollect();
+                  analyticsService.track('download_apk');
+                }}
                 className="block w-full py-1.5 sm:py-2 px-2 text-[8px] sm:text-[9px] font-pixel border-2 border-emerald-400 bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
               >
                 [ ANDROID APK ]
@@ -1038,7 +1087,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <a
                 href="https://api-tank.nosfir.online/battle-city-1990.exe"
                 download="Battle City 1990.exe"
-                onClick={() => soundManager.playPowerUpCollect()}
+                onClick={() => {
+                  soundManager.playPowerUpCollect();
+                  analyticsService.track('download_exe');
+                }}
                 className="block w-full py-1.5 sm:py-2 px-2 text-[8px] sm:text-[9px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
               >
                 [ WINDOWS .EXE ]
@@ -1063,14 +1115,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           onClick={() => setShowPcDownloadModal(false)}
         >
           <div
-            className="bg-[#0c0c0c] border-2 sm:border-4 border-[#58b8d8] max-w-md w-full max-h-[96vh] overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 font-pixel shadow-[0_0_25px_rgba(88,184,216,0.5)] text-white text-center"
+            className="bg-[#0c0c0c] border-2 sm:border-4 border-[#58b8d8] max-w-md w-full max-h-[96vh] overflow-y-auto p-2.5 sm:p-4 space-y-1.5 sm:space-y-2.5 font-pixel shadow-[0_0_25px_rgba(88,184,216,0.5)] text-white text-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-[#58b8d8] text-[10px] sm:text-sm tracking-widest">
+            <div className="text-[#58b8d8] text-[10px] sm:text-xs tracking-widest font-bold">
               PC DOWNLOAD (.EXE)
             </div>
 
-            <div className="inline-block px-2.5 py-0.5 bg-emerald-950 border border-emerald-500 text-emerald-300 text-[8px] sm:text-[9px] font-pixel">
+            <div className="inline-block px-2.5 py-0.5 bg-emerald-950 border border-emerald-500 text-emerald-300 text-[7.5px] sm:text-[8.5px] font-pixel">
               STATUS: READY FOR DOWNLOAD
             </div>
 
@@ -1081,8 +1133,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <a
               href="https://api-tank.nosfir.online/battle-city-1990.exe"
               download="Battle City 1990.exe"
-              onClick={() => soundManager.playPowerUpCollect()}
-              className="block w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
+              onClick={() => {
+                soundManager.playPowerUpCollect();
+                analyticsService.track('download_exe');
+              }}
+              className="block w-full py-1.5 sm:py-2 px-3 text-[8.5px] sm:text-[9.5px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
             >
               [ DOWNLOAD WINDOWS (.EXE) ]
             </a>
@@ -1090,7 +1145,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <button
               type="button"
               onClick={() => setShowPcDownloadModal(false)}
-              className="w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-zinc-600 bg-zinc-800 hover:bg-zinc-700 text-white cursor-pointer transition-all shadow-md font-bold"
+              className="w-full py-1.5 sm:py-2 px-3 text-[8.5px] sm:text-[9.5px] font-pixel border-2 border-zinc-600 bg-zinc-800 hover:bg-zinc-700 text-white cursor-pointer transition-all shadow-md font-bold"
             >
               [ CLOSE ]
             </button>

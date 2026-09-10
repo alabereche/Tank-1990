@@ -170,25 +170,31 @@ export const Hud: React.FC<HudProps> = ({
 
               {/* Status Badge */}
               <div className="text-center pt-0.5">
-                <span
-                  className={`text-[7px] font-bold px-2 py-0.5 rounded tracking-wider uppercase inline-block ${
-                    scoreData.payloadState?.status === 'PUSHING'
-                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60 animate-pulse'
+                {scoreData.payloadState?.isOvertime ? (
+                  <span className="text-[7.5px] font-pixel font-bold px-2 py-0.5 rounded tracking-wider uppercase inline-block bg-red-600 text-white border border-red-300 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.9)]">
+                    [!] OVERTIME [!]
+                  </span>
+                ) : (
+                  <span
+                    className={`text-[7px] font-bold px-2 py-0.5 rounded tracking-wider uppercase inline-block ${
+                      scoreData.payloadState?.status === 'PUSHING'
+                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60 animate-pulse'
+                        : scoreData.payloadState?.status === 'CONTESTED'
+                        ? 'bg-rose-950 text-rose-300 border border-rose-500/80 animate-bounce'
+                        : scoreData.payloadState?.status === 'ROLLBACK'
+                        ? 'bg-amber-950 text-amber-300 border border-amber-500/60'
+                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                    }`}
+                  >
+                    {scoreData.payloadState?.status === 'PUSHING'
+                      ? 'PUSHING >>'
                       : scoreData.payloadState?.status === 'CONTESTED'
-                      ? 'bg-rose-950 text-rose-300 border border-rose-500/80 animate-bounce'
+                      ? 'CONTESTED !'
                       : scoreData.payloadState?.status === 'ROLLBACK'
-                      ? 'bg-amber-950 text-amber-300 border border-amber-500/60'
-                      : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                  }`}
-                >
-                  {scoreData.payloadState?.status === 'PUSHING'
-                    ? 'PUSHING >>'
-                    : scoreData.payloadState?.status === 'CONTESTED'
-                    ? 'CONTESTED !'
-                    : scoreData.payloadState?.status === 'ROLLBACK'
-                    ? 'ROLLBACK <<'
-                    : 'CART IDLE'}
-                </span>
+                      ? 'ROLLBACK <<'
+                      : 'CART IDLE'}
+                  </span>
+                )}
               </div>
             </div>
           </div>

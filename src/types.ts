@@ -311,6 +311,8 @@ export interface PayloadState {
   checkpoints: PayloadCheckpoint[];
   winner: 1 | 2 | null;
   isExploded?: boolean;
+  isOvertime?: boolean;
+  overtimeSeconds?: number;
 }
 
 export type MultiplayerRole = 'host' | 'guest';

@@ -265,66 +265,68 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   return (
     <div
       id="game-over-modal-container"
-      className="flex flex-col items-center justify-between w-full max-w-lg mx-auto max-h-[96vh] overflow-y-auto bg-black border-2 sm:border-4 border-[#484848] p-2.5 sm:p-5 text-white font-pixel select-none shadow-2xl"
+      className="flex flex-col items-center justify-between w-full max-w-xl sm:max-w-2xl mx-auto max-h-[96vh] overflow-y-auto bg-black border-2 sm:border-4 border-[#484848] p-2 sm:p-4 text-white font-pixel select-none shadow-2xl"
     >
       {/* Stage & Header */}
-      <div className="w-full flex items-center justify-between border-b border-zinc-800 pb-1.5 sm:pb-3 text-[9px] sm:text-xs">
+      <div className="w-full flex items-center justify-between border-b border-zinc-800 pb-1 sm:pb-2 text-[9px] sm:text-xs">
         <span className="text-[#f8b800]">HI-SCORE {scoreData.highScore}</span>
         <span className="text-zinc-300">STAGE {scoreData.stage}</span>
       </div>
 
       {/* Main Title Banner */}
-      <div className="my-1.5 sm:my-4 text-center">
+      <div className="my-1 sm:my-2.5 text-center">
         {scoreData.versusSubMode === 'payload' ? (
           scoreData.payloadState?.isCompleted ? (
             <>
-              <h2 className="text-xl sm:text-3xl font-extrabold text-[#58b8d8] tracking-widest animate-pulse drop-shadow-[0_4px_0_#003888]">
+              <h2 className="text-lg sm:text-2xl font-extrabold text-[#58b8d8] tracking-widest animate-pulse drop-shadow-[0_4px_0_#003888]">
                 PAYLOAD DETONATED!
               </h2>
-              <div className="text-[9px] sm:text-[11px] text-sky-300 font-pixel mt-0.5 sm:mt-1">
+              <div className="text-[8px] sm:text-[10px] text-sky-300 font-pixel mt-0.5">
                 BLUE ATTACKERS VICTORIOUS! ALL 4 CHECKPOINTS CLEARED!
               </div>
             </>
           ) : (
             <>
-              <h2 className="text-xl sm:text-3xl font-extrabold text-red-500 tracking-widest drop-shadow-[0_4px_0_#400000]">
+              <h2 className="text-lg sm:text-2xl font-extrabold text-red-500 tracking-widest drop-shadow-[0_4px_0_#400000]">
                 DEFENSE PREVAILED!
               </h2>
-              <div className="text-[9px] sm:text-[11px] text-red-400 font-pixel mt-0.5 sm:mt-1">
+              <div className="text-[8px] sm:text-[10px] text-red-400 font-pixel mt-0.5">
                 TIME EXPIRED! RED DEFENDERS PRESERVED THE BASE!
               </div>
             </>
           )
         ) : isVictory ? (
-          <h2 className="text-xl sm:text-3xl font-extrabold text-[#f8b800] tracking-widest animate-pulse drop-shadow-[0_4px_0_#704000]">
+          <h2 className="text-lg sm:text-2xl font-extrabold text-[#f8b800] tracking-widest animate-pulse drop-shadow-[0_4px_0_#704000]">
             STAGE CLEAR!
           </h2>
         ) : (
-          <h2 className="text-xl sm:text-3xl font-extrabold text-red-600 tracking-widest drop-shadow-[0_4px_0_#400000]">
+          <h2 className="text-lg sm:text-2xl font-extrabold text-red-600 tracking-widest drop-shadow-[0_4px_0_#400000]">
             GAME OVER
           </h2>
         )}
         {scoreData.versusSubMode !== 'payload' && (
-          <div className="text-[8.5px] sm:text-[10px] text-zinc-400 mt-0.5">
+          <div className="text-[8px] sm:text-[9.5px] text-zinc-400 mt-0.5">
             {isVictory ? 'ALL ENEMY TANKS DESTROYED!' : 'THE BASE EAGLE FELL IN BATTLE'}
           </div>
         )}
       </div>
 
       {scoreData.versusSubMode === 'payload' ? (
-        <div className="w-full bg-[#181818] border border-zinc-700 p-2 sm:p-4 rounded flex flex-col gap-2 sm:gap-3 text-xs mb-2 sm:mb-4">
-          <div className="text-center text-[9px] sm:text-[10px] text-zinc-400 border-b border-zinc-800 pb-1">
+        <div className="w-full bg-[#181818] border border-zinc-700 p-2 sm:p-3 rounded flex flex-col gap-1.5 sm:gap-2.5 text-xs mb-1.5 sm:mb-3">
+          <div className="text-center text-[8.5px] sm:text-[9.5px] text-zinc-400 border-b border-zinc-800 pb-0.5 sm:pb-1">
             -- TF2 BADWATER MISSION REPORT --
           </div>
-          <div className="flex items-center justify-between text-[10px] sm:text-xs">
-            <span className="text-zinc-300">CHECKPOINTS SECURED</span>
-            <span className="text-[#f8b800] font-bold font-mono text-xs sm:text-sm">{scoreData.payloadState?.checkpointsCaptured || 0} / 4</span>
+          <div className="grid grid-cols-2 gap-2 text-[9.5px] sm:text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-300">CHECKPOINTS</span>
+              <span className="text-[#f8b800] font-bold font-mono text-xs">{scoreData.payloadState?.checkpointsCaptured || 0} / 4</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-300">CART PROGRESS</span>
+              <span className="text-sky-400 font-bold font-mono text-xs">{Math.floor((scoreData.payloadState?.progress || 0) * 100)}%</span>
+            </div>
           </div>
-          <div className="flex items-center justify-between text-[10px] sm:text-xs">
-            <span className="text-zinc-300">CART PROGRESS</span>
-            <span className="text-sky-400 font-bold font-mono text-xs sm:text-sm">{Math.floor((scoreData.payloadState?.progress || 0) * 100)}%</span>
-          </div>
-          <div className="flex items-center justify-between text-[10px] sm:text-xs border-t border-zinc-800 pt-1.5 sm:pt-2">
+          <div className="flex items-center justify-between text-[9.5px] sm:text-xs border-t border-zinc-800 pt-1 sm:pt-1.5">
             <span className="text-zinc-300">TACTICAL OUTCOME</span>
             <span className={scoreData.payloadState?.isCompleted ? 'text-emerald-400 font-bold font-pixel text-[9px] sm:text-[10px]' : 'text-red-400 font-bold font-pixel text-[9px] sm:text-[10px]'}>
               {scoreData.payloadState?.isCompleted ? 'BLU BOMB DETONATED' : 'RED DEFENSE HELD'}
@@ -332,64 +334,60 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           </div>
         </div>
       ) : (
-        <div className="w-full bg-[#181818] border border-zinc-700 p-2 sm:p-4 rounded flex flex-col gap-1.5 sm:gap-3 text-xs mb-2 sm:mb-4">
-          <div className="text-center text-[9px] sm:text-[10px] text-zinc-400 border-b border-zinc-800 pb-1">
+        <div className="w-full bg-[#181818] border border-zinc-700 p-1.5 sm:p-3 rounded flex flex-col gap-1 sm:gap-2 text-xs mb-1.5 sm:mb-3">
+          <div className="text-center text-[8.5px] sm:text-[9.5px] text-zinc-400 border-b border-zinc-800 pb-0.5 sm:pb-1">
             -- SCORE BREAKDOWN --
           </div>
 
-          {breakdown.map((item, idx) => {
-            const isRevealed = idx < revealedIdx;
-            const totalPoints = item.count * item.pts;
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            {breakdown.map((item, idx) => {
+              const isRevealed = idx < revealedIdx;
+              const totalPoints = item.count * item.pts;
 
-            return (
-              <div
-                key={item.type}
-                className={`flex items-center justify-between transition-opacity duration-200 py-0.5 ${
-                  isRevealed ? 'opacity-100' : 'opacity-0'
-                }`}
-              >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <span className="text-white font-bold w-5 sm:w-6 text-right text-[10px] sm:text-xs">
-                    {item.count}
-                  </span>
-                  <span className="text-zinc-400 text-[8.5px] sm:text-[10px]">PTS</span>
-                  <div
-                    className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-xs border border-white/40"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-zinc-300 text-[8.5px] sm:text-[10px] tracking-wider">
-                    {item.name}
-                  </span>
+              return (
+                <div
+                  key={item.type}
+                  className={`flex items-center justify-between transition-opacity duration-200 py-0.5 ${
+                    isRevealed ? 'opacity-100' : 'opacity-0'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                    <span className="text-white font-bold w-4 sm:w-5 text-right text-[9px] sm:text-xs shrink-0">
+                      {item.count}
+                    </span>
+                    <div
+                      className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-xs border border-white/40 shrink-0"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-zinc-300 text-[8px] sm:text-[9.5px] tracking-wider truncate">
+                      {item.name}
+                    </span>
+                  </div>
+
+                  <div className="text-right text-[#f8b800] font-bold w-12 sm:w-16 text-[9px] sm:text-xs shrink-0">
+                    {totalPoints}
+                  </div>
                 </div>
-
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <svg viewBox="0 0 16 16" className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-red-500">
-                    <path d="M8 2 L10 6 L14 7 L11 10 L12 14 L8 12 L4 14 L5 10 L2 7 L6 6 Z" />
-                  </svg>
-                </div>
-
-                <div className="text-right text-[#f8b800] font-bold w-16 sm:w-20 text-[10px] sm:text-xs">
-                  {totalPoints}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Total Summary Row */}
-          <div className="border-t border-zinc-700 pt-1.5 sm:pt-2 flex items-center justify-between text-[10px] sm:text-xs mt-0.5">
-            <span className="text-zinc-300">TOTAL KILLS</span>
-            <span className="text-white font-bold">{totalKills}</span>
+              );
+            })}
           </div>
 
-          <div className="flex items-center justify-between text-xs sm:text-sm border-t border-zinc-800 pt-1.5 sm:pt-2">
-            <span className="text-[#f8b800] font-bold">TOTAL SCORE</span>
-            <span className="text-white font-extrabold tracking-wider">{scoreData.score}</span>
+          {/* Total Summary Row (Side-by-side) */}
+          <div className="border-t border-zinc-700 pt-1 sm:pt-1.5 flex items-center justify-between text-[9px] sm:text-xs mt-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-400">TOTAL KILLS:</span>
+              <span className="text-white font-bold text-xs">{totalKills}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[#f8b800] font-bold">TOTAL SCORE:</span>
+              <span className="text-white font-extrabold tracking-wider text-xs sm:text-sm">{scoreData.score}</span>
+            </div>
           </div>
         </div>
       )}
 
       {/* Action Buttons */}
-      <div className="w-full flex flex-wrap gap-1.5 sm:gap-2 items-center justify-center pt-1.5 sm:pt-2">
+      <div className="w-full flex items-center justify-center gap-2 pt-1 sm:pt-2">
         {actionButtons.map((btn, idx) => {
           const isSelected = selectedBtnIdx === idx;
           const isPrimary = btn.id === 'next';
@@ -411,7 +409,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 setSelectedBtnIdx(idx);
                 soundManager.playMenuMove();
               }}
-              className={`flex-1 min-w-[110px] sm:min-w-[130px] flex items-center justify-center gap-1.5 py-1.5 sm:py-2.5 px-2.5 sm:px-3 rounded text-[9px] sm:text-[10px] font-pixel border transition-all ${
+              className={`flex-1 min-w-[90px] sm:min-w-[130px] flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2.5 sm:px-4 rounded text-[9.5px] sm:text-xs font-pixel border transition-all ${
                 isDisabled
                   ? 'bg-zinc-900 text-zinc-500 border-zinc-800 cursor-not-allowed opacity-60'
                   : isPrimary
@@ -435,7 +433,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
       </div>
 
       {/* Controller Guide Legend */}
-      <div className="w-full text-center pt-1.5 sm:pt-2.5 mt-0.5 sm:mt-1 text-[7.5px] sm:text-[9px] text-zinc-400 border-t border-zinc-800 tracking-wider flex items-center justify-center flex-wrap gap-x-2 gap-y-1">
+      <div className="hidden sm:flex w-full text-center pt-1.5 sm:pt-2 mt-0.5 sm:mt-1 text-[7.5px] sm:text-[9px] text-zinc-400 border-t border-zinc-800 tracking-wider items-center justify-center flex-wrap gap-x-2 gap-y-1">
         <span>[D-PAD / STICK] SELECT</span>
         <span>•</span>
         <span>[A / ENTER] CONFIRM</span>

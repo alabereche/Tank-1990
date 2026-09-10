@@ -1670,7 +1670,8 @@ export class GameEngine {
 
       // Real-time synchronization of countdown clock & cart progress
       const currentSec = payloadState.timeRemainingSec;
-      if (currentSec !== this.lastReportedPayloadSec || this.tickCount % 20 === 0) {
+      const isOt = Boolean(payloadState.isOvertime);
+      if (currentSec !== this.lastReportedPayloadSec || (isOt && this.tickCount % 6 === 0) || this.tickCount % 20 === 0) {
         this.lastReportedPayloadSec = currentSec;
         this.onStateChange(this.gameState, { ...this.scoreData, payloadState: { ...payloadState } });
       }

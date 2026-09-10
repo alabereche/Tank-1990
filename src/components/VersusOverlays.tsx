@@ -95,8 +95,8 @@ export const RoundBanner: React.FC<{ state: GameState; scoreData: GameScore; mod
       : null;
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 font-pixel select-none">
-      <div className="w-4/5 max-w-md border-4 border-double border-[#3a3a3a] bg-[#101010]/95 px-6 py-5 flex flex-col items-center gap-3 shadow-2xl">
+    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 sm:gap-3 bg-black/70 font-pixel select-none p-2">
+      <div className="w-11/12 max-w-md max-h-[96vh] overflow-y-auto border-2 sm:border-4 border-double border-[#3a3a3a] bg-[#101010]/95 px-4 sm:px-6 py-3 sm:py-5 flex flex-col items-center gap-2 sm:gap-3 shadow-2xl">
         {isIntro ? (
           <>
             <div className="flex items-center gap-2 text-zinc-300 text-sm tracking-widest">
@@ -368,26 +368,26 @@ export const MatchEndPanel: React.FC<{
   }, [isHost]);
 
   return (
-    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/85 font-pixel select-none">
-      <div className="w-11/12 max-w-lg border-4 border-[#3a3a3a] bg-[#101010] px-6 py-6 flex flex-col items-center gap-4 shadow-2xl">
-        <Trophy className="w-10 h-10" style={{ color, filter: `drop-shadow(0 0 10px ${color})` }} />
-        <div className="text-lg tracking-widest text-center" style={{ color, textShadow: '0 0 14px currentColor' }}>
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/85 font-pixel select-none p-2">
+      <div className="w-11/12 max-w-lg max-h-[96vh] overflow-y-auto border-2 sm:border-4 border-[#3a3a3a] bg-[#101010] px-4 sm:px-6 py-3 sm:py-5 flex flex-col items-center gap-2 sm:gap-3.5 shadow-2xl">
+        <Trophy className="w-7 h-7 sm:w-10 sm:h-10 shrink-0" style={{ color, filter: `drop-shadow(0 0 10px ${color})` }} />
+        <div className="text-sm sm:text-lg tracking-widest text-center" style={{ color, textShadow: '0 0 14px currentColor' }}>
           {isFfa ? `PLAYER ${ffaSlot}` : is2v2 ? `TEAM ${teamWin}` : winner === 1 ? 'PLAYER 1' : 'PLAYER 2'}
           <br />
           WINS THE MATCH!
         </div>
         {isFfa ? (
-          <div className="font-mono font-bold text-3xl" style={{ color }}>
+          <div className="font-mono font-bold text-xl sm:text-3xl" style={{ color }}>
             {ffaKills} KILLS
           </div>
         ) : (
           <Scoreline scoreData={scoreData} big is2v2={is2v2} />
         )}
-        <div className="text-[9px] text-zinc-500 tracking-widest">
+        <div className="text-[8px] sm:text-[9px] text-zinc-500 tracking-widest">
           {isFfa ? 'KILL TARGET REACHED' : is2v2 ? 'FIRST TO 5 ROUNDS ACHIEVED' : 'FIRST TO 7 ROUNDS ACHIEVED'}
         </div>
 
-        <div className="flex items-center gap-4 mt-2">
+        <div className="flex items-center gap-2.5 sm:gap-4 mt-1 sm:mt-2">
           {isHost ? (
             <button
               onClick={() => {
@@ -395,7 +395,7 @@ export const MatchEndPanel: React.FC<{
                 onRematch();
               }}
               onMouseEnter={() => setSelectedIdx(0)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded text-[11px] font-bold tracking-wider transition-all duration-150 active:translate-y-px ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded text-[9.5px] sm:text-[11px] font-bold tracking-wider transition-all duration-150 active:translate-y-px cursor-pointer ${
                 selectedIdx === 0
                   ? 'bg-emerald-500 text-black border-2 border-white ring-4 ring-emerald-400 ring-offset-2 ring-offset-black scale-105 shadow-[0_0_20px_rgba(16,185,129,0.7)]'
                   : 'bg-emerald-800 hover:bg-emerald-700 border-2 border-emerald-500 text-emerald-100 opacity-80 hover:opacity-100'
@@ -406,7 +406,7 @@ export const MatchEndPanel: React.FC<{
               REMATCH
             </button>
           ) : (
-            <span className="text-[9px] text-zinc-400 animate-pulse px-4 py-2 border border-zinc-700 rounded">
+            <span className="text-[8.5px] sm:text-[9px] text-zinc-400 animate-pulse px-3 sm:px-4 py-1.5 sm:py-2 border border-zinc-700 rounded">
               WAITING FOR HOST...
             </span>
           )}
@@ -416,7 +416,7 @@ export const MatchEndPanel: React.FC<{
               onExit();
             }}
             onMouseEnter={() => setSelectedIdx(isHost ? 1 : 0)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded text-[11px] font-bold tracking-wider transition-all duration-150 active:translate-y-px ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded text-[9.5px] sm:text-[11px] font-bold tracking-wider transition-all duration-150 active:translate-y-px cursor-pointer ${
               (isHost ? selectedIdx === 1 : selectedIdx === 0)
                 ? 'bg-amber-400 text-black border-2 border-white ring-4 ring-amber-400 ring-offset-2 ring-offset-black scale-105 shadow-[0_0_20px_rgba(245,158,11,0.7)]'
                 : 'bg-[#383838] hover:bg-[#484848] border-2 border-[#666] text-zinc-300 opacity-80 hover:opacity-100'
@@ -429,7 +429,7 @@ export const MatchEndPanel: React.FC<{
         </div>
 
         {/* Controller & Keyboard Navigation Legend */}
-        <div className="flex items-center justify-center gap-3 text-[8px] text-zinc-400 tracking-widest mt-2 pt-3 border-t border-zinc-800/80 w-full font-mono">
+        <div className="hidden sm:flex items-center justify-center gap-3 text-[7.5px] sm:text-[8px] text-zinc-400 tracking-widest mt-1 sm:mt-2 pt-2 sm:pt-3 border-t border-zinc-800/80 w-full font-mono">
           <span className="flex items-center gap-1"><span className="text-amber-400">D-PAD / STICK</span> NAVIGATE</span>
           <span className="text-zinc-600">•</span>
           <span className="flex items-center gap-1"><span className="text-emerald-400">[A / START]</span> SELECT</span>

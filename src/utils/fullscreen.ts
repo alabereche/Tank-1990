@@ -80,13 +80,23 @@ export async function lockOrientationLandscape(): Promise<boolean> {
   return false;
 }
 
+export function isCapacitorApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  const cap = (window as any).Capacitor;
+  if (!cap) return false;
+  if (typeof cap.isNativePlatform === 'function') {
+    return Boolean(cap.isNativePlatform());
+  }
+  if (typeof cap.getPlatform === 'function') {
+    return cap.getPlatform() !== 'web';
+  }
+  return false;
+}
+
 export function isStandaloneApp(): boolean {
   if (typeof window === 'undefined') return false;
   return Boolean(
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.matchMedia('(display-mode: fullscreen)').matches ||
-    (navigator as any).standalone ||
-    document.referrer.includes('android-app://')
+    window.matchMedia?.('(display-mode: standalone)')?.matches ||
+    (navigator as any).standalone === true
   );
 }
-

@@ -43,7 +43,8 @@ export class PayloadManager {
   private idleTimer: number = 0;
 
   // Match flow
-  public timeRemainingSec: number = 150; // 2 minutes 30 seconds initial timer
+  public totalTimeSec: number = 150; // Total match duration allowed
+  public timeRemainingSec: number = 150; // Current remaining seconds
   public elapsedTicks: number = 0;
   public status: PayloadStatus = 'IDLE';
   public checkpoints: PayloadCheckpoint[] = [];
@@ -51,6 +52,12 @@ export class PayloadManager {
   public minAllowedDistance: number = 0;
   public winner: 1 | 2 | null = null;
   public matchOver: boolean = false;
+
+  // Authentic TF2 Overtime mechanics
+  public isOvertime: boolean = false;
+  public overtimeGraceTicks: number = 300; // 5.0 seconds at 60fps
+  public readonly maxOvertimeGraceTicks: number = 300;
+  private overtimeBeepTimer: number = 0;
 
   // Sound throttles
   private chugSoundTimer: number = 0;
@@ -136,12 +143,16 @@ export class PayloadManager {
     this.currentDistance = 0;
     this.minAllowedDistance = 0;
     this.elapsedTicks = 0;
+    this.totalTimeSec = 150;
     this.timeRemainingSec = 150;
     this.status = 'IDLE';
     this.idleTimer = 0;
     this.winner = null;
     this.matchOver = false;
     this.isExploded = false;
+    this.isOvertime = false;
+    this.overtimeGraceTicks = this.maxOvertimeGraceTicks;
+    this.overtimeBeepTimer = 0;
     this.initSegments();
     this.initCheckpoints();
     this.updatePositionFromDistance();
@@ -149,7 +160,11 @@ export class PayloadManager {
 
   public resetClock() {
     this.elapsedTicks = 0;
+    this.totalTimeSec = 150;
     this.timeRemainingSec = 150;
+    this.isOvertime = false;
+    this.overtimeGraceTicks = this.maxOvertimeGraceTicks;
+    this.overtimeBeepTimer = 0;
   }
 
   /**
@@ -164,9 +179,9 @@ export class PayloadManager {
       return this.getState();
     }
 
-    // Precise fixed 60Hz frame-based countdown (starts at 150s = 02:30, decrements 1 sec every 60 simulation ticks)
+    // Precise fixed 60Hz frame-based countdown (starts at totalTimeSec = 02:30)
     this.elapsedTicks++;
-    this.timeRemainingSec = Math.max(0, 150 - Math.floor(this.elapsedTicks / 60));
+    this.timeRemainingSec = Math.max(0, this.totalTimeSec - Math.floor(this.elapsedTicks / 60));
 
     // Identify Attacker & Defender tanks
     const attackerTank = this.attackerSlot === 1 ? p1Tank : p2Tank;
@@ -231,16 +246,22 @@ export class PayloadManager {
         this.currentCheckpointIdx = i;
 
         if (i < this.checkpoints.length - 1) {
-          // Regular checkpoint: lock minimum rollback distance
+          // Regular checkpoint: lock minimum rollback distance and grant +45s bonus time
           this.minAllowedDistance = this.currentDistance;
+          this.totalTimeSec += 45;
+          if (this.isOvertime) {
+            this.isOvertime = false;
+            this.overtimeGraceTicks = this.maxOvertimeGraceTicks;
+          }
           soundManager.playPowerUpCollect();
           if (onStateNotice) {
-            onStateNotice(`${cp.name} CAPTURED!`, '#58b8d8');
+            onStateNotice(`${cp.name} CAPTURED! +45s`, '#58b8d8');
           }
         } else {
           // Final Point reached! Mass explosion and attacker victory!
           this.matchOver = true;
           this.winner = this.attackerSlot;
+          this.isOvertime = false;
           soundManager.playEagleExplosion();
           if (onStateNotice) {
             onStateNotice(`FINAL POINT DETONATED! ATTACKER WINS!`, '#f8b800');
@@ -249,13 +270,51 @@ export class PayloadManager {
       }
     }
 
-    // Check Time Expiration
+    // Check Time Expiration & Authentic TF2 Overtime
     if (this.timeRemainingSec <= 0 && !this.matchOver) {
-      this.matchOver = true;
-      this.winner = this.defenderSlot;
-      soundManager.playBigExplosion();
-      if (onStateNotice) {
-        onStateNotice(`TIME EXPIRED! DEFENDER WINS!`, '#55f855');
+      if (attackerInAura) {
+        // Attacker is actively pushing/contesting the cart
+        if (!this.isOvertime) {
+          this.isOvertime = true;
+          this.overtimeGraceTicks = this.maxOvertimeGraceTicks;
+          soundManager.playPowerUpSpawn();
+          if (onStateNotice) {
+            onStateNotice('OVERTIME!', '#ff3333');
+          }
+        } else {
+          // Keep grace timer fully replenished while attacker is in the aura
+          this.overtimeGraceTicks = this.maxOvertimeGraceTicks;
+        }
+      } else {
+        // Attacker is NOT in the aura
+        if (this.isOvertime) {
+          // In Overtime: drain the 5-second grace countdown
+          this.overtimeGraceTicks--;
+
+          // Urgent audio cue every 0.5s while draining
+          this.overtimeBeepTimer++;
+          if (this.overtimeBeepTimer % 30 === 0 && this.overtimeGraceTicks > 0) {
+            soundManager.playMenuMove();
+          }
+
+          if (this.overtimeGraceTicks <= 0) {
+            this.matchOver = true;
+            this.winner = this.defenderSlot;
+            this.isOvertime = false;
+            soundManager.playBigExplosion();
+            if (onStateNotice) {
+              onStateNotice('OVERTIME EXPIRED! DEFENDER WINS!', '#ff4444');
+            }
+          }
+        } else {
+          // Regular time expired and attacker was not near the cart
+          this.matchOver = true;
+          this.winner = this.defenderSlot;
+          soundManager.playBigExplosion();
+          if (onStateNotice) {
+            onStateNotice('TIME EXPIRED! DEFENDER WINS!', '#55f855');
+          }
+        }
       }
     }
 
@@ -349,6 +408,8 @@ export class PayloadManager {
       checkpoints: this.checkpoints.map((cp) => ({ ...cp })),
       winner: this.winner,
       isExploded: this.isExploded,
+      isOvertime: this.isOvertime,
+      overtimeSeconds: Number((Math.max(0, this.overtimeGraceTicks) / 60).toFixed(1)),
     };
   }
 }

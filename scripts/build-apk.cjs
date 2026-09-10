@@ -1,6 +1,6 @@
 /**
  * Battle City 1990 - Automated Android APK Builder
- * Builds native Android debug APK using local Java JDK and Android SDK.
+ * Builds native Android signed release APK using local Java JDK and Android SDK.
  * Copies output to release/Battle City 1990.apk
  */
 

@@ -2113,47 +2113,47 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
 
       {/* JSON Import/Export Modal */}
       {showJsonModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-[#303030] border-4 border-[#606060] p-4 max-w-lg w-full rounded shadow-2xl text-xs font-pixel text-zinc-100 flex flex-col gap-3">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-600">
-              <span className="text-amber-400 font-bold">MAP JSON DATA</span>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
+          <div className="bg-[#303030] border-2 sm:border-4 border-[#606060] p-3 sm:p-4 max-w-lg w-full max-h-[96vh] rounded shadow-2xl text-xs font-pixel text-zinc-100 flex flex-col gap-2 sm:gap-3 overflow-hidden">
+            <div className="flex items-center justify-between pb-1.5 sm:pb-2 border-b border-zinc-600 shrink-0">
+              <span className="text-amber-400 font-bold text-[10px] sm:text-xs">MAP JSON DATA</span>
               <button
                 onClick={() => setShowJsonModal(false)}
-                className="text-zinc-400 hover:text-white p-1"
+                className="text-zinc-400 hover:text-white p-1 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-[9px] text-zinc-300">
+            <p className="text-[8px] sm:text-[9px] text-zinc-300 shrink-0">
               Copy your map data to share, or paste custom map JSON below and click Apply:
             </p>
 
             <textarea
               value={jsonText}
               onChange={(e) => setJsonText(e.target.value)}
-              rows={12}
-              className="w-full bg-black text-green-400 p-2 font-mono text-[9px] border border-zinc-700 rounded focus:outline-none focus:border-amber-400 select-all"
+              rows={4}
+              className="w-full bg-black text-green-400 p-2 font-mono text-[8.5px] sm:text-[9px] border border-zinc-700 rounded focus:outline-none focus:border-amber-400 select-all flex-1 min-h-[75px] max-h-[40vh] resize-none"
             />
 
             {jsonError && (
-              <div className="text-red-400 text-[8px] bg-red-950/60 p-1.5 border border-red-800 rounded">
+              <div className="text-red-400 text-[8px] bg-red-950/60 p-1.5 border border-red-800 rounded shrink-0">
                 {jsonError}
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-600">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-600 shrink-0">
               <div className="flex gap-2">
                 <button
                   onClick={handleCopyJson}
-                  className="flex items-center gap-1 bg-[#484848] hover:bg-[#585858] text-zinc-200 px-3 py-1.5 rounded border border-zinc-600 text-[9px]"
+                  className="flex items-center gap-1 bg-[#484848] hover:bg-[#585858] text-zinc-200 px-2.5 sm:px-3 py-1.5 rounded border border-zinc-600 text-[8.5px] sm:text-[9px] cursor-pointer"
                 >
                   {copySuccess ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copySuccess ? 'COPIED!' : 'COPY'}</span>
                 </button>
                 <button
                   onClick={handleDownloadJson}
-                  className="flex items-center gap-1 bg-[#484848] hover:bg-[#585858] text-zinc-200 px-3 py-1.5 rounded border border-zinc-600 text-[9px]"
+                  className="flex items-center gap-1 bg-[#484848] hover:bg-[#585858] text-zinc-200 px-2.5 sm:px-3 py-1.5 rounded border border-zinc-600 text-[8.5px] sm:text-[9px] cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>DOWNLOAD</span>
@@ -2163,7 +2163,7 @@ export const MapEditorToolbar: React.FC<MapEditorProps> = ({
               <div className="flex gap-2">
                 <button
                   onClick={handleApplyJson}
-                  className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-1.5 rounded border border-amber-400 text-[10px]"
+                  className="bg-amber-600 hover:bg-amber-500 text-white px-3 sm:px-4 py-1.5 rounded border border-amber-400 text-[9.5px] sm:text-[10px] font-bold cursor-pointer"
                 >
                   APPLY MAP
                 </button>

@@ -1104,10 +1104,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             {/* Right: The ONLY Match Countdown Clock */}
             {scoreData.payloadState ? (
               (() => {
+                const isOt = Boolean(scoreData.payloadState.isOvertime);
+                const otSec = scoreData.payloadState.overtimeSeconds ?? 5.0;
                 const totalSec = Math.max(0, Math.floor(scoreData.payloadState.timeRemainingSec ?? 150));
                 const mins = Math.floor(totalSec / 60).toString().padStart(2, '0');
                 const secs = (totalSec % 60).toString().padStart(2, '0');
                 const isCritical = totalSec <= 30;
+
+                if (isOt) {
+                  return (
+                    <div
+                      className="flex items-center gap-1.5 px-3 py-1 rounded border-2 border-red-500 bg-red-950 text-white font-pixel text-xs tracking-widest shadow-[0_0_15px_rgba(239,68,68,0.8)] animate-pulse"
+                      title="OVERTIME - Keep pushing the cart!"
+                    >
+                      <span className="text-red-400 font-bold">OVERTIME</span>
+                      {otSec < 5.0 && (
+                        <span className="text-amber-300 font-mono font-bold text-[10px] bg-red-900/90 px-1.5 py-0.5 rounded border border-red-400">
+                          {otSec.toFixed(1)}s
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     className={`flex items-center gap-1.5 px-3 py-1 rounded border font-mono font-bold text-sm tracking-widest shadow-md transition-all ${
