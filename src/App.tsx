@@ -18,7 +18,7 @@ import { ArcadeCabinetFrame } from './components/ArcadeCabinetFrame';
 import { PRESET_MAPS, getStageMapForPresetAndStage, MAP_SIZE_CONFIGS } from './engine/maps';
 import { soundManager } from './engine/SoundManager';
 import { gamepadManager, GamepadInfo } from './engine/GamepadManager';
-import { toggleFullscreen, isElectronApp, lockOrientationLandscape, isStandaloneApp } from './utils/fullscreen';
+import { toggleFullscreen, isElectronApp, isStandaloneApp } from './utils/fullscreen';
 import { localP2PService } from './services/LocalP2PService';
 import { analyticsService } from './services/AnalyticsService';
 
@@ -30,8 +30,6 @@ export default function App() {
   const [finalScoreData, setFinalScoreData] = useState<GameScore | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isWifiCoopOpen, setIsWifiCoopOpen] = useState<boolean>(false);
-  const [isMobileDevice, setIsMobileDevice] = useState<boolean>(false);
-  const [isPortraitMode, setIsPortraitMode] = useState<boolean>(false);
   const [pwaPrompt, setPwaPrompt] = useState<any>(null);
   const [showPwaBanner, setShowPwaBanner] = useState<boolean>(false);
   const [showSecretStats, setShowSecretStats] = useState<boolean>(false);
@@ -161,23 +159,6 @@ export default function App() {
     } catch {}
   };
 
-  // Mobile orientation & PWA installation state
-  useEffect(() => {
-    const updateOrientation = () => {
-      const hasTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
-      const isMobile = hasTouch && Math.min(window.innerWidth, window.innerHeight) <= 900;
-      setIsMobileDevice(isMobile);
-      setIsPortraitMode(window.innerHeight > window.innerWidth);
-    };
-
-    updateOrientation();
-    window.addEventListener('resize', updateOrientation);
-    window.addEventListener('orientationchange', updateOrientation);
-    return () => {
-      window.removeEventListener('resize', updateOrientation);
-      window.removeEventListener('orientationchange', updateOrientation);
-    };
-  }, []);
 
   // Silent Visitor Analytics & ?stats / ?admin URL Parameter Detection
   useEffect(() => {
@@ -215,11 +196,6 @@ export default function App() {
     }
   };
 
-  const handleRotateToLandscape = async () => {
-    soundManager.unlockAudio();
-    await toggleFullscreen();
-    await lockOrientationLandscape();
-  };
 
   // Handlers for Transitions
   const handleStartGame = (stageOverride?: number) => {
@@ -454,30 +430,6 @@ export default function App() {
           : 'p-2 sm:p-4'
       }`}
     >
-      {/* Mobile Landscape Orientation Enforcer */}
-      {isMobileDevice && isPortraitMode && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6 text-center select-none font-pixel border-4 border-[#f8b800]">
-          <div className="w-16 h-12 border-4 border-[#f8b800] bg-zinc-900 flex items-center justify-center mb-4">
-            <span className="text-amber-400 text-xs animate-pulse">&gt;&gt;&gt;</span>
-          </div>
-
-          <h2 className="text-[#f8b800] text-sm sm:text-base font-bold tracking-wider mb-2">
-            PLEASE ROTATE DEVICE
-          </h2>
-
-          <p className="text-[9px] text-zinc-300 mb-6 max-w-xs leading-relaxed">
-            BATTLE CITY 1990 REQUIRES HORIZONTAL LANDSCAPE ORIENTATION FOR VIRTUAL JOYSTICK &amp; FULLSCREEN COMBAT.
-          </p>
-
-          <button
-            type="button"
-            onClick={handleRotateToLandscape}
-            className="py-3 px-6 bg-[#f8b800] hover:bg-amber-400 text-black font-bold text-xs border-2 border-white cursor-pointer active:scale-95 transition-all"
-          >
-            [ ROTATE &amp; FULLSCREEN ]
-          </button>
-        </div>
-      )}
 
       {/* Gamepad Connected Flash Notification */}
       {gamepadAlert && (

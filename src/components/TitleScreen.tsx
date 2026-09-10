@@ -114,6 +114,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     soundManager.playMenuSelect();
     if (window.electronAPI?.quit) {
       window.electronAPI.quit();
+    } else if ((window as any).AndroidNative?.exitApp) {
+      (window as any).AndroidNative.exitApp();
     } else if ((window as any).Capacitor?.Plugins?.App?.exitApp) {
       (window as any).Capacitor.Plugins.App.exitApp();
     } else if ((navigator as any).app?.exitApp) {
@@ -575,12 +577,19 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       <style>{`
         @media (max-height: 520px) {
           #title-screen-container {
-            padding-top: 4px !important;
-            padding-bottom: 4px !important;
+            padding: 2px 4px !important;
+            width: 100% !important;
+            height: 100% !important;
           }
           #title-header-bar {
-            padding-bottom: 3px !important;
-            font-size: 10px !important;
+            width: 100% !important;
+            align-self: stretch !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            padding: 0 4px 2px 4px !important;
+            font-size: 8px !important;
+            border-bottom: 1px solid rgba(63, 63, 70, 0.8) !important;
           }
           #title-logo-banner {
             margin-top: 1px !important;
@@ -588,50 +597,69 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           }
           #title-logo-h1, #title-logo-h2 {
             display: inline-block !important;
-            font-size: 1.15rem !important;
+            font-size: 1.05rem !important;
             line-height: 1.1 !important;
-            margin-right: 6px !important;
+            margin-right: 4px !important;
           }
           #title-tanks-duel {
             display: none !important;
           }
           #title-menu-grid {
-            display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            max-width: 580px !important;
-            gap: 1px 16px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            justify-content: center !important;
+            width: 100% !important;
+            max-width: 250px !important;
+            gap: 1.5px !important;
             margin-top: 2px !important;
             margin-bottom: 2px !important;
           }
           #title-menu-grid button {
-            padding-top: 2px !important;
-            padding-bottom: 2px !important;
+            padding-top: 1px !important;
+            padding-bottom: 1px !important;
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+            gap: 4px !important;
           }
-          #title-menu-grid span {
-            font-size: 9px !important;
+          #title-menu-grid .menu-cursor {
+            width: 11px !important;
+            height: 11px !important;
+          }
+          #title-menu-grid .menu-option-label {
+            font-size: 8px !important;
+            line-height: 1.15 !important;
+          }
+          #title-menu-grid .menu-option-badge {
+            font-size: 6.5px !important;
+            padding: 0 3px !important;
           }
           #title-screen-footer {
-            padding-top: 3px !important;
+            padding-top: 2px !important;
             margin-top: 1px !important;
-            gap: 2px !important;
+            gap: 1px !important;
           }
           #title-footer-hints {
             display: none !important;
           }
           #title-footer-copy {
-            font-size: 8px !important;
+            font-size: 7px !important;
             display: block !important;
           }
         }
       `}</style>
 
       {/* High Score Header (Authentic Arcade HUD) */}
-      <div id="title-header-bar" className="w-full flex items-center justify-between px-2 sm:px-6 text-xs sm:text-sm tracking-widest border-b border-zinc-800/80 pb-1.5">
-        <div className="flex items-center gap-2">
+      <div
+        id="title-header-bar"
+        className="w-full self-stretch flex items-center justify-between px-2 sm:px-6 text-xs sm:text-sm tracking-widest border-b border-zinc-800/80 pb-1.5"
+        style={{ width: '100%' }}
+      >
+        <div className="flex items-center gap-1 sm:gap-2">
           <span className="text-red-500 font-bold drop-shadow">I-</span>
           <span className="text-white tracking-widest drop-shadow">00</span>
         </div>
-        <div className="flex items-center gap-2 text-[#f8b800] drop-shadow">
+        <div className="flex items-center gap-1 sm:gap-2 text-[#f8b800] drop-shadow">
           <span className="text-amber-400">HI-</span>
           <span>{highScore.toString().padStart(5, '0')}</span>
         </div>
@@ -711,9 +739,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 className="flex items-center gap-2 sm:gap-3 py-0.5 sm:py-1 px-1.5 text-left transition-colors group cursor-pointer"
               >
                 {/* Tank Cursor */}
-                <div className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex items-center justify-center shrink-0">
+                <div className="menu-cursor w-3.5 h-3.5 sm:w-5 sm:h-5 flex items-center justify-center shrink-0">
                   {isSelected ? (
-                    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-[#f8b800] animate-pulse drop-shadow-[0_0_8px_rgba(248,184,0,0.9)]">
+                    <svg viewBox="0 0 16 16" className="w-full h-full fill-[#f8b800] animate-pulse drop-shadow-[0_0_8px_rgba(248,184,0,0.9)]">
                       <rect x="2" y="1" width="12" height="3" />
                       <rect x="2" y="12" width="12" height="3" />
                       <rect x="4" y="4" width="8" height="8" />
@@ -724,9 +752,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                   <span
-                    className={`text-[10px] sm:text-xs md:text-sm tracking-wider font-bold whitespace-nowrap transition-all ${
+                    className={`menu-option-label text-[10px] sm:text-xs md:text-sm tracking-wider font-bold whitespace-nowrap transition-all ${
                       isSelected
                         ? 'text-[#f8b800] underline decoration-2 drop-shadow-[0_0_10px_rgba(248,184,0,0.6)] translate-x-1'
                         : 'text-zinc-200 group-hover:text-white drop-shadow'
@@ -736,7 +764,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   </span>
                   {opt.badge && (
                     <span
-                      className={`text-[7px] font-pixel px-1.5 py-0.2 rounded font-bold border ${
+                      className={`menu-option-badge text-[7px] font-pixel px-1.5 py-0.2 rounded font-bold border shrink-0 ${
                         opt.badge === 'PWA'
                           ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/80 animate-pulse'
                           : 'bg-zinc-800 text-zinc-400 border-zinc-600'

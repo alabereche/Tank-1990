@@ -82,6 +82,7 @@ export async function lockOrientationLandscape(): Promise<boolean> {
 
 export function isCapacitorApp(): boolean {
   if (typeof window === 'undefined') return false;
+  if ((window as any).AndroidNative) return true;
   const cap = (window as any).Capacitor;
   if (!cap) return false;
   if (typeof cap.isNativePlatform === 'function') {

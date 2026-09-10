@@ -52,6 +52,18 @@ if (!fs.existsSync(gradlewBat)) {
   process.exit(1);
 }
 
+// Clean up any accidental exe or apk files inside android assets to keep APK small
+const androidAssets = path.join(androidDir, 'app', 'src', 'main', 'assets', 'public');
+if (fs.existsSync(androidAssets)) {
+  ['battle-city-1990.exe', 'battle-city-1990.apk'].forEach((file) => {
+    const target = path.join(androidAssets, file);
+    if (fs.existsSync(target)) {
+      fs.unlinkSync(target);
+      console.log(`Cleaned oversized binary from android assets: ${file}`);
+    }
+  });
+}
+
 console.log('Executing Gradle build: gradlew.bat assembleRelease...');
 const result = spawnSync('cmd.exe', ['/c', 'gradlew.bat', 'assembleRelease', '--no-daemon'], {
   cwd: androidDir,

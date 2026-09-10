@@ -3,6 +3,7 @@ package com.battlecity1990.arcade;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
@@ -24,8 +25,20 @@ public class MainActivity extends BridgeActivity {
                 webSettings.setDomStorageEnabled(true);
                 webSettings.setDatabaseEnabled(true);
                 webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
+
+                // Add native JavascriptInterface for 100% reliable one-tap exit
+                webView.addJavascriptInterface(new Object() {
+                    @JavascriptInterface
+                    public void exitApp() {
+                        runOnUiThread(() -> {
+                            finishAffinity();
+                            System.exit(0);
+                        });
+                    }
+                }, "AndroidNative");
             }
         } catch (Exception ignored) {
         }
     }
 }
+
