@@ -3384,20 +3384,20 @@ export class GameEngine {
     else if (tank.direction === 'LEFT') dirX = -1;
     else if (tank.direction === 'RIGHT') dirX = 1;
 
-    let startX = tank.x + 16 + dirX * 18;
-    let startY = tank.y + 16 + dirY * 18;
-    let initVx = dirX * 3.8;
-    let initVy = dirY * 3.8;
+    let startX = tank.x + 16 + dirX * 16;
+    let startY = tank.y + 16 + dirY * 16;
+    let initVx = dirX * 3.2;
+    let initVy = dirY * 3.2;
 
     // Point-blank check: if spawn position is inside a solid obstacle, start closer or ricochet immediately
     if (this.isSolidForGrenade(startX, startY)) {
-      startX = tank.x + 16 + dirX * 10;
-      startY = tank.y + 16 + dirY * 10;
+      startX = tank.x + 16 + dirX * 8;
+      startY = tank.y + 16 + dirY * 8;
       if (this.isSolidForGrenade(startX, startY)) {
         startX = tank.x + 16;
         startY = tank.y + 16;
-        initVx = -dirX * 2.2;
-        initVy = -dirY * 2.2;
+        initVx = -dirX * 1.8;
+        initVy = -dirY * 1.8;
         soundManager.playGrenadeBounce();
       }
     }
@@ -3409,12 +3409,12 @@ export class GameEngine {
       team: tank.team,
       x: startX,
       y: startY,
-      z: 14,
+      z: 8,
       vx: initVx,
       vy: initVy,
-      vz: 3.5,
-      bouncesLeft: 3,
-      life: 180,
+      vz: 2.2,
+      bouncesLeft: 1,
+      life: 80,
     });
   }
 
@@ -3571,7 +3571,47 @@ export class GameEngine {
       const g = this.activeGrenades[i];
       g.life--;
       g.z += g.vz;
-      g.vz -= 0.22; // Gravity
+      g.vz -= 0.30; // Snappy, realistic gravity
+
+      // Direct impact detonation on tanks (active after initial 6 frames of throw flight)
+      if (g.life < 74) {
+        let hitTank = false;
+        for (const enemy of this.enemies) {
+          if (!enemy || enemy.hp <= 0) continue;
+          if (
+            g.x >= enemy.x &&
+            g.x <= enemy.x + 32 &&
+            g.y >= enemy.y &&
+            g.y <= enemy.y + 32 &&
+            g.z <= 16
+          ) {
+            hitTank = true;
+            break;
+          }
+        }
+        if (!hitTank && this.multiplayerConfig) {
+          for (const [id, player] of this.playerTanks.entries()) {
+            if (!player || player.hp <= 0 || id === g.ownerId) continue;
+            if (this.multiplayerConfig.mode === 'versus' && player.team !== g.team) {
+              if (
+                g.x >= player.x &&
+                g.x <= player.x + 32 &&
+                g.y >= player.y &&
+                g.y <= player.y + 32 &&
+                g.z <= 16
+              ) {
+                hitTank = true;
+                break;
+              }
+            }
+          }
+        }
+        if (hitTank) {
+          this.explodeGrenade(g);
+          this.activeGrenades.splice(i, 1);
+          continue;
+        }
+      }
 
       // --- 1. Horizontal Movement & Obstacle Ricochet (Bricks, Steel, Borders, Shields) ---
       if (Math.abs(g.vx) > 0.001) {
@@ -3603,8 +3643,8 @@ export class GameEngine {
         if (collidesX) {
           const dirBefore = Math.sign(g.vx);
           // Realistic energy-damped rebound
-          g.vx = -g.vx * 0.65;
-          g.vy *= 0.88;
+          g.vx = -g.vx * 0.4;
+          g.vy *= 0.7;
           // Step back away from the wall to prevent penetration
           g.x = Math.max(radius, Math.min(this.canvasSize - radius, g.x - dirBefore * 0.75));
           soundManager.playGrenadeBounce();
@@ -3643,8 +3683,8 @@ export class GameEngine {
         if (collidesY) {
           const dirBefore = Math.sign(g.vy);
           // Realistic energy-damped rebound
-          g.vy = -g.vy * 0.65;
-          g.vx *= 0.88;
+          g.vy = -g.vy * 0.4;
+          g.vx *= 0.7;
           // Step back away from the wall to prevent penetration
           g.y = Math.max(radius, Math.min(this.canvasSize - radius, g.y - dirBefore * 0.75));
           soundManager.playGrenadeBounce();
@@ -3658,12 +3698,12 @@ export class GameEngine {
         g.z = 0;
         if (g.bouncesLeft > 0) {
           g.bouncesLeft--;
-          g.vz = Math.abs(g.vz) * 0.62;
-          g.vx *= 0.68;
-          g.vy *= 0.68;
+          g.vz = Math.abs(g.vz) * 0.35; // Gentle, tight bounce (no wild jumping)
+          g.vx *= 0.5;
+          g.vy *= 0.5;
           soundManager.playGrenadeBounce();
         } else {
-          // Finished 3 bounces -> Detonate!
+          // Finished bounce -> Detonate on ground impact!
           this.explodeGrenade(g);
           this.activeGrenades.splice(i, 1);
           continue;
@@ -3671,7 +3711,7 @@ export class GameEngine {
       }
 
       // Max lifetime safety or near-stopped
-      if (g.life <= 0 || (g.bouncesLeft === 0 && Math.abs(g.vx) < 0.2 && Math.abs(g.vy) < 0.2 && g.z <= 0)) {
+      if (g.life <= 0 || (g.bouncesLeft === 0 && Math.abs(g.vx) < 0.25 && Math.abs(g.vy) < 0.25 && g.z <= 0)) {
         this.explodeGrenade(g);
         this.activeGrenades.splice(i, 1);
       }

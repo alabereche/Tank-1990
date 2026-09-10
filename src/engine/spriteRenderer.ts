@@ -1310,7 +1310,7 @@ export class SpriteRenderer {
     ctx.fillRect(gx - 1, gy - 5, 2, 10);
 
     // 5. Pulsing Red/White Detonation Warning Band
-    const isCritical = grenade.life < 60;
+    const isCritical = grenade.life < 30;
     const pulseTick = Math.floor(Date.now() / (isCritical ? 60 : 120)) % 2 === 0;
     ctx.fillStyle = pulseTick ? '#ff2020' : '#ffffff';
     ctx.fillRect(gx - 2, gy - 2, 4, 4);
