@@ -62,8 +62,9 @@
     ],
     "win": {
       "target": [
-        "dir"
+        "portable"
       ],
+      "artifactName": "Battle City 1990.${ext}",
       "icon": "build/icon.ico"
     }
   }

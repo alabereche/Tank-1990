@@ -125,11 +125,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const menuOptions: { label: string; action: () => void; badge?: string }[] = [
     { label: '1 PLAYER', action: () => { autoEnterLandscape(); onStart1Player(); } },
-    { label: '2 PLAYERS (LOCAL)', action: () => { autoEnterLandscape(); setShowLocal2PModal(true); } },
-    ...(onOpenWifiCoop ? [{ label: 'WI-FI CO-OP (P2P)', action: () => { autoEnterLandscape(); onOpenWifiCoop(); }, badge: 'HOTSPOT' }] : []),
+    ...(!isCapacitor ? [{ label: '2 PLAYERS (LOCAL)', action: () => { autoEnterLandscape(); setShowLocal2PModal(true); } }] : []),
+    ...(onOpenWifiCoop ? [{ label: 'WI-FI CO-OP', action: () => { autoEnterLandscape(); onOpenWifiCoop(); }, badge: 'P2P' }] : []),
     { label: 'CONSTRUCTION', action: () => { autoEnterLandscape(); onOpenConstruction(); } },
     { label: 'SETTINGS', action: onOpenSettings },
-    { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
+    ...(!isCapacitor ? [{ label: 'HOW TO PLAY', action: () => setShowHelpModal(true) }] : []),
     ...(!isElectron && !isCapacitor ? [{ label: 'ANDROID APP (.APK)', action: handleDownloadApk, badge: 'APK' }] : []),
     ...(!isElectron && !isCapacitor ? [{ label: 'PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'WIN' }] : []),
     ...(!isCapacitor ? [{ label: 'FULLSCREEN', action: handleToggleFullscreen }] : []),
@@ -754,7 +754,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       className={`menu-option-badge text-[7px] font-pixel px-1.5 py-0.2 rounded font-bold border shrink-0 ${
                         opt.badge === 'APK'
                           ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/80'
-                          : opt.badge === 'HOTSPOT'
+                          : opt.badge === 'P2P' || opt.badge === 'HOTSPOT'
                           ? 'bg-amber-950/80 text-amber-400 border-amber-500/80'
                           : opt.badge === 'WIN'
                           ? 'bg-cyan-950/80 text-cyan-400 border-cyan-500/80'
