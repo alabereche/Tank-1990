@@ -47,8 +47,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [fullscreenActive, setFullscreenActive] = useState<boolean>(false);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [exitConfirmIdx, setExitConfirmIdx] = useState<number>(0); // 0: YES, 1: NO
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
   const [showPcDownloadModal, setShowPcDownloadModal] = useState<boolean>(false);
 
   // Secret 5-tap sequence on Title Logo to reveal live analytics
@@ -77,27 +75,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     return unsub;
   }, []);
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
-
-  const handleInstallApp = async () => {
+  const handleDownloadApk = () => {
     soundManager.unlockAudio();
-    soundManager.playMenuSelect();
-    if (deferredPrompt) {
-      try {
-        deferredPrompt.prompt();
-        await deferredPrompt.userChoice;
-      } catch {}
-      setDeferredPrompt(null);
-    } else {
-      setShowInstallModal(true);
-    }
+    soundManager.playPowerUpCollect();
+    analyticsService.track('download_apk');
+    const a = document.createElement('a');
+    a.href = 'https://api-tank.nosfir.online/battle-city-1990.apk';
+    a.download = 'Battle City 1990.apk';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const handleToggleFullscreen = () => {
@@ -132,7 +119,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     { label: 'CONSTRUCTION', action: onOpenConstruction },
     { label: 'SETTINGS', action: onOpenSettings },
     { label: 'HOW TO PLAY', action: () => setShowHelpModal(true) },
-    ...(!isElectron && !isCapacitor && !isStandalone ? [{ label: 'INSTALL APP', action: handleInstallApp, badge: 'PWA' }] : []),
+    ...(!isElectron && !isCapacitor ? [{ label: 'ANDROID APP (.APK)', action: handleDownloadApk, badge: 'APK' }] : []),
     ...(!isElectron && !isCapacitor ? [{ label: 'PC APP (.EXE)', action: () => setShowPcDownloadModal(true), badge: 'WIN' }] : []),
     ...(!isCapacitor ? [{ label: 'FULLSCREEN', action: handleToggleFullscreen }] : []),
     ...(isElectron || isCapacitor ? [{ label: 'EXIT GAME', action: () => { setExitConfirmIdx(0); setShowExitModal(true); } }] : []),
@@ -153,9 +140,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const showExitModalRef = useRef(showExitModal);
   showExitModalRef.current = showExitModal;
-
-  const showInstallModalRef = useRef(showInstallModal);
-  showInstallModalRef.current = showInstallModal;
 
   const showPcDownloadModalRef = useRef(showPcDownloadModal);
   showPcDownloadModalRef.current = showPcDownloadModal;
@@ -186,14 +170,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       if (Date.now() - mountTime < 350) return;
       if (disabledRef.current) return;
       soundManager.unlockAudio();
-
-      if (showInstallModalRef.current) {
-        if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
-          setShowInstallModal(false);
-          soundManager.playMenuMove();
-        }
-        return;
-      }
 
       if (showPcDownloadModalRef.current) {
         if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
@@ -765,8 +741,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   {opt.badge && (
                     <span
                       className={`menu-option-badge text-[7px] font-pixel px-1.5 py-0.2 rounded font-bold border shrink-0 ${
-                        opt.badge === 'PWA'
-                          ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/80 animate-pulse'
+                        opt.badge === 'APK'
+                          ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/80'
+                          : opt.badge === 'HOTSPOT'
+                          ? 'bg-amber-950/80 text-amber-400 border-amber-500/80'
+                          : opt.badge === 'WIN'
+                          ? 'bg-cyan-950/80 text-cyan-400 border-cyan-500/80'
                           : 'bg-zinc-800 text-zinc-400 border-zinc-600'
                       }`}
                     >
@@ -1071,70 +1051,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       )}
 
-      {/* PWA Mobile App Installation Modal */}
-      {showInstallModal && (
-        <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-3 backdrop-blur-xs select-none"
-          onClick={() => setShowInstallModal(false)}
-        >
-          <div
-            className="bg-[#0c0c0c] border-2 sm:border-4 border-[#f8b800] max-w-lg w-full max-h-[96vh] overflow-y-auto p-2.5 sm:p-4 space-y-1.5 sm:space-y-2.5 font-pixel shadow-[0_0_25px_rgba(248,184,0,0.5)] text-white text-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-[#f8b800] text-[10px] sm:text-xs tracking-widest font-bold">
-              INSTALL MOBILE APP (PWA)
-            </div>
-
-            <p className="text-[7.5px] sm:text-[8.5px] text-zinc-300 leading-relaxed font-pixel text-left">
-              RUN AS FULLSCREEN RETRO APP WITHOUT BROWSER TOOLBARS:
-            </p>
-
-            <div className="text-[7px] sm:text-[7.5px] text-zinc-300 leading-relaxed text-left space-y-1 bg-black p-1.5 sm:p-2 border border-zinc-800 font-pixel">
-              <div>
-                <span className="text-emerald-400 font-bold block mb-0.5">&gt; ANDROID (CHROME):</span>
-                <span className="text-zinc-400">TAP BROWSER MENU (⋮) THEN SELECT 'INSTALL APP' OR 'ADD TO HOME SCREEN'.</span>
-              </div>
-              <div className="border-t border-zinc-800 pt-1">
-                <span className="text-cyan-400 font-bold block mb-0.5">&gt; APPLE IOS (SAFARI):</span>
-                <span className="text-zinc-400">TAP SHARE BUTTON THEN SELECT 'ADD TO HOME SCREEN'.</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-              <a
-                href="https://api-tank.nosfir.online/battle-city-1990.apk"
-                download="Battle City 1990.apk"
-                onClick={() => {
-                  soundManager.playPowerUpCollect();
-                  analyticsService.track('download_apk');
-                }}
-                className="block w-full py-1.5 sm:py-2 px-2 text-[8px] sm:text-[9px] font-pixel border-2 border-emerald-400 bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
-              >
-                [ ANDROID APK ]
-              </a>
-              <a
-                href="https://api-tank.nosfir.online/battle-city-1990.exe"
-                download="Battle City 1990.exe"
-                onClick={() => {
-                  soundManager.playPowerUpCollect();
-                  analyticsService.track('download_exe');
-                }}
-                className="block w-full py-1.5 sm:py-2 px-2 text-[8px] sm:text-[9px] font-pixel border-2 border-[#58b8d8] bg-cyan-700 hover:bg-cyan-600 text-white cursor-pointer transition-all shadow-md font-bold text-center no-underline active:scale-[0.98]"
-              >
-                [ WINDOWS .EXE ]
-              </a>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowInstallModal(false)}
-              className="w-full py-1.5 sm:py-2 px-3 text-[9px] sm:text-[10px] font-pixel border-2 border-[#f8b800] bg-amber-600 hover:bg-amber-500 text-black cursor-pointer transition-all shadow-md font-bold"
-            >
-              [ OK / CLOSE ]
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* PC (.EXE) Download Modal */}
       {showPcDownloadModal && (
